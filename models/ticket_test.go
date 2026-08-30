@@ -74,3 +74,48 @@ func TestValidMeetingAndProjectAndCall(t *testing.T) {
 		t.Error("validação de resultado de chamada incorreta")
 	}
 }
+
+func TestReorderStages(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE pipeline_stages SET position").
+		WithArgs(0, int64(5), int64(1)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("UPDATE pipeline_stages SET position").
+		WithArgs(1, int64(3), int64(1)).
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectCommit()
+
+	if err := ReorderStages(db, 1, []int64{5, 3}); err != nil {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Fase de outro pipeline não pode ser reordenada (rollback).
+func TestReorderStagesWrongPipeline(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectBegin()
+	mock.ExpectExec("UPDATE pipeline_stages SET position").
+		WillReturnResult(sqlmock.NewResult(0, 0))
+	mock.ExpectRollback()
+
+	if err := ReorderStages(db, 1, []int64{99}); err == nil {
+		t.Fatal("fase de outro pipeline deveria falhar")
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}

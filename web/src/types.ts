@@ -61,12 +61,14 @@ export interface PipelineStage {
   probability: number
   is_won: boolean
   is_lost: boolean
+  deals_count?: number
 }
 
 export interface Pipeline {
   id: number
   name: string
   position: number
+  deals_count?: number
   stages: PipelineStage[]
 }
 

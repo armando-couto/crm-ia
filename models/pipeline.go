@@ -5,10 +5,11 @@ import (
 )
 
 type Pipeline struct {
-	ID       int64           `json:"id"`
-	Name     string          `json:"name"`
-	Position int             `json:"position"`
-	Stages   []PipelineStage `json:"stages"`
+	ID         int64           `json:"id"`
+	Name       string          `json:"name"`
+	Position   int             `json:"position"`
+	DealsCount int             `json:"deals_count"`
+	Stages     []PipelineStage `json:"stages"`
 }
 
 type PipelineStage struct {
@@ -19,10 +20,14 @@ type PipelineStage struct {
 	Probability int    `json:"probability"`
 	IsWon       bool   `json:"is_won"`
 	IsLost      bool   `json:"is_lost"`
+	DealsCount  int    `json:"deals_count"`
 }
 
 func ListPipelines(db *sql.DB) ([]Pipeline, error) {
-	rows, err := db.Query(`SELECT id, name, position FROM pipelines ORDER BY position, id`)
+	rows, err := db.Query(`
+		SELECT p.id, p.name, p.position,
+		       (SELECT COUNT(*) FROM deals d WHERE d.pipeline_id = p.id)
+		FROM pipelines p ORDER BY p.position, p.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +36,7 @@ func ListPipelines(db *sql.DB) ([]Pipeline, error) {
 	pipelines := []Pipeline{}
 	for rows.Next() {
 		var p Pipeline
-		if err := rows.Scan(&p.ID, &p.Name, &p.Position); err != nil {
+		if err := rows.Scan(&p.ID, &p.Name, &p.Position, &p.DealsCount); err != nil {
 			return nil, err
 		}
 		p.Stages = []PipelineStage{}
@@ -42,8 +47,9 @@ func ListPipelines(db *sql.DB) ([]Pipeline, error) {
 	}
 
 	stageRows, err := db.Query(`
-		SELECT id, pipeline_id, name, position, probability, is_won, is_lost
-		FROM pipeline_stages ORDER BY position, id`)
+		SELECT s.id, s.pipeline_id, s.name, s.position, s.probability, s.is_won, s.is_lost,
+		       (SELECT COUNT(*) FROM deals d WHERE d.stage_id = s.id)
+		FROM pipeline_stages s ORDER BY s.position, s.id`)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +57,8 @@ func ListPipelines(db *sql.DB) ([]Pipeline, error) {
 
 	for stageRows.Next() {
 		var s PipelineStage
-		if err := stageRows.Scan(&s.ID, &s.PipelineID, &s.Name, &s.Position, &s.Probability, &s.IsWon, &s.IsLost); err != nil {
+		if err := stageRows.Scan(&s.ID, &s.PipelineID, &s.Name, &s.Position, &s.Probability,
+			&s.IsWon, &s.IsLost, &s.DealsCount); err != nil {
 			return nil, err
 		}
 		for i := range pipelines {
@@ -61,6 +68,28 @@ func ListPipelines(db *sql.DB) ([]Pipeline, error) {
 		}
 	}
 	return pipelines, stageRows.Err()
+}
+
+// ReorderStages aplica a nova ordem das fases: as posições seguem a ordem
+// dos IDs informados. Só fases do próprio pipeline são aceitas.
+func ReorderStages(db *sql.DB, pipelineID int64, stageIDs []int64) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	for position, stageID := range stageIDs {
+		res, err := tx.Exec(`UPDATE pipeline_stages SET position = $1 WHERE id = $2 AND pipeline_id = $3`,
+			position, stageID, pipelineID)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
+		if n, _ := res.RowsAffected(); n == 0 {
+			tx.Rollback()
+			return sql.ErrNoRows
+		}
+	}
+	return tx.Commit()
 }
 
 func StageByID(db *sql.DB, id int64) (*PipelineStage, error) {

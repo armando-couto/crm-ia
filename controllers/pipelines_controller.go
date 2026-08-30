@@ -135,6 +135,22 @@ func UpdateStage(ctx iris.Context) {
 	ctx.JSON(stage)
 }
 
+// ReorderStages aplica a nova ordem das fases do pipeline (drag/setas no editor).
+func ReorderStages(ctx iris.Context) {
+	var req struct {
+		StageIDs []int64 `json:"stage_ids"`
+	}
+	if err := ctx.ReadJSON(&req); err != nil || len(req.StageIDs) == 0 {
+		badRequest(ctx, "informe a ordem das fases")
+		return
+	}
+	if err := models.ReorderStages(utils.DB, paramID(ctx), req.StageIDs); err != nil {
+		badRequest(ctx, "não foi possível reordenar: verifique se as fases pertencem ao pipeline")
+		return
+	}
+	ctx.JSON(iris.Map{"message": "ordem atualizada"})
+}
+
 func DeleteStage(ctx iris.Context) {
 	if err := models.DeleteStage(utils.DB, paramID(ctx)); err != nil {
 		badRequest(ctx, "não foi possível remover: mova os negócios desta etapa antes")

@@ -53,6 +53,7 @@ func Register(app *iris.Application) {
 	gestao.Put("/pipelines/{id:int64}", controllers.UpdatePipeline)
 	gestao.Delete("/pipelines/{id:int64}", controllers.DeletePipeline)
 	gestao.Post("/pipelines/{id:int64}/stages", controllers.CreateStage)
+	gestao.Post("/pipelines/{id:int64}/stages/reorder", controllers.ReorderStages)
 	gestao.Put("/stages/{id:int64}", controllers.UpdateStage)
 	gestao.Delete("/stages/{id:int64}", controllers.DeleteStage)
 

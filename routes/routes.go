@@ -141,6 +141,13 @@ func Register(app *iris.Application) {
 	auth.Get("/settings/deal-form", controllers.GetDealForm)
 	gestao.Put("/settings/deal-form", controllers.UpdateDealForm)
 
+	auth.Get("/properties", controllers.ListProperties)
+	auth.Get("/properties/values", controllers.GetPropertyValues)
+	auth.Put("/properties/values", controllers.SavePropertyValues)
+	gestao.Post("/properties", controllers.CreateProperty)
+	gestao.Put("/properties/{id:int64}", controllers.UpdateProperty)
+	gestao.Delete("/properties/{id:int64}", controllers.DeleteProperty)
+
 	auth.Get("/views", controllers.ListViews)
 	auth.Post("/views", controllers.CreateView)
 	auth.Put("/views/{id:int64}", controllers.RenameView)

@@ -364,3 +364,25 @@ export interface FilterFieldDef {
   kind: 'text' | 'enum' | 'ref' | 'date' | 'number'
   options?: { value: string; label: string }[]
 }
+
+export interface PropertyOption {
+  value: string
+  label: string
+}
+
+export interface CustomProperty {
+  id: number
+  entity: 'contacts' | 'companies' | 'deals' | 'tickets'
+  key: string
+  label: string
+  description: string
+  field_type: 'texto' | 'texto_longo' | 'numero' | 'data' | 'selecao' | 'multipla' | 'booleano'
+  options: PropertyOption[]
+  group_name: string
+  position: number
+  created_by: number | null
+  creator_name?: string
+  used_count: number
+  created_at: string
+  updated_at: string
+}

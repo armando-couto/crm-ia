@@ -15,7 +15,8 @@ const auth = useAuthStore()
 
       <template v-if="auth.canManage">
         <div class="menu-section">Administração</div>
-        <router-link v-if="auth.isAdmin" to="/configuracoes/usuarios" active-class="active">Usuários</router-link>
+        <router-link v-if="auth.isAdmin" to="/configuracoes/usuarios" active-class="active">Usuários e equipes</router-link>
+        <router-link to="/configuracoes/propriedades" active-class="active">Propriedades</router-link>
         <router-link to="/configuracoes/pipelines" active-class="active">Pipelines</router-link>
         <router-link to="/visualizacoes" active-class="active">Visualizações</router-link>
         <router-link to="/listas" active-class="active">Listas</router-link>

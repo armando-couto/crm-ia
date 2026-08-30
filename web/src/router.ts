@@ -34,7 +34,8 @@ const routes = [
       { path: 'perfil', name: 'profile', component: () => import('./views/ProfileView.vue') },
       { path: 'notificacoes', name: 'notifications', component: () => import('./views/NotificationsView.vue') },
       { path: 'usuarios', name: 'settings-users', component: () => import('./views/SettingsUsersView.vue') },
-      { path: 'pipelines', name: 'settings-pipelines', component: () => import('./views/SettingsPipelinesView.vue') }
+      { path: 'pipelines', name: 'settings-pipelines', component: () => import('./views/SettingsPipelinesView.vue') },
+      { path: 'propriedades', name: 'settings-properties', component: () => import('./views/SettingsPropertiesView.vue') }
     ]
   },
   { path: '/minha-conta', redirect: '/configuracoes/perfil' },

@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import { formatDate, formatDateTime, formatMoney, initials, lifecycleLabels, relativeDate } from '../format'
 import { useToastStore } from '../stores/toast'
+import CustomProperties from '../components/CustomProperties.vue'
 import ModalDialog from '../components/ModalDialog.vue'
 import type { Activity, Company, Contact, Deal, Meeting, Paginated, Pipeline, Task, Ticket, User } from '../types'
 
@@ -353,6 +354,8 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
           <dd>{{ formatDate(company.created_at) }}</dd>
         </dl>
       </div>
+
+      <CustomProperties entity="companies" :record-id="id" />
     </aside>
 
     <!-- ===== Coluna central ===== -->

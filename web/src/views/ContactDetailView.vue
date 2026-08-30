@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import { formatDate, formatDateTime, formatMoney, initials, lifecycleLabels, relativeDate } from '../format'
 import { useToastStore } from '../stores/toast'
+import CustomProperties from '../components/CustomProperties.vue'
 import TimelinePanel from '../components/TimelinePanel.vue'
 import ModalDialog from '../components/ModalDialog.vue'
 import type { Activity, Company, Contact, Deal, Paginated, Pipeline, Task, Ticket, User } from '../types'
@@ -308,6 +309,8 @@ const ticketBadge: Record<string, string> = { aberto: 'blue', pendente: 'amber',
           <dd>{{ formatDate(contact.created_at) }}</dd>
         </dl>
       </div>
+
+      <CustomProperties entity="contacts" :record-id="id" />
     </aside>
 
     <!-- ===== Coluna central: abas ===== -->

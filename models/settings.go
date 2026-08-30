@@ -131,6 +131,45 @@ func GetSetting(db *sql.DB, key string, out any) (bool, error) {
 	return true, json.Unmarshal([]byte(raw), out)
 }
 
+// NotificationPrefs são as preferências de aviso por e-mail de cada usuário.
+type NotificationPrefs struct {
+	DealAssigned   bool `json:"negocio_atribuido"`
+	TaskAssigned   bool `json:"tarefa_atribuida"`
+	TicketAssigned bool `json:"ticket_atribuido"`
+}
+
+// DefaultNotificationPrefs: tudo ligado por padrão.
+func DefaultNotificationPrefs() NotificationPrefs {
+	return NotificationPrefs{DealAssigned: true, TaskAssigned: true, TicketAssigned: true}
+}
+
+// GetUserSetting lê uma preferência do usuário; ok=false quando não existe.
+func GetUserSetting(db *sql.DB, userID int64, key string, out any) (bool, error) {
+	var raw string
+	err := db.QueryRow(`SELECT value FROM user_settings WHERE user_id = $1 AND key = $2`, userID, key).Scan(&raw)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, json.Unmarshal([]byte(raw), out)
+}
+
+// SetUserSetting grava (upsert) uma preferência do usuário.
+func SetUserSetting(db *sql.DB, userID int64, key string, value any) error {
+	raw, err := json.Marshal(value)
+	if err != nil {
+		return err
+	}
+	_, err = db.Exec(`
+		INSERT INTO user_settings (user_id, key, value, updated_at)
+		VALUES ($1, $2, $3, NOW())
+		ON CONFLICT (user_id, key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+		userID, key, string(raw))
+	return err
+}
+
 // SetSetting grava (upsert) uma configuração do app.
 func SetSetting(db *sql.DB, key string, value any, userID *int64) error {
 	raw, err := json.Marshal(value)

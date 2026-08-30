@@ -24,6 +24,8 @@ func Register(app *iris.Application) {
 
 	auth.Get("/me", controllers.Me)
 	auth.Put("/me", controllers.UpdateMe)
+	auth.Get("/me/notifications", controllers.GetMyNotifications)
+	auth.Put("/me/notifications", controllers.UpdateMyNotifications)
 
 	auth.Get("/users", controllers.ListUsers)
 	admin := auth.Party("/users", middleware.RequireRoles(models.RoleAdmin))

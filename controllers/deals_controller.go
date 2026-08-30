@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"fixpay/fix-crm/models"
+	"fixpay/fix-crm/services"
 	"fixpay/fix-crm/utils"
 
 	"github.com/kataras/iris/v12"
@@ -238,6 +239,10 @@ func CreateDeal(ctx iris.Context) {
 		ContactID: deal.ContactID,
 		CompanyID: deal.CompanyID,
 	})
+	if claims := middlewareClaims(ctx); claims != nil {
+		go services.NotifyAssignment(utils.DB, deal.OwnerID, claims.UserID,
+			services.NotifyDeal, deal.Name, fmt.Sprintf("/negocios/%d", deal.ID))
+	}
 	ctx.StatusCode(iris.StatusCreated)
 	ctx.JSON(deal)
 }

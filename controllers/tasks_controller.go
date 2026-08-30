@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"fixpay/fix-crm/models"
+	"fixpay/fix-crm/services"
 	"fixpay/fix-crm/utils"
 
 	"github.com/kataras/iris/v12"
@@ -120,6 +121,10 @@ func CreateTask(ctx iris.Context) {
 	if err := models.CreateTask(utils.DB, task); err != nil {
 		serverError(ctx, err)
 		return
+	}
+	if claims := middlewareClaims(ctx); claims != nil {
+		go services.NotifyAssignment(utils.DB, task.OwnerID, claims.UserID,
+			services.NotifyTask, task.Title, "/tarefas")
 	}
 	ctx.StatusCode(iris.StatusCreated)
 	ctx.JSON(task)

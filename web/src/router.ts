@@ -26,9 +26,18 @@ const routes = [
   { path: '/manuais', name: 'playbooks', component: () => import('./views/PlaybooksView.vue') },
   { path: '/modelos', name: 'templates', component: () => import('./views/TemplatesView.vue') },
   { path: '/snippets', name: 'snippets', component: () => import('./views/SnippetsView.vue') },
-  { path: '/configuracoes/usuarios', name: 'settings-users', component: () => import('./views/SettingsUsersView.vue') },
-  { path: '/configuracoes/pipelines', name: 'settings-pipelines', component: () => import('./views/SettingsPipelinesView.vue') },
-  { path: '/minha-conta', name: 'profile', component: () => import('./views/ProfileView.vue') },
+  {
+    path: '/configuracoes',
+    component: () => import('./views/SettingsLayout.vue'),
+    children: [
+      { path: '', redirect: '/configuracoes/perfil' },
+      { path: 'perfil', name: 'profile', component: () => import('./views/ProfileView.vue') },
+      { path: 'notificacoes', name: 'notifications', component: () => import('./views/NotificationsView.vue') },
+      { path: 'usuarios', name: 'settings-users', component: () => import('./views/SettingsUsersView.vue') },
+      { path: 'pipelines', name: 'settings-pipelines', component: () => import('./views/SettingsPipelinesView.vue') }
+    ]
+  },
+  { path: '/minha-conta', redirect: '/configuracoes/perfil' },
   { path: '/:pathMatch(.*)*', redirect: '/' }
 ]
 

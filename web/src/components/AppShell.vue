@@ -72,19 +72,10 @@ function logout() {
           <span class="icon">❝</span><span class="label">Snippets</span>
         </router-link>
 
-        <template v-if="auth.canManage">
-          <div class="nav-section">Configurações</div>
-          <router-link v-if="auth.isAdmin" to="/configuracoes/usuarios" active-class="active">
-            <span class="icon">⚙</span><span class="label">Usuários</span>
-          </router-link>
-          <router-link to="/configuracoes/pipelines" active-class="active">
-            <span class="icon">≣</span><span class="label">Pipelines</span>
-          </router-link>
-        </template>
       </nav>
 
       <div class="sidebar-footer" v-if="auth.user">
-        <router-link to="/minha-conta" class="user-chip">
+        <router-link to="/configuracoes/perfil" class="user-chip">
           <span class="avatar">{{ initials(auth.user.name) }}</span>
           <span class="user-info">
             <strong>{{ auth.user.name }}</strong>
@@ -98,6 +89,7 @@ function logout() {
     <div class="main">
       <header class="topbar">
         <GlobalSearch />
+        <router-link to="/configuracoes/perfil" class="topbar-gear" title="Configurações" active-class="on">⚙</router-link>
       </header>
       <main class="content">
         <slot />
@@ -267,8 +259,25 @@ nav a.active {
   border-bottom: 1px solid var(--fix-border);
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 16px;
   padding: 0 24px;
   flex-shrink: 0;
+}
+
+.topbar-gear {
+  font-size: 18px;
+  color: var(--fix-text-3);
+  padding: 6px 10px;
+  border-radius: 8px;
+  line-height: 1;
+  transition: background 0.15s, color 0.15s;
+}
+
+.topbar-gear:hover,
+.topbar-gear.on {
+  color: var(--fix-purple);
+  background: var(--fix-purple-tint);
 }
 
 .content {

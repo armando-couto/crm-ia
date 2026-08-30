@@ -51,6 +51,34 @@ func UpdateContactForm(ctx iris.Context) {
 	ctx.JSON(iris.Map{"fields": req.Fields})
 }
 
+const notificationPrefsKey = "notifications"
+
+// GetMyNotifications devolve as preferências de notificação do usuário logado.
+func GetMyNotifications(ctx iris.Context) {
+	claims := middlewareClaims(ctx)
+	prefs := models.DefaultNotificationPrefs()
+	if _, err := models.GetUserSetting(utils.DB, claims.UserID, notificationPrefsKey, &prefs); err != nil {
+		serverError(ctx, err)
+		return
+	}
+	ctx.JSON(prefs)
+}
+
+// UpdateMyNotifications grava as preferências de notificação do usuário logado.
+func UpdateMyNotifications(ctx iris.Context) {
+	claims := middlewareClaims(ctx)
+	var prefs models.NotificationPrefs
+	if err := ctx.ReadJSON(&prefs); err != nil {
+		badRequest(ctx, "dados inválidos")
+		return
+	}
+	if err := models.SetUserSetting(utils.DB, claims.UserID, notificationPrefsKey, prefs); err != nil {
+		serverError(ctx, err)
+		return
+	}
+	ctx.JSON(prefs)
+}
+
 const dealFormKey = "deal_form"
 
 // GetDealForm devolve a configuração do formulário de criação de negócio.

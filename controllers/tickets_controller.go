@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"fixpay/fix-crm/models"
+	"fixpay/fix-crm/services"
 	"fixpay/fix-crm/utils"
 
 	"github.com/kataras/iris/v12"
@@ -100,6 +101,10 @@ func CreateTicket(ctx iris.Context) {
 		ContactID: ticket.ContactID,
 		CompanyID: ticket.CompanyID,
 	})
+	if claims := middlewareClaims(ctx); claims != nil {
+		go services.NotifyAssignment(utils.DB, ticket.OwnerID, claims.UserID,
+			services.NotifyTicket, ticket.Subject, fmt.Sprintf("/tickets/%d", ticket.ID))
+	}
 	ctx.StatusCode(iris.StatusCreated)
 	ctx.JSON(ticket)
 }

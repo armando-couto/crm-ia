@@ -38,10 +38,10 @@ func (r *userRequest) validate() string {
 		return "informe um e-mail válido"
 	}
 	if r.Role == "" {
-		r.Role = models.RoleVendedor
+		r.Role = models.RoleSeller
 	}
 	if !models.ValidRole(r.Role) {
-		return "papel inválido (admin, gestor ou vendedor)"
+		return "perfil inválido (seller, manager ou admin)"
 	}
 	return ""
 }

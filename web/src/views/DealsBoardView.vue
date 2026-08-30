@@ -609,8 +609,8 @@ onMounted(async () => {
             ☰ Lista
           </button>
         </span>
-        <button class="btn btn-outline" type="button" @click="exportCSV">Exportar</button>
-        <button class="btn btn-primary" type="button" @click="openNew()">+ Novo negócio</button>
+        <button v-if="auth.can('deals.export')" class="btn btn-outline" type="button" @click="exportCSV">Exportar</button>
+        <button v-if="auth.can('deals.edit')" class="btn btn-primary" type="button" @click="openNew()">+ Novo negócio</button>
       </div>
     </div>
 

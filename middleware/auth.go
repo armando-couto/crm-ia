@@ -41,6 +41,25 @@ func CurrentClaims(ctx iris.Context) *services.Claims {
 	return nil
 }
 
+// RequirePermission limita a rota a quem tem a permissão no seu perfil.
+// O Admin sempre passa (models.RoleCan).
+func RequirePermission(permission string) iris.Handler {
+	return func(ctx iris.Context) {
+		claims := CurrentClaims(ctx)
+		if claims == nil {
+			ctx.StopWithJSON(iris.StatusUnauthorized, iris.Map{"error": "não autenticado"})
+			return
+		}
+		if !models.RoleCan(claims.Role, permission) {
+			ctx.StopWithJSON(iris.StatusForbidden, iris.Map{
+				"error": "seu perfil não tem permissão para esta ação",
+			})
+			return
+		}
+		ctx.Next()
+	}
+}
+
 // RequireRoles limita a rota aos papéis informados (admin sempre passa).
 func RequireRoles(roles ...string) iris.Handler {
 	return func(ctx iris.Context) {

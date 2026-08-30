@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { useAuthStore } from '../src/stores/auth'
 import DealsBoardView from '../src/views/DealsBoardView.vue'
 
 vi.mock('vue-router', () => ({
@@ -89,6 +90,8 @@ function stubFetch() {
 describe('DealsBoardView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    const auth = useAuthStore()
+    auth.user = { id: 1, name: 'Admin', email: 'a@b.c', role: 'admin', active: true, created_at: '', updated_at: '' } as any
   })
 
   function build() {
@@ -150,6 +153,8 @@ describe('DealsBoardView - visão de lista', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.removeItem('fixcrm_deals_view')
+    const auth = useAuthStore()
+    auth.user = { id: 1, name: 'Admin', email: 'a@b.c', role: 'admin', active: true, created_at: '', updated_at: '' } as any
   })
 
   function stubFetchWithList() {
@@ -204,6 +209,8 @@ describe('DealsBoardView - drawer Criar Negócio', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     localStorage.removeItem('fixcrm_deals_view')
+    const auth = useAuthStore()
+    auth.user = { id: 1, name: 'Admin', email: 'a@b.c', role: 'admin', active: true, created_at: '', updated_at: '' } as any
   })
 
   const dealFormFields = [

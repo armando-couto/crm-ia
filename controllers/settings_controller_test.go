@@ -40,11 +40,11 @@ func TestUpdateContactFormRejectsInvalid(t *testing.T) {
 		Expect().Status(iris.StatusBadRequest)
 }
 
-func TestUpdateContactFormForbiddenForVendedor(t *testing.T) {
+func TestUpdateContactFormForbiddenForSeller(t *testing.T) {
 	e, _, _ := newTestApp(t)
 
-	vendedor := &models.User{ID: 3, Email: "v@fixpay.com.br", Role: models.RoleVendedor}
-	token, _ := services.GenerateToken(vendedor, utils.JWTSecret)
+	seller := &models.User{ID: 3, Email: "v@fixpay.com.br", Role: models.RoleSeller}
+	token, _ := services.GenerateToken(seller, utils.JWTSecret)
 
 	e.PUT("/api/v1/settings/contact-form").
 		WithHeader("Authorization", "Bearer "+token).
@@ -89,4 +89,53 @@ func TestCreateSavedViewValidation(t *testing.T) {
 		WithHeader("Authorization", "Bearer "+token).
 		WithJSON(map[string]any{"entity": "contacts", "name": "  ", "filters": map[string]any{}}).
 		Expect().Status(iris.StatusBadRequest)
+}
+
+// O Seller não pode acessar rotas protegidas por permissão de configuração.
+func TestSellerBlockedByPermission(t *testing.T) {
+	e, _, _ := newTestApp(t)
+	seller := &models.User{ID: 4, Email: "s@fixpay.com.br", Role: models.RoleSeller}
+	token, _ := services.GenerateToken(seller, utils.JWTSecret)
+
+	e.GET("/api/v1/permissions").
+		WithHeader("Authorization", "Bearer "+token).
+		Expect().Status(iris.StatusForbidden)
+
+	e.POST("/api/v1/properties").
+		WithHeader("Authorization", "Bearer "+token).
+		WithJSON(map[string]any{"entity": "deals", "label": "X", "field_type": "texto"}).
+		Expect().Status(iris.StatusForbidden)
+}
+
+// O Manager pode gerenciar pipelines, mas não usuários (padrão da matriz).
+func TestManagerPermissionBoundaries(t *testing.T) {
+	e, _, _ := newTestApp(t)
+	manager := &models.User{ID: 5, Email: "m@fixpay.com.br", Role: models.RoleManager}
+	token, _ := services.GenerateToken(manager, utils.JWTSecret)
+
+	e.POST("/api/v1/users").
+		WithHeader("Authorization", "Bearer "+token).
+		WithJSON(map[string]any{"name": "X", "email": "x@fixpay.com.br"}).
+		Expect().Status(iris.StatusForbidden)
+
+	// Pipelines: passa pela permissão (erro de payload, não 403).
+	e.POST("/api/v1/pipelines").
+		WithHeader("Authorization", "Bearer "+token).
+		WithJSON(map[string]any{"name": ""}).
+		Expect().Status(iris.StatusBadRequest)
+}
+
+// O usuário logado consulta as próprias permissões.
+func TestMyPermissions(t *testing.T) {
+	e, _, _ := newTestApp(t)
+	seller := &models.User{ID: 6, Email: "s2@fixpay.com.br", Role: models.RoleSeller}
+	token, _ := services.GenerateToken(seller, utils.JWTSecret)
+
+	resp := e.GET("/api/v1/me/permissions").
+		WithHeader("Authorization", "Bearer "+token).
+		Expect().Status(iris.StatusOK).JSON().Object()
+
+	resp.Value("role").IsEqual("seller")
+	resp.Value("permissions").Object().Value("contacts.view").IsEqual(true)
+	resp.Value("permissions").Object().Value("settings.users").IsEqual(false)
 }

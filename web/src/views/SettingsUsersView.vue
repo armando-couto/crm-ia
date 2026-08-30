@@ -18,7 +18,7 @@ const loading = ref(false)
 const modalOpen = ref(false)
 const saving = ref(false)
 const editing = ref<User | null>(null)
-const form = ref({ name: '', email: '', role: 'vendedor', active: true, team_id: null as number | null })
+const form = ref({ name: '', email: '', role: 'seller', active: true, team_id: null as number | null })
 
 async function load() {
   loading.value = true
@@ -36,7 +36,7 @@ async function load() {
 // ===== Usuários =====
 function openNew() {
   editing.value = null
-  form.value = { name: '', email: '', role: 'vendedor', active: true, team_id: null }
+  form.value = { name: '', email: '', role: 'seller', active: true, team_id: null }
   modalOpen.value = true
 }
 
@@ -155,7 +155,7 @@ onMounted(load)
           <tr v-for="u in users" :key="u.id" style="cursor: default">
             <td><strong>{{ u.name }}</strong></td>
             <td>{{ u.email }}</td>
-            <td><span class="badge" :class="u.role === 'admin' ? '' : u.role === 'gestor' ? 'blue' : 'gray'">{{ roleLabels[u.role] }}</span></td>
+            <td><span class="badge" :class="u.role === 'admin' ? '' : u.role === 'manager' ? 'blue' : 'gray'">{{ roleLabels[u.role] }}</span></td>
             <td :class="{ muted: !u.team_name }">{{ u.team_name || '—' }}</td>
             <td><span class="badge" :class="u.active ? 'green' : 'red'">{{ u.active ? 'Ativo' : 'Inativo' }}</span></td>
             <td class="muted">{{ formatDate(u.created_at) }}</td>
@@ -224,9 +224,9 @@ onMounted(load)
         <div class="field">
           <label>Permissões</label>
           <select v-model="form.role">
-            <option value="vendedor">Vendedor</option>
-            <option value="gestor">Gestor</option>
-            <option value="admin">Administrador</option>
+            <option value="seller">Seller</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
           </select>
         </div>
         <div class="field">

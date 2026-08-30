@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"fixpay/fix-crm/migrations"
+	"fixpay/fix-crm/models"
 	"fixpay/fix-crm/routes"
 	"fixpay/fix-crm/services"
 	"fixpay/fix-crm/utils"
@@ -50,6 +51,9 @@ func main() {
 
 	if err := services.SeedAdmin(utils.DB); err != nil {
 		log.Fatalf("Erro ao criar administrador inicial: %v", err)
+	}
+	if _, err := models.LoadPermissions(utils.DB); err != nil {
+		log.Fatalf("Erro ao carregar as permissões dos perfis: %v", err)
 	}
 	////////////////////////////////////////////////////////////////////////
 

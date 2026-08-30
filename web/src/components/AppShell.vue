@@ -22,28 +22,28 @@ function logout() {
       </div>
 
       <nav>
-        <router-link to="/" exact-active-class="active">
+        <router-link v-if="auth.can('dashboard.view')" to="/" exact-active-class="active">
           <span class="icon">◧</span><span class="label">Dashboard</span>
         </router-link>
-        <router-link to="/contatos" active-class="active">
+        <router-link v-if="auth.can('contacts.view')" to="/contatos" active-class="active">
           <span class="icon">☺</span><span class="label">Contatos</span>
         </router-link>
-        <router-link to="/empresas" active-class="active">
+        <router-link v-if="auth.can('companies.view')" to="/empresas" active-class="active">
           <span class="icon">▣</span><span class="label">Empresas</span>
         </router-link>
-        <router-link to="/negocios" active-class="active">
+        <router-link v-if="auth.can('deals.view')" to="/negocios" active-class="active">
           <span class="icon">◈</span><span class="label">Negócios</span>
         </router-link>
-        <router-link to="/tickets" active-class="active">
+        <router-link v-if="auth.can('tickets.view')" to="/tickets" active-class="active">
           <span class="icon">◎</span><span class="label">Tickets</span>
         </router-link>
-        <router-link to="/tarefas" active-class="active">
+        <router-link v-if="auth.can('tasks.view')" to="/tarefas" active-class="active">
           <span class="icon">✓</span><span class="label">Tarefas</span>
         </router-link>
-        <router-link to="/projetos" active-class="active">
+        <router-link v-if="auth.can('projects.view')" to="/projetos" active-class="active">
           <span class="icon">▤</span><span class="label">Projetos</span>
         </router-link>
-        <router-link to="/listas" active-class="active">
+        <router-link v-if="auth.can('lists.view')" to="/listas" active-class="active">
           <span class="icon">☰</span><span class="label">Listas</span>
         </router-link>
         <router-link to="/visualizacoes" active-class="active">
@@ -51,24 +51,24 @@ function logout() {
         </router-link>
 
         <div class="nav-section">Comunicação</div>
-        <router-link to="/caixa-de-entrada" active-class="active">
+        <router-link v-if="auth.can('inbox.view')" to="/caixa-de-entrada" active-class="active">
           <span class="icon">✉</span><span class="label">Caixa de entrada</span>
         </router-link>
-        <router-link to="/chamadas" active-class="active">
+        <router-link v-if="auth.can('calls.view')" to="/chamadas" active-class="active">
           <span class="icon">☎</span><span class="label">Chamadas</span>
         </router-link>
-        <router-link to="/reunioes" active-class="active">
+        <router-link v-if="auth.can('meetings.view')" to="/reunioes" active-class="active">
           <span class="icon">⚑</span><span class="label">Reuniões</span>
         </router-link>
 
         <div class="nav-section">Biblioteca</div>
-        <router-link to="/manuais" active-class="active">
+        <router-link v-if="auth.can('library.view')" to="/manuais" active-class="active">
           <span class="icon">✎</span><span class="label">Manuais</span>
         </router-link>
-        <router-link to="/modelos" active-class="active">
+        <router-link v-if="auth.can('library.view')" to="/modelos" active-class="active">
           <span class="icon">▣</span><span class="label">Modelos</span>
         </router-link>
-        <router-link to="/snippets" active-class="active">
+        <router-link v-if="auth.can('library.view')" to="/snippets" active-class="active">
           <span class="icon">❝</span><span class="label">Snippets</span>
         </router-link>
 

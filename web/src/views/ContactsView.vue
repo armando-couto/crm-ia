@@ -540,9 +540,9 @@ const stageBadge: Record<string, string> = {
     <div class="page-head">
       <h1>Contatos <span class="muted" v-if="stats">({{ formatCompact(stats.total) }})</span></h1>
       <div class="toolbar">
-        <button class="btn btn-outline" type="button" @click="importOpen = true">Importar</button>
-        <button class="btn btn-outline" type="button" @click="exportCSV">Exportar</button>
-        <button class="btn btn-primary" type="button" @click="modalOpen = true">+ Adicionar contato</button>
+        <button v-if="auth.can('contacts.import')" class="btn btn-outline" type="button" @click="importOpen = true">Importar</button>
+        <button v-if="auth.can('contacts.export')" class="btn btn-outline" type="button" @click="exportCSV">Exportar</button>
+        <button v-if="auth.can('contacts.edit')" class="btn btn-primary" type="button" @click="modalOpen = true">+ Adicionar contato</button>
       </div>
     </div>
 
@@ -634,7 +634,7 @@ const stageBadge: Record<string, string> = {
         <option value="" disabled>Alterar estágio…</option>
         <option v-for="(label, key) in lifecycleLabels" :key="key" :value="key">{{ label }}</option>
       </select>
-      <button class="btn btn-danger btn-sm" type="button" @click="bulkDelete">Excluir</button>
+      <button v-if="auth.can('contacts.delete')" class="btn btn-danger btn-sm" type="button" @click="bulkDelete">Excluir</button>
     </div>
 
     <div class="table-wrap">

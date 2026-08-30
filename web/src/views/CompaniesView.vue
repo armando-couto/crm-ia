@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import { formatDate } from '../format'
+import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import AdvancedFilters from '../components/AdvancedFilters.vue'
 import ModalDialog from '../components/ModalDialog.vue'
@@ -10,6 +11,7 @@ import type { Company, FilterFieldDef, FilterGroup, Paginated, SavedView, User }
 
 const router = useRouter()
 const route = useRoute()
+const auth = useAuthStore()
 const toast = useToastStore()
 
 // ===== Abas de visualização =====
@@ -317,7 +319,7 @@ onMounted(async () => {
   <div class="page">
     <div class="page-head">
       <h1>Empresas <span class="muted" v-if="total">({{ total }})</span></h1>
-      <button class="btn btn-primary" type="button" @click="modalOpen = true">+ Adicionar empresa</button>
+      <button v-if="auth.can('companies.edit')" class="btn btn-primary" type="button" @click="modalOpen = true">+ Adicionar empresa</button>
     </div>
 
     <!-- Abas de visualização -->

@@ -62,7 +62,7 @@ export const taskTypeLabels: Record<string, string> = {
 }
 
 export const roleLabels: Record<string, string> = {
-  admin: 'Administrador',
-  gestor: 'Gestor',
-  vendedor: 'Vendedor'
+  admin: 'Admin',
+  manager: 'Manager',
+  seller: 'Seller'
 }

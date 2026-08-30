@@ -15,11 +15,20 @@ const auth = useAuthStore()
 
       <template v-if="auth.canManage">
         <div class="menu-section">Administração</div>
-        <router-link v-if="auth.isAdmin" to="/configuracoes/usuarios" active-class="active">Usuários e equipes</router-link>
-        <router-link to="/configuracoes/propriedades" active-class="active">Propriedades</router-link>
-        <router-link to="/configuracoes/pipelines" active-class="active">Pipelines</router-link>
+        <router-link v-if="auth.can('settings.users')" to="/configuracoes/usuarios" active-class="active">
+          Usuários e equipes
+        </router-link>
+        <router-link v-if="auth.can('settings.permissions')" to="/configuracoes/permissoes" active-class="active">
+          Permissões
+        </router-link>
+        <router-link v-if="auth.can('settings.properties')" to="/configuracoes/propriedades" active-class="active">
+          Propriedades
+        </router-link>
+        <router-link v-if="auth.can('settings.pipelines')" to="/configuracoes/pipelines" active-class="active">
+          Pipelines
+        </router-link>
         <router-link to="/visualizacoes" active-class="active">Visualizações</router-link>
-        <router-link to="/listas" active-class="active">Listas</router-link>
+        <router-link v-if="auth.can('lists.view')" to="/listas" active-class="active">Listas</router-link>
       </template>
     </aside>
 

@@ -26,7 +26,7 @@ func TestHashAndCheckPassword(t *testing.T) {
 }
 
 func TestGenerateAndParseToken(t *testing.T) {
-	user := &models.User{ID: 42, Name: "Ana", Email: "ana@fixpay.com.br", Role: models.RoleGestor}
+	user := &models.User{ID: 42, Name: "Ana", Email: "ana@fixpay.com.br", Role: models.RoleManager}
 
 	token, err := GenerateToken(user, "segredo-de-teste")
 	if err != nil {
@@ -37,13 +37,13 @@ func TestGenerateAndParseToken(t *testing.T) {
 	if err != nil {
 		t.Fatalf("erro ao validar token: %v", err)
 	}
-	if claims.UserID != 42 || claims.Email != "ana@fixpay.com.br" || claims.Role != models.RoleGestor {
+	if claims.UserID != 42 || claims.Email != "ana@fixpay.com.br" || claims.Role != models.RoleManager {
 		t.Fatalf("claims inesperadas: %+v", claims)
 	}
 }
 
 func TestParseTokenWrongSecret(t *testing.T) {
-	user := &models.User{ID: 1, Email: "a@b.c", Role: models.RoleVendedor}
+	user := &models.User{ID: 1, Email: "a@b.c", Role: models.RoleSeller}
 	token, _ := GenerateToken(user, "segredo-a")
 
 	if _, err := ParseToken(token, "segredo-b"); err == nil {

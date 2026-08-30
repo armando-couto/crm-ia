@@ -1,6 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
+import { useAuthStore } from '../src/stores/auth'
 import CompaniesView from '../src/views/CompaniesView.vue'
 import ContactsView from '../src/views/ContactsView.vue'
 
@@ -58,6 +59,8 @@ function stubFetch() {
 describe('Visualizações salvas em Empresas', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    const auth = useAuthStore()
+    auth.user = { id: 1, name: 'Admin', email: 'a@b.c', role: 'admin', active: true, created_at: '', updated_at: '' } as any
   })
 
   it('renderiza as visualizações como abas', async () => {
@@ -108,6 +111,8 @@ describe('Visualizações salvas em Empresas', () => {
 describe('Formulário de contato personalizável', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    const auth = useAuthStore()
+    auth.user = { id: 1, name: 'Admin', email: 'a@b.c', role: 'admin', active: true, created_at: '', updated_at: '' } as any
   })
 
   it('renderiza somente os campos visíveis, na ordem configurada', async () => {

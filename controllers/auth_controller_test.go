@@ -114,7 +114,7 @@ func TestProtectedRouteWithoutToken(t *testing.T) {
 func TestProtectedRouteWithToken(t *testing.T) {
 	e, mock, _ := newTestApp(t)
 
-	user := &models.User{ID: 1, Name: "Ana", Email: "ana@fixpay.com.br", Role: models.RoleVendedor}
+	user := &models.User{ID: 1, Name: "Ana", Email: "ana@fixpay.com.br", Role: models.RoleSeller}
 	token, err := services.GenerateToken(user, utils.JWTSecret)
 	if err != nil {
 		t.Fatal(err)
@@ -122,7 +122,7 @@ func TestProtectedRouteWithToken(t *testing.T) {
 
 	mock.ExpectQuery("SELECT (.+) FROM users u (.+) WHERE u.id").
 		WithArgs(int64(1)).
-		WillReturnRows(userRow(1, "ana@fixpay.com.br", "hash", models.RoleVendedor, true))
+		WillReturnRows(userRow(1, "ana@fixpay.com.br", "hash", models.RoleSeller, true))
 
 	e.GET("/api/v1/me").
 		WithHeader("Authorization", "Bearer "+token).
@@ -133,7 +133,7 @@ func TestProtectedRouteWithToken(t *testing.T) {
 func TestAdminRouteForbiddenForVendedor(t *testing.T) {
 	e, _, _ := newTestApp(t)
 
-	user := &models.User{ID: 2, Email: "vend@fixpay.com.br", Role: models.RoleVendedor}
+	user := &models.User{ID: 2, Email: "vend@fixpay.com.br", Role: models.RoleSeller}
 	token, _ := services.GenerateToken(user, utils.JWTSecret)
 
 	e.POST("/api/v1/users").
@@ -154,7 +154,7 @@ func TestCreateUserAsAdminSendsWelcomeEmail(t *testing.T) {
 
 	e.POST("/api/v1/users").
 		WithHeader("Authorization", "Bearer "+token).
-		WithJSON(map[string]string{"name": "Novo Vendedor", "email": "novo@fixpay.com.br", "role": "vendedor"}).
+		WithJSON(map[string]string{"name": "Novo Vendedor", "email": "novo@fixpay.com.br", "role": "seller"}).
 		Expect().Status(iris.StatusCreated).
 		JSON().Object().Value("email").IsEqual("novo@fixpay.com.br")
 

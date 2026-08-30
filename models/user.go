@@ -6,11 +6,7 @@ import (
 	"time"
 )
 
-const (
-	RoleAdmin    = "admin"
-	RoleGestor   = "gestor"
-	RoleVendedor = "vendedor"
-)
+// Os papéis e permissões ficam em permission.go (RoleSeller/RoleManager/RoleAdmin).
 
 type User struct {
 	ID        int64     `json:"id"`
@@ -24,10 +20,6 @@ type User struct {
 	UpdatedAt time.Time `json:"updated_at"`
 	// PasswordHash nunca é serializado para o front.
 	PasswordHash string `json:"-"`
-}
-
-func ValidRole(role string) bool {
-	return role == RoleAdmin || role == RoleGestor || role == RoleVendedor
 }
 
 func NormalizeEmail(email string) string {

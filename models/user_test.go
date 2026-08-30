@@ -21,7 +21,7 @@ func TestNormalizeEmail(t *testing.T) {
 }
 
 func TestValidRole(t *testing.T) {
-	for _, r := range []string{RoleAdmin, RoleGestor, RoleVendedor} {
+	for _, r := range []string{RoleAdmin, RoleManager, RoleSeller} {
 		if !ValidRole(r) {
 			t.Errorf("%q deveria ser válido", r)
 		}
@@ -70,10 +70,10 @@ func TestCreateUser(t *testing.T) {
 
 	now := time.Now()
 	mock.ExpectQuery("INSERT INTO users").
-		WithArgs("Ana", "ana@fixpay.com.br", "hash", RoleVendedor, true, nil).
+		WithArgs("Ana", "ana@fixpay.com.br", "hash", RoleSeller, true, nil).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at"}).AddRow(7, now, now))
 
-	u := &User{Name: "Ana", Email: "Ana@FixPay.com.br", PasswordHash: "hash", Role: RoleVendedor, Active: true}
+	u := &User{Name: "Ana", Email: "Ana@FixPay.com.br", PasswordHash: "hash", Role: RoleSeller, Active: true}
 	if err := CreateUser(db, u); err != nil {
 		t.Fatalf("erro inesperado: %v", err)
 	}

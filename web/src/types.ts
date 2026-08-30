@@ -320,3 +320,21 @@ export interface FormField {
   visible: boolean
   required: boolean
 }
+
+export interface FilterCondition {
+  field: string
+  op: string
+  value?: string
+  values?: string[]
+}
+
+export interface FilterGroup {
+  conditions: FilterCondition[]
+}
+
+export interface FilterFieldDef {
+  key: string
+  label: string
+  kind: 'text' | 'enum' | 'ref' | 'date'
+  options?: { value: string; label: string }[]
+}

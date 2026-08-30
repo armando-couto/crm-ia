@@ -23,6 +23,12 @@ func ListCompanies(ctx iris.Context) {
 			PerPage: ctx.URLParamIntDefault("per_page", 25),
 		},
 	}
+	adv, err := models.ParseAdvancedFilters(ctx.URLParam("af"), models.CompanyFilterFieldsSpec)
+	if err != nil {
+		badRequest(ctx, err.Error())
+		return
+	}
+	f.Advanced = adv
 	list, total, err := models.ListCompanies(utils.DB, f)
 	if err != nil {
 		serverError(ctx, err)

@@ -85,8 +85,22 @@ func BulkContacts(ctx iris.Context) {
 	ctx.JSON(iris.Map{"affected": affected})
 }
 
+// parseContactAdvanced lê o parâmetro af (filtros avançados) e responde 400 se inválido.
+func parseContactAdvanced(ctx iris.Context, f *models.ContactFilter) bool {
+	adv, err := models.ParseAdvancedFilters(ctx.URLParam("af"), models.ContactFilterFieldsSpec)
+	if err != nil {
+		badRequest(ctx, err.Error())
+		return false
+	}
+	f.Advanced = adv
+	return true
+}
+
 func ListContacts(ctx iris.Context) {
 	f := contactFilterFromQuery(ctx)
+	if !parseContactAdvanced(ctx, &f) {
+		return
+	}
 	list, total, err := models.ListContacts(utils.DB, f)
 	if err != nil {
 		serverError(ctx, err)
@@ -209,6 +223,9 @@ func DeleteContact(ctx iris.Context) {
 // ExportContacts exporta a listagem filtrada em CSV.
 func ExportContacts(ctx iris.Context) {
 	f := contactFilterFromQuery(ctx)
+	if !parseContactAdvanced(ctx, &f) {
+		return
+	}
 	f.PerPage = 100
 	f.Page = 1
 

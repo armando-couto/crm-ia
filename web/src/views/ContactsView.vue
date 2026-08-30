@@ -5,8 +5,19 @@ import { api, getToken } from '../api'
 import { formatCompact, formatDate, initials, lifecycleLabels, relativeDate } from '../format'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
+import AdvancedFilters from '../components/AdvancedFilters.vue'
 import ModalDialog from '../components/ModalDialog.vue'
-import type { Company, Contact, ContactList, FormField, Paginated, SavedView, User } from '../types'
+import type {
+  Company,
+  Contact,
+  ContactList,
+  FilterFieldDef,
+  FilterGroup,
+  FormField,
+  Paginated,
+  SavedView,
+  User
+} from '../types'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -56,6 +67,45 @@ const sortBy = ref('created_at')
 const sortDir = ref<'asc' | 'desc'>('desc')
 const loading = ref(false)
 
+// ===== Filtros avançados =====
+const advOpen = ref(false)
+const advGroups = ref<FilterGroup[]>([])
+const advCount = computed(() => advGroups.value.reduce((sum, g) => sum + g.conditions.length, 0))
+
+const advFields = computed<FilterFieldDef[]>(() => [
+  { key: 'name', label: 'Nome', kind: 'text' },
+  { key: 'email', label: 'E-mail', kind: 'text' },
+  { key: 'phone', label: 'Telefone', kind: 'text' },
+  { key: 'job_title', label: 'Cargo', kind: 'text' },
+  { key: 'source', label: 'Fonte do registro', kind: 'text' },
+  {
+    key: 'lifecycle_stage',
+    label: 'Fase do ciclo de vida',
+    kind: 'enum',
+    options: Object.entries(lifecycleLabels).map(([value, label]) => ({ value, label }))
+  },
+  {
+    key: 'owner_id',
+    label: 'Proprietário do contato',
+    kind: 'ref',
+    options: users.value.map((u) => ({ value: String(u.id), label: u.name }))
+  },
+  {
+    key: 'company_id',
+    label: 'Empresa',
+    kind: 'ref',
+    options: companies.value.map((c) => ({ value: String(c.id), label: c.name }))
+  },
+  { key: 'created_at', label: 'Data de criação', kind: 'date' },
+  { key: 'last_activity', label: 'Última atividade', kind: 'date' }
+])
+
+function applyAdvanced(groups: FilterGroup[]) {
+  advGroups.value = groups
+  page.value = 1
+  load()
+}
+
 const selected = ref<Set<number>>(new Set())
 const bulkOwner = ref<number | ''>('')
 const bulkStage = ref('')
@@ -104,7 +154,7 @@ function resetForm() {
 async function loadFormConfig() {
   try {
     const resp = await api.get<{ fields: FormField[] }>('/settings/contact-form')
-    formConfig.value = resp.fields
+    formConfig.value = resp.fields ?? []
   } catch {
     /* mantém padrão local */
   }
@@ -168,6 +218,7 @@ function query(): string {
   if (cardFilter.value === 'sem_email') params.set('sem_email', 'true')
   if (cardFilter.value === 'leads') params.set('lifecycle_stage', 'lead')
   if (cardFilter.value === 'inativos') params.set('sem_atividade_dias', '30')
+  if (advGroups.value.length) params.set('af', JSON.stringify({ groups: advGroups.value }))
   return params.toString()
 }
 
@@ -330,7 +381,8 @@ const hasActiveFilters = computed(
     !!ownerFilter.value ||
     !!createdFilter.value ||
     !!activityFilter.value ||
-    !!cardFilter.value
+    !!cardFilter.value ||
+    advGroups.value.length > 0
 )
 
 function currentFilters(): Record<string, unknown> {
@@ -342,7 +394,8 @@ function currentFilters(): Record<string, unknown> {
     sem_atividade_dias: activityFilter.value,
     card: cardFilter.value,
     sort: sortBy.value,
-    dir: sortDir.value
+    dir: sortDir.value,
+    af: advGroups.value
   }
 }
 
@@ -355,6 +408,7 @@ function applyFilters(filters: Record<string, any>) {
   cardFilter.value = filters.card ?? ''
   sortBy.value = filters.sort || 'created_at'
   sortDir.value = filters.dir === 'asc' ? 'asc' : 'desc'
+  advGroups.value = Array.isArray(filters.af) ? filters.af : []
 }
 
 async function saveCurrentView() {
@@ -456,9 +510,9 @@ onMounted(async () => {
       api.get<ContactList[]>('/lists'),
       api.get<SavedView[]>('/views?entity=contacts')
     ])
-    companies.value = companiesResp.data
-    listTabs.value = listsResp.map((l) => ({ key: `lista-${l.id}`, label: l.name, listId: l.id }))
-    savedViews.value = viewsResp
+    companies.value = companiesResp.data ?? []
+    listTabs.value = (listsResp ?? []).map((l) => ({ key: `lista-${l.id}`, label: l.name, listId: l.id }))
+    savedViews.value = viewsResp ?? []
   } catch {
     /* abas e filtros opcionais */
   }
@@ -527,6 +581,10 @@ const stageBadge: Record<string, string> = {
         <option :value="30">Sem atividade há 30+ dias</option>
         <option :value="90">Sem atividade há 90+ dias</option>
       </select>
+      <button class="btn btn-outline btn-sm adv-btn" type="button" :class="{ on: advCount }" @click="advOpen = true">
+        ≡ Filtros avançados
+        <span v-if="advCount" class="adv-count">{{ advCount }}</span>
+      </button>
       <button
         v-if="hasActiveFilters"
         class="btn btn-outline btn-sm save-view"
@@ -729,6 +787,14 @@ const stageBadge: Record<string, string> = {
       </button>
     </ModalDialog>
 
+    <AdvancedFilters
+      :open="advOpen"
+      :fields="advFields"
+      :model-value="advGroups"
+      @close="advOpen = false"
+      @apply="applyAdvanced"
+    />
+
     <ModalDialog title="Importar contatos (CSV)" :open="importOpen" @close="importOpen = false">
       <p class="muted" style="margin-top: 0">
         Envie um CSV com as colunas: <code>nome, sobrenome, email, telefone, cargo, estagio, origem</code>.
@@ -802,6 +868,32 @@ const stageBadge: Record<string, string> = {
 
 .save-view {
   color: var(--fix-purple);
+}
+
+.adv-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.adv-btn.on {
+  border-color: var(--fix-purple);
+  color: var(--fix-purple);
+  background: var(--fix-purple-tint);
+}
+
+.adv-count {
+  background: var(--fix-purple);
+  color: #fff;
+  border-radius: 999px;
+  min-width: 18px;
+  height: 18px;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
 }
 
 .customize-link {

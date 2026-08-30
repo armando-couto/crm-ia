@@ -4,8 +4,9 @@ import { useRouter } from 'vue-router'
 import { api } from '../api'
 import { formatDate } from '../format'
 import { useToastStore } from '../stores/toast'
+import AdvancedFilters from '../components/AdvancedFilters.vue'
 import ModalDialog from '../components/ModalDialog.vue'
-import type { Company, Paginated, SavedView, User } from '../types'
+import type { Company, FilterFieldDef, FilterGroup, Paginated, SavedView, User } from '../types'
 
 const router = useRouter()
 const toast = useToastStore()
@@ -30,6 +31,33 @@ const sortBy = ref('name')
 const sortDir = ref<'asc' | 'desc'>('asc')
 const loading = ref(false)
 const users = ref<User[]>([])
+
+// ===== Filtros avançados =====
+const advOpen = ref(false)
+const advGroups = ref<FilterGroup[]>([])
+const advCount = computed(() => advGroups.value.reduce((sum, g) => sum + g.conditions.length, 0))
+
+const advFields = computed<FilterFieldDef[]>(() => [
+  { key: 'name', label: 'Nome da empresa', kind: 'text' },
+  { key: 'domain', label: 'Domínio', kind: 'text' },
+  { key: 'industry', label: 'Segmento', kind: 'text' },
+  { key: 'city', label: 'Cidade', kind: 'text' },
+  { key: 'state', label: 'UF', kind: 'text' },
+  { key: 'phone', label: 'Telefone', kind: 'text' },
+  {
+    key: 'owner_id',
+    label: 'Proprietário da empresa',
+    kind: 'ref',
+    options: users.value.map((u) => ({ value: String(u.id), label: u.name }))
+  },
+  { key: 'created_at', label: 'Data de criação', kind: 'date' }
+])
+
+function applyAdvanced(groups: FilterGroup[]) {
+  advGroups.value = groups
+  page.value = 1
+  load()
+}
 
 const modalOpen = ref(false)
 const saving = ref(false)
@@ -63,6 +91,7 @@ function query(): string {
   if (ownerFilter.value) params.set('owner_id', String(ownerFilter.value))
   if (createdFilter.value) params.set('criado_dias', String(createdFilter.value))
   if (unassignedOnly.value) params.set('sem_dono', 'true')
+  if (advGroups.value.length) params.set('af', JSON.stringify({ groups: advGroups.value }))
   return params.toString()
 }
 
@@ -81,7 +110,12 @@ async function load() {
 
 // ===== Visualizações salvas =====
 const hasActiveFilters = computed(
-  () => !!search.value.trim() || !!ownerFilter.value || !!createdFilter.value || unassignedOnly.value
+  () =>
+    !!search.value.trim() ||
+    !!ownerFilter.value ||
+    !!createdFilter.value ||
+    unassignedOnly.value ||
+    advGroups.value.length > 0
 )
 
 function currentFilters(): Record<string, unknown> {
@@ -91,7 +125,8 @@ function currentFilters(): Record<string, unknown> {
     criado_dias: createdFilter.value,
     sem_dono: unassignedOnly.value,
     sort: sortBy.value,
-    dir: sortDir.value
+    dir: sortDir.value,
+    af: advGroups.value
   }
 }
 
@@ -102,6 +137,7 @@ function applyFilters(filters: Record<string, any>) {
   unassignedOnly.value = !!filters.sem_dono
   sortBy.value = filters.sort || 'name'
   sortDir.value = filters.dir === 'desc' ? 'desc' : 'asc'
+  advGroups.value = Array.isArray(filters.af) ? filters.af : []
 }
 
 function selectTab(key: string) {
@@ -261,6 +297,10 @@ onMounted(async () => {
         <input v-model="unassignedOnly" type="checkbox" @change="page = 1; load()" />
         Sem proprietário
       </label>
+      <button class="btn btn-outline btn-sm adv-btn" type="button" :class="{ on: advCount }" @click="advOpen = true">
+        ≡ Filtros avançados
+        <span v-if="advCount" class="adv-count">{{ advCount }}</span>
+      </button>
       <button v-if="hasActiveFilters" class="btn btn-outline btn-sm save-view" type="button" @click="saveCurrentView">
         ☆ Salvar visualização
       </button>
@@ -318,6 +358,14 @@ onMounted(async () => {
         </select>
       </div>
     </div>
+
+    <AdvancedFilters
+      :open="advOpen"
+      :fields="advFields"
+      :model-value="advGroups"
+      @close="advOpen = false"
+      @apply="applyAdvanced"
+    />
 
     <ModalDialog title="Nova empresa" :open="modalOpen" wide @close="modalOpen = false">
       <form @submit.prevent="save">
@@ -431,6 +479,32 @@ onMounted(async () => {
 
 .save-view {
   color: var(--fix-purple);
+}
+
+.adv-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.adv-btn.on {
+  border-color: var(--fix-purple);
+  color: var(--fix-purple);
+  background: var(--fix-purple-tint);
+}
+
+.adv-count {
+  background: var(--fix-purple);
+  color: #fff;
+  border-radius: 999px;
+  min-width: 18px;
+  height: 18px;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
 }
 
 .sortable {

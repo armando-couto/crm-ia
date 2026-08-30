@@ -46,6 +46,7 @@ type ContactFilter struct {
 	InactiveDays   int  // sem atividade há N dias (ou nunca)
 	SortBy         string
 	SortDir        string
+	Advanced       *AdvancedFilters
 	Pagination
 }
 
@@ -130,6 +131,9 @@ func ListContacts(db *sql.DB, f ContactFilter) ([]Contact, int, error) {
 		where = append(where, fmt.Sprintf(
 			"NOT EXISTS (SELECT 1 FROM activities a WHERE a.contact_id = c.id AND a.created_at >= NOW() - make_interval(days => $%d))",
 			len(args)))
+	}
+	if adv := BuildAdvancedWhere(f.Advanced, ContactFilterFieldsSpec, &args); adv != "" {
+		where = append(where, adv)
 	}
 	cond := strings.Join(where, " AND ")
 

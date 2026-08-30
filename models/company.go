@@ -30,6 +30,7 @@ type CompanyFilter struct {
 	CreatedDays int  // criadas nos últimos N dias
 	SortBy      string
 	SortDir     string
+	Advanced    *AdvancedFilters
 	Pagination
 }
 
@@ -74,6 +75,9 @@ func ListCompanies(db *sql.DB, f CompanyFilter) ([]Company, int, error) {
 	if f.CreatedDays > 0 {
 		args = append(args, f.CreatedDays)
 		where = append(where, fmt.Sprintf("c.created_at >= NOW() - make_interval(days => $%d)", len(args)))
+	}
+	if adv := BuildAdvancedWhere(f.Advanced, CompanyFilterFieldsSpec, &args); adv != "" {
+		where = append(where, adv)
 	}
 	cond := strings.Join(where, " AND ")
 

@@ -35,14 +35,14 @@ func TestParseAdvancedFiltersEmpty(t *testing.T) {
 
 func TestParseAdvancedFiltersInvalid(t *testing.T) {
 	cases := map[string]string{
-		"json quebrado":        `{grupos`,
-		"campo desconhecido":   `{"groups":[{"conditions":[{"field":"senha","op":"eq","value":"x"}]}]}`,
-		"operador errado":      `{"groups":[{"conditions":[{"field":"email","op":"any_of","values":["a"]}]}]}`,
-		"grupo vazio":          `{"groups":[{"conditions":[]}]}`,
-		"valor faltando":       `{"groups":[{"conditions":[{"field":"email","op":"eq"}]}]}`,
-		"ref não numérica":     `{"groups":[{"conditions":[{"field":"owner_id","op":"any_of","values":["abc"]}]}]}`,
-		"dias inválidos":       `{"groups":[{"conditions":[{"field":"created_at","op":"last_days","value":"-5"}]}]}`,
-		"data sem valor":       `{"groups":[{"conditions":[{"field":"created_at","op":"last_days","value":"x"}]}]}`,
+		"json quebrado":      `{grupos`,
+		"campo desconhecido": `{"groups":[{"conditions":[{"field":"senha","op":"eq","value":"x"}]}]}`,
+		"operador errado":    `{"groups":[{"conditions":[{"field":"email","op":"any_of","values":["a"]}]}]}`,
+		"grupo vazio":        `{"groups":[{"conditions":[]}]}`,
+		"valor faltando":     `{"groups":[{"conditions":[{"field":"email","op":"eq"}]}]}`,
+		"ref não numérica":   `{"groups":[{"conditions":[{"field":"owner_id","op":"any_of","values":["abc"]}]}]}`,
+		"dias inválidos":     `{"groups":[{"conditions":[{"field":"created_at","op":"last_days","value":"-5"}]}]}`,
+		"data sem valor":     `{"groups":[{"conditions":[{"field":"created_at","op":"last_days","value":"x"}]}]}`,
 	}
 	for name, raw := range cases {
 		if _, err := ParseAdvancedFilters(raw, ContactFilterFieldsSpec); err == nil {

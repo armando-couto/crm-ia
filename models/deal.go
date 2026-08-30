@@ -49,6 +49,7 @@ type DealFilter struct {
 	Status     string
 	ContactID  int64
 	CompanyID  int64
+	Advanced   *AdvancedFilters
 	Pagination
 }
 
@@ -109,6 +110,9 @@ func ListDeals(db *sql.DB, f DealFilter) ([]Deal, int, error) {
 	if f.CompanyID > 0 {
 		add("d.company_id = $%d", f.CompanyID)
 	}
+	if adv := BuildAdvancedWhere(f.Advanced, DealFilterFieldsSpec, &args); adv != "" {
+		where = append(where, adv)
+	}
 	cond := strings.Join(where, " AND ")
 
 	var total int
@@ -136,12 +140,16 @@ func ListDeals(db *sql.DB, f DealFilter) ([]Deal, int, error) {
 	return list, total, rows.Err()
 }
 
-// BoardFilter restringe o kanban (busca, dono e temperatura).
+// BoardFilter restringe o kanban (busca, dono, temperatura, datas e filtros avançados).
 type BoardFilter struct {
-	PipelineID  int64
-	OwnerID     int64
-	Search      string
-	Temperature string
+	PipelineID   int64
+	OwnerID      int64
+	Search       string
+	Temperature  string
+	CreatedDays  int    // criados nos últimos N dias
+	InactiveDays int    // sem atividade há N dias (ou nunca)
+	CloseWindow  string // fecham_mes | previsao_vencida
+	Advanced     *AdvancedFilters
 	// IncludeClosed inclui negócios ganhos/perdidos fechados recentemente.
 	ClosedDays int
 }
@@ -169,6 +177,25 @@ func BoardDeals(db *sql.DB, f BoardFilter) ([]Deal, error) {
 	if f.Temperature != "" {
 		args = append(args, f.Temperature)
 		where = append(where, fmt.Sprintf("d.temperature = $%d", len(args)))
+	}
+	if f.CreatedDays > 0 {
+		args = append(args, f.CreatedDays)
+		where = append(where, fmt.Sprintf("d.created_at >= NOW() - make_interval(days => $%d)", len(args)))
+	}
+	if f.InactiveDays > 0 {
+		args = append(args, f.InactiveDays)
+		where = append(where, fmt.Sprintf(
+			"NOT EXISTS (SELECT 1 FROM activities a WHERE a.deal_id = d.id AND a.created_at >= NOW() - make_interval(days => $%d))",
+			len(args)))
+	}
+	switch f.CloseWindow {
+	case "fecham_mes":
+		where = append(where, "d.close_date >= date_trunc('month', NOW()) AND d.close_date < date_trunc('month', NOW()) + INTERVAL '1 month'")
+	case "previsao_vencida":
+		where = append(where, "d.status = 'aberto' AND d.close_date < CURRENT_DATE")
+	}
+	if adv := BuildAdvancedWhere(f.Advanced, DealFilterFieldsSpec, &args); adv != "" {
+		where = append(where, adv)
 	}
 
 	rows, err := db.Query(dealSelect+` WHERE `+strings.Join(where, " AND ")+`

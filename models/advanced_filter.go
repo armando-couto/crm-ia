@@ -48,6 +48,22 @@ var ContactFilterFieldsSpec = map[string]fieldSpec{
 	"last_activity":   {expr: "(SELECT MAX(a.created_at) FROM activities a WHERE a.contact_id = c.id)", kind: "date"},
 }
 
+// DealFilterFieldsSpec são os campos filtráveis de negócios.
+var DealFilterFieldsSpec = map[string]fieldSpec{
+	"name":          {expr: "d.name", kind: "text"},
+	"amount":        {expr: "d.amount", kind: "number"},
+	"temperature":   {expr: "d.temperature", kind: "enum"},
+	"status":        {expr: "d.status", kind: "enum"},
+	"owner_id":      {expr: "d.owner_id", kind: "ref"},
+	"contact_id":    {expr: "d.contact_id", kind: "ref"},
+	"company_id":    {expr: "d.company_id", kind: "ref"},
+	"stage_id":      {expr: "d.stage_id", kind: "ref"},
+	"created_at":    {expr: "d.created_at", kind: "date"},
+	"closed_at":     {expr: "d.closed_at", kind: "date"},
+	"close_date":    {expr: "d.close_date", kind: "date"},
+	"last_activity": {expr: "(SELECT MAX(a.created_at) FROM activities a WHERE a.deal_id = d.id)", kind: "date"},
+}
+
 // CompanyFilterFieldsSpec são os campos filtráveis de empresas.
 var CompanyFilterFieldsSpec = map[string]fieldSpec{
 	"name":           {expr: "c.name", kind: "text"},
@@ -105,10 +121,11 @@ func ParseAdvancedFilters(raw string, specs map[string]fieldSpec) (*AdvancedFilt
 
 func validateOp(kind string, c FilterCondition) error {
 	valid := map[string][]string{
-		"text": {"contains", "eq", "empty", "not_empty"},
-		"enum": {"any_of", "none_of"},
-		"ref":  {"any_of", "none_of", "empty", "not_empty"},
-		"date": {"last_days", "older_than", "empty", "not_empty"},
+		"text":   {"contains", "eq", "empty", "not_empty"},
+		"enum":   {"any_of", "none_of"},
+		"ref":    {"any_of", "none_of", "empty", "not_empty"},
+		"date":   {"last_days", "older_than", "empty", "not_empty"},
+		"number": {"gte", "lte"},
 	}[kind]
 	found := false
 	for _, op := range valid {
@@ -141,6 +158,10 @@ func validateOp(kind string, c FilterCondition) error {
 		n, err := strconv.Atoi(c.Value)
 		if err != nil || n < 1 || n > 3650 {
 			return fmt.Errorf("informe a quantidade de dias do filtro %s (1 a 3650)", c.Field)
+		}
+	case "gte", "lte":
+		if _, err := strconv.ParseFloat(c.Value, 64); err != nil {
+			return fmt.Errorf("informe um valor numérico no filtro %s", c.Field)
 		}
 	}
 	return nil
@@ -209,6 +230,14 @@ func buildCondition(c FilterCondition, spec fieldSpec, args *[]any) string {
 		days, _ := strconv.Atoi(c.Value)
 		n := add(days)
 		return fmt.Sprintf("(%s IS NULL OR %s < NOW() - make_interval(days => $%d))", spec.expr, spec.expr, n)
+	case "gte":
+		value, _ := strconv.ParseFloat(c.Value, 64)
+		n := add(value)
+		return fmt.Sprintf("%s >= $%d", spec.expr, n)
+	case "lte":
+		value, _ := strconv.ParseFloat(c.Value, 64)
+		n := add(value)
+		return fmt.Sprintf("%s <= $%d", spec.expr, n)
 	}
 	return "1=1"
 }

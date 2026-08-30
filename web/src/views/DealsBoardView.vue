@@ -4,8 +4,9 @@ import { useRouter } from 'vue-router'
 import { api, getToken } from '../api'
 import { formatMoney, relativeDate } from '../format'
 import { useToastStore } from '../stores/toast'
+import AdvancedFilters from '../components/AdvancedFilters.vue'
 import ModalDialog from '../components/ModalDialog.vue'
-import type { Company, Contact, Deal, Paginated, Pipeline, SavedView, User } from '../types'
+import type { Company, Contact, Deal, FilterFieldDef, FilterGroup, Paginated, Pipeline, SavedView, User } from '../types'
 
 const router = useRouter()
 const toast = useToastStore()
@@ -20,6 +21,65 @@ const dragOverStage = ref<number | null>(null)
 const search = ref('')
 const ownerFilter = ref(0)
 const temperatureFilter = ref('')
+const createdFilter = ref(0)
+const activityFilter = ref(0)
+const closeWindowFilter = ref('')
+
+// ===== Filtros avançados =====
+const advOpen = ref(false)
+const advGroups = ref<FilterGroup[]>([])
+const advCount = computed(() => advGroups.value.reduce((sum, g) => sum + g.conditions.length, 0))
+
+const advFields = computed<FilterFieldDef[]>(() => [
+  { key: 'name', label: 'Nome do negócio', kind: 'text' },
+  { key: 'amount', label: 'Valor (R$)', kind: 'number' },
+  {
+    key: 'temperature',
+    label: 'Temperatura do deal',
+    kind: 'enum',
+    options: [
+      { value: 'quente', label: 'Quente' },
+      { value: 'media', label: 'Média' },
+      { value: 'fria', label: 'Fria' }
+    ]
+  },
+  {
+    key: 'status',
+    label: 'Status',
+    kind: 'enum',
+    options: [
+      { value: 'aberto', label: 'Aberto' },
+      { value: 'ganho', label: 'Ganho' },
+      { value: 'perdido', label: 'Perdido' }
+    ]
+  },
+  {
+    key: 'stage_id',
+    label: 'Etapa',
+    kind: 'ref',
+    options: (pipeline.value?.stages ?? []).map((s) => ({ value: String(s.id), label: s.name }))
+  },
+  {
+    key: 'owner_id',
+    label: 'Proprietário do negócio',
+    kind: 'ref',
+    options: users.value.map((u) => ({ value: String(u.id), label: u.name }))
+  },
+  {
+    key: 'company_id',
+    label: 'Empresa',
+    kind: 'ref',
+    options: companies.value.map((c) => ({ value: String(c.id), label: c.name }))
+  },
+  { key: 'created_at', label: 'Data de criação', kind: 'date' },
+  { key: 'close_date', label: 'Data de fechamento (previsão)', kind: 'date' },
+  { key: 'last_activity', label: 'Data da última atividade', kind: 'date' }
+])
+
+function applyAdvanced(groups: FilterGroup[]) {
+  advGroups.value = groups
+  loadBoard()
+}
 
 const users = ref<User[]>([])
 const contacts = ref<Contact[]>([])
@@ -85,6 +145,10 @@ function boardQuery(): string {
   if (search.value.trim()) params.set('q', search.value.trim())
   if (ownerFilter.value) params.set('owner_id', String(ownerFilter.value))
   if (temperatureFilter.value) params.set('temperature', temperatureFilter.value)
+  if (createdFilter.value) params.set('criado_dias', String(createdFilter.value))
+  if (activityFilter.value) params.set('sem_atividade_dias', String(activityFilter.value))
+  if (closeWindowFilter.value) params.set('fechamento', closeWindowFilter.value)
+  if (advGroups.value.length) params.set('af', JSON.stringify({ groups: advGroups.value }))
   return params.toString()
 }
 
@@ -103,13 +167,24 @@ async function loadBoard() {
 
 // ===== Visualizações salvas =====
 const hasActiveFilters = computed(
-  () => !!search.value.trim() || !!ownerFilter.value || !!temperatureFilter.value
+  () =>
+    !!search.value.trim() ||
+    !!ownerFilter.value ||
+    !!temperatureFilter.value ||
+    !!createdFilter.value ||
+    !!activityFilter.value ||
+    !!closeWindowFilter.value ||
+    advGroups.value.length > 0
 )
 
 function applyFilters(filters: Record<string, any>) {
   search.value = filters.q ?? ''
   ownerFilter.value = Number(filters.owner_id) || 0
   temperatureFilter.value = filters.temperature ?? ''
+  createdFilter.value = Number(filters.criado_dias) || 0
+  activityFilter.value = Number(filters.sem_atividade_dias) || 0
+  closeWindowFilter.value = filters.fechamento ?? ''
+  advGroups.value = Array.isArray(filters.af) ? filters.af : []
   if (filters.pipeline_id && pipelines.value.some((p) => p.id === Number(filters.pipeline_id))) {
     pipelineId.value = Number(filters.pipeline_id)
   }
@@ -137,6 +212,10 @@ async function saveCurrentView() {
         q: search.value.trim(),
         owner_id: ownerFilter.value,
         temperature: temperatureFilter.value,
+        criado_dias: createdFilter.value,
+        sem_atividade_dias: activityFilter.value,
+        fechamento: closeWindowFilter.value,
+        af: advGroups.value,
         pipeline_id: pipelineId.value
       }
     })
@@ -331,6 +410,27 @@ onMounted(async () => {
         <option value="media">🟡 Média</option>
         <option value="fria">🔵 Fria</option>
       </select>
+      <select v-model.number="createdFilter" @change="loadBoard">
+        <option :value="0">Data de criação</option>
+        <option :value="7">Últimos 7 dias</option>
+        <option :value="30">Últimos 30 dias</option>
+        <option :value="90">Últimos 90 dias</option>
+      </select>
+      <select v-model.number="activityFilter" @change="loadBoard">
+        <option :value="0">Última atividade</option>
+        <option :value="7">Sem atividade há 7+ dias</option>
+        <option :value="30">Sem atividade há 30+ dias</option>
+        <option :value="45">Sem atividade há 45+ dias</option>
+      </select>
+      <select v-model="closeWindowFilter" @change="loadBoard">
+        <option value="">Data de fechamento</option>
+        <option value="fecham_mes">Fecham este mês</option>
+        <option value="previsao_vencida">Previsão vencida</option>
+      </select>
+      <button class="btn btn-outline btn-sm adv-btn" type="button" :class="{ on: advCount }" @click="advOpen = true">
+        ≡ Filtros avançados
+        <span v-if="advCount" class="adv-count">{{ advCount }}</span>
+      </button>
       <button v-if="hasActiveFilters" class="btn btn-outline btn-sm save-view" type="button" @click="saveCurrentView">
         ☆ Salvar visualização
       </button>
@@ -428,6 +528,14 @@ onMounted(async () => {
     <div class="board-bottom" v-if="!loading">
       <span class="badge gray">{{ totalDeals }} negócio(s) no quadro</span>
     </div>
+
+    <AdvancedFilters
+      :open="advOpen"
+      :fields="advFields"
+      :model-value="advGroups"
+      @close="advOpen = false"
+      @apply="applyAdvanced"
+    />
 
     <ModalDialog title="Novo negócio" :open="modalOpen" wide @close="modalOpen = false">
       <form @submit.prevent="save">
@@ -564,6 +672,32 @@ onMounted(async () => {
 
 .save-view {
   color: var(--fix-purple);
+}
+
+.adv-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.adv-btn.on {
+  border-color: var(--fix-purple);
+  color: var(--fix-purple);
+  background: var(--fix-purple-tint);
+}
+
+.adv-count {
+  background: var(--fix-purple);
+  color: #fff;
+  border-radius: 999px;
+  min-width: 18px;
+  height: 18px;
+  font-size: 11px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
 }
 
 .board-loading {

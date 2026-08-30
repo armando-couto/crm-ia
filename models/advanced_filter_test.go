@@ -111,3 +111,35 @@ func TestBuildAdvancedWhereRefNoneOfIncludesNull(t *testing.T) {
 		t.Fatalf("none_of de referência deve incluir registros sem valor: %s", where)
 	}
 }
+
+// Filtros de negócios: valor numérico com gte/lte e campos de data.
+func TestBuildAdvancedWhereDealNumber(t *testing.T) {
+	raw := `{"groups":[{"conditions":[
+		{"field":"amount","op":"gte","value":"50000"},
+		{"field":"temperature","op":"any_of","values":["quente"]},
+		{"field":"close_date","op":"last_days","value":"30"}
+	]}]}`
+	af, err := ParseAdvancedFilters(raw, DealFilterFieldsSpec)
+	if err != nil {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+	args := []any{}
+	where := BuildAdvancedWhere(af, DealFilterFieldsSpec, &args)
+	if !strings.Contains(where, "d.amount >= $1") {
+		t.Fatalf("gte deveria parametrizar o valor: %s", where)
+	}
+	if len(args) != 3 || args[0].(float64) != 50000 {
+		t.Fatalf("args inesperados: %+v", args)
+	}
+}
+
+func TestParseAdvancedFiltersNumberInvalid(t *testing.T) {
+	raw := `{"groups":[{"conditions":[{"field":"amount","op":"gte","value":"caro"}]}]}`
+	if _, err := ParseAdvancedFilters(raw, DealFilterFieldsSpec); err == nil {
+		t.Fatal("valor não numérico deveria falhar")
+	}
+	raw = `{"groups":[{"conditions":[{"field":"amount","op":"contains","value":"5"}]}]}`
+	if _, err := ParseAdvancedFilters(raw, DealFilterFieldsSpec); err == nil {
+		t.Fatal("operador de texto em campo numérico deveria falhar")
+	}
+}

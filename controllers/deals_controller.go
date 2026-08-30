@@ -39,11 +39,14 @@ func ListDeals(ctx iris.Context) {
 // (para as colunas de ganho/perda mostrarem contagem, como no HubSpot).
 func DealsBoard(ctx iris.Context) {
 	f := models.BoardFilter{
-		PipelineID:  ctx.URLParamInt64Default("pipeline_id", 0),
-		OwnerID:     ctx.URLParamInt64Default("owner_id", 0),
-		Search:      ctx.URLParam("q"),
-		Temperature: ctx.URLParam("temperature"),
-		ClosedDays:  ctx.URLParamIntDefault("fechados_dias", 30),
+		PipelineID:   ctx.URLParamInt64Default("pipeline_id", 0),
+		OwnerID:      ctx.URLParamInt64Default("owner_id", 0),
+		Search:       ctx.URLParam("q"),
+		Temperature:  ctx.URLParam("temperature"),
+		CreatedDays:  ctx.URLParamIntDefault("criado_dias", 0),
+		InactiveDays: ctx.URLParamIntDefault("sem_atividade_dias", 0),
+		CloseWindow:  ctx.URLParam("fechamento"),
+		ClosedDays:   ctx.URLParamIntDefault("fechados_dias", 30),
 	}
 	if f.PipelineID == 0 {
 		badRequest(ctx, "informe o pipeline_id")
@@ -53,6 +56,16 @@ func DealsBoard(ctx iris.Context) {
 		badRequest(ctx, "temperatura inválida (fria, media ou quente)")
 		return
 	}
+	if f.CloseWindow != "" && f.CloseWindow != "fecham_mes" && f.CloseWindow != "previsao_vencida" {
+		badRequest(ctx, "fechamento inválido (fecham_mes ou previsao_vencida)")
+		return
+	}
+	adv, err := models.ParseAdvancedFilters(ctx.URLParam("af"), models.DealFilterFieldsSpec)
+	if err != nil {
+		badRequest(ctx, err.Error())
+		return
+	}
+	f.Advanced = adv
 	deals, err := models.BoardDeals(utils.DB, f)
 	if err != nil {
 		serverError(ctx, err)
@@ -70,6 +83,12 @@ func ExportDeals(ctx iris.Context) {
 		Status:     ctx.URLParam("status"),
 		Pagination: models.Pagination{Page: 1, PerPage: 100},
 	}
+	adv, err := models.ParseAdvancedFilters(ctx.URLParam("af"), models.DealFilterFieldsSpec)
+	if err != nil {
+		badRequest(ctx, err.Error())
+		return
+	}
+	f.Advanced = adv
 
 	ctx.Header("Content-Type", "text/csv; charset=utf-8")
 	ctx.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="negocios-%s.csv"`, time.Now().Format("2006-01-02")))

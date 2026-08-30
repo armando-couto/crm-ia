@@ -59,6 +59,10 @@ const opsByKind: Record<string, { value: string; label: string }[]> = {
     { value: 'older_than', label: 'há mais de X dias (ou nunca)' },
     { value: 'empty', label: 'nunca ocorreu' },
     { value: 'not_empty', label: 'já ocorreu' }
+  ],
+  number: [
+    { value: 'gte', label: 'é maior ou igual a' },
+    { value: 'lte', label: 'é menor ou igual a' }
   ]
 }
 
@@ -79,7 +83,11 @@ function onFieldChange() {
 }
 
 function needsValue(op: string): boolean {
-  return op === 'contains' || op === 'eq' || op === 'last_days' || op === 'older_than'
+  return op === 'contains' || op === 'eq' || op === 'last_days' || op === 'older_than' || op === 'gte' || op === 'lte'
+}
+
+function numericOp(op: string): boolean {
+  return op === 'last_days' || op === 'older_than' || op === 'gte' || op === 'lte'
 }
 
 function needsValues(op: string): boolean {
@@ -141,6 +149,7 @@ function conditionLabel(c: FilterCondition): string {
     value = labels.join(', ')
   } else if (c.value) {
     value = c.op === 'last_days' || c.op === 'older_than' ? `${c.value} dias` : c.value
+    if (c.op === 'gte' || c.op === 'lte') value = `R$ ${c.value}`
   }
   return value ? `${def.label} ${op} ${value}` : `${def.label} ${op}`
 }
@@ -203,9 +212,9 @@ function clearAll() {
                 <input
                   v-if="editing.field && needsValue(editing.op)"
                   v-model="editing.value"
-                  :type="editing.op === 'last_days' || editing.op === 'older_than' ? 'number' : 'text'"
+                  :type="numericOp(editing.op) ? 'number' : 'text'"
                   :placeholder="editing.op === 'last_days' || editing.op === 'older_than' ? 'dias' : 'valor'"
-                  min="1"
+                  :min="editing.op === 'gte' || editing.op === 'lte' ? undefined : 1"
                 />
 
                 <div v-if="editing.field && needsValues(editing.op)" class="af-options">

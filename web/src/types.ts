@@ -349,6 +349,6 @@ export interface FilterGroup {
 export interface FilterFieldDef {
   key: string
   label: string
-  kind: 'text' | 'enum' | 'ref' | 'date'
+  kind: 'text' | 'enum' | 'ref' | 'date' | 'number'
   options?: { value: string; label: string }[]
 }

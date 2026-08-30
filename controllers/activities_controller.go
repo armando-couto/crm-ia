@@ -19,6 +19,8 @@ func ListActivities(ctx iris.Context) {
 		CompanyID: ctx.URLParamInt64Default("company_id", 0),
 		DealID:    ctx.URLParamInt64Default("deal_id", 0),
 		TicketID:  ctx.URLParamInt64Default("ticket_id", 0),
+		Kind:      ctx.URLParam("kind"),
+		Search:    ctx.URLParam("q"),
 		Limit:     ctx.URLParamIntDefault("limit", 50),
 	}
 	if f.ContactID == 0 && f.CompanyID == 0 && f.DealID == 0 && f.TicketID == 0 {

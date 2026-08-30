@@ -21,6 +21,18 @@ export interface Company {
   contacts_count?: number
   created_at: string
   updated_at: string
+  ec_number: string
+  economic_group: string
+  cnpj: string
+  accredited_at: string | null
+  representative: string
+  instagram: string
+  products: string[]
+  machines_count: number
+  is_client: boolean
+  anticipation_mode: string
+  validator: boolean
+  do_not_disturb: boolean
 }
 
 export interface Contact {

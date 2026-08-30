@@ -50,14 +50,19 @@ var ContactFilterFieldsSpec = map[string]fieldSpec{
 
 // CompanyFilterFieldsSpec são os campos filtráveis de empresas.
 var CompanyFilterFieldsSpec = map[string]fieldSpec{
-	"name":       {expr: "c.name", kind: "text"},
-	"domain":     {expr: "c.domain", kind: "text"},
-	"industry":   {expr: "c.industry", kind: "text"},
-	"city":       {expr: "c.city", kind: "text"},
-	"state":      {expr: "c.state", kind: "text"},
-	"phone":      {expr: "c.phone", kind: "text"},
-	"owner_id":   {expr: "c.owner_id", kind: "ref"},
-	"created_at": {expr: "c.created_at", kind: "date"},
+	"name":           {expr: "c.name", kind: "text"},
+	"domain":         {expr: "c.domain", kind: "text"},
+	"industry":       {expr: "c.industry", kind: "text"},
+	"city":           {expr: "c.city", kind: "text"},
+	"state":          {expr: "c.state", kind: "text"},
+	"phone":          {expr: "c.phone", kind: "text"},
+	"owner_id":       {expr: "c.owner_id", kind: "ref"},
+	"created_at":     {expr: "c.created_at", kind: "date"},
+	"ec_number":      {expr: "c.ec_number", kind: "text"},
+	"cnpj":           {expr: "c.cnpj", kind: "text"},
+	"economic_group": {expr: "c.economic_group", kind: "text"},
+	"representative": {expr: "c.representative", kind: "text"},
+	"accredited_at":  {expr: "c.accredited_at", kind: "date"},
 }
 
 // ParseAdvancedFilters decodifica e valida o JSON do parâmetro af.

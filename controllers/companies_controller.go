@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"strings"
+	"time"
 
 	"fixpay/fix-crm/models"
 	"fixpay/fix-crm/utils"
@@ -55,6 +56,19 @@ type companyRequest struct {
 	City     string `json:"city"`
 	State    string `json:"state"`
 	OwnerID  *int64 `json:"owner_id"`
+
+	ECNumber         string   `json:"ec_number"`
+	EconomicGroup    string   `json:"economic_group"`
+	CNPJ             string   `json:"cnpj"`
+	AccreditedAt     string   `json:"accredited_at"` // AAAA-MM-DD
+	Representative   string   `json:"representative"`
+	Instagram        string   `json:"instagram"`
+	Products         []string `json:"products"`
+	MachinesCount    int      `json:"machines_count"`
+	IsClient         bool     `json:"is_client"`
+	AnticipationMode string   `json:"anticipation_mode"`
+	Validator        bool     `json:"validator"`
+	DoNotDisturb     bool     `json:"do_not_disturb"`
 }
 
 func (r *companyRequest) validate() string {
@@ -62,10 +76,16 @@ func (r *companyRequest) validate() string {
 	if r.Name == "" {
 		return "informe o nome da empresa"
 	}
+	if r.MachinesCount < 0 {
+		return "quantidade de máquinas não pode ser negativa"
+	}
+	if r.AnticipationMode != "" && r.AnticipationMode != "pontual" && r.AnticipationMode != "automatica" && r.AnticipationMode != "nenhuma" {
+		return "modalidade de antecipação inválida (pontual, automatica ou nenhuma)"
+	}
 	return ""
 }
 
-func (r *companyRequest) apply(c *models.Company) {
+func (r *companyRequest) apply(c *models.Company) string {
 	c.Name = r.Name
 	c.Domain = strings.TrimSpace(strings.ToLower(r.Domain))
 	c.Phone = r.Phone
@@ -73,6 +93,34 @@ func (r *companyRequest) apply(c *models.Company) {
 	c.City = r.City
 	c.State = r.State
 	c.OwnerID = r.OwnerID
+
+	c.ECNumber = strings.TrimSpace(r.ECNumber)
+	c.EconomicGroup = strings.TrimSpace(r.EconomicGroup)
+	c.CNPJ = strings.TrimSpace(r.CNPJ)
+	c.Representative = strings.TrimSpace(r.Representative)
+	c.Instagram = strings.TrimSpace(strings.TrimPrefix(r.Instagram, "@"))
+	c.MachinesCount = r.MachinesCount
+	c.IsClient = r.IsClient
+	c.AnticipationMode = r.AnticipationMode
+	c.Validator = r.Validator
+	c.DoNotDisturb = r.DoNotDisturb
+
+	c.Products = []string{}
+	for _, p := range r.Products {
+		if p = strings.TrimSpace(p); p != "" {
+			c.Products = append(c.Products, p)
+		}
+	}
+
+	c.AccreditedAt = nil
+	if r.AccreditedAt != "" {
+		t, err := time.Parse("2006-01-02", r.AccreditedAt)
+		if err != nil {
+			return "data do credenciamento inválida (use AAAA-MM-DD)"
+		}
+		c.AccreditedAt = &t
+	}
+	return ""
 }
 
 func CreateCompany(ctx iris.Context) {
@@ -87,7 +135,10 @@ func CreateCompany(ctx iris.Context) {
 	}
 
 	company := &models.Company{}
-	req.apply(company)
+	if msg := req.apply(company); msg != "" {
+		badRequest(ctx, msg)
+		return
+	}
 	if company.OwnerID == nil {
 		if claims := middlewareClaims(ctx); claims != nil {
 			company.OwnerID = &claims.UserID
@@ -123,7 +174,10 @@ func UpdateCompany(ctx iris.Context) {
 		return
 	}
 
-	req.apply(company)
+	if msg := req.apply(company); msg != "" {
+		badRequest(ctx, msg)
+		return
+	}
 	if err := models.UpdateCompany(utils.DB, company); err != nil {
 		serverError(ctx, err)
 		return

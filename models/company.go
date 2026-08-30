@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 type Company struct {
@@ -20,6 +22,36 @@ type Company struct {
 	Contacts  int       `json:"contacts_count,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// Campos de negócio Fix Pay (credenciamento/adquirência).
+	ECNumber         string     `json:"ec_number"`
+	EconomicGroup    string     `json:"economic_group"`
+	CNPJ             string     `json:"cnpj"`
+	AccreditedAt     *time.Time `json:"accredited_at"`
+	Representative   string     `json:"representative"`
+	Instagram        string     `json:"instagram"`
+	Products         []string   `json:"products"`
+	MachinesCount    int        `json:"machines_count"`
+	IsClient         bool       `json:"is_client"`
+	AnticipationMode string     `json:"anticipation_mode"`
+	Validator        bool       `json:"validator"`
+	DoNotDisturb     bool       `json:"do_not_disturb"`
+}
+
+// companyBusinessColumns são as colunas extras lidas em todas as consultas.
+const companyBusinessColumns = `
+	COALESCE(c.ec_number,''), COALESCE(c.economic_group,''), COALESCE(c.cnpj,''),
+	c.accredited_at, COALESCE(c.representative,''), COALESCE(c.instagram,''),
+	c.products, c.machines_count, c.is_client, COALESCE(c.anticipation_mode,''),
+	c.validator, c.do_not_disturb`
+
+// businessScanTargets devolve os destinos de scan das colunas de negócio.
+func (c *Company) businessScanTargets(products *pq.StringArray) []any {
+	return []any{
+		&c.ECNumber, &c.EconomicGroup, &c.CNPJ, &c.AccreditedAt, &c.Representative,
+		&c.Instagram, products, &c.MachinesCount, &c.IsClient, &c.AnticipationMode,
+		&c.Validator, &c.DoNotDisturb,
+	}
 }
 
 type CompanyFilter struct {
@@ -59,7 +91,9 @@ func ListCompanies(db *sql.DB, f CompanyFilter) ([]Company, int, error) {
 	args := []any{}
 	if f.Search != "" {
 		args = append(args, "%"+strings.ToLower(f.Search)+"%")
-		where = append(where, fmt.Sprintf("(LOWER(c.name) LIKE $%d OR LOWER(COALESCE(c.domain,'')) LIKE $%d)", len(args), len(args)))
+		where = append(where, fmt.Sprintf(
+			"(LOWER(c.name) LIKE $%d OR LOWER(COALESCE(c.domain,'')) LIKE $%d OR COALESCE(c.cnpj,'') LIKE $%d OR COALESCE(c.ec_number,'') LIKE $%d)",
+			len(args), len(args), len(args), len(args)))
 	}
 	if f.OwnerID > 0 {
 		args = append(args, f.OwnerID)
@@ -92,7 +126,7 @@ func ListCompanies(db *sql.DB, f CompanyFilter) ([]Company, int, error) {
 		SELECT c.id, c.name, COALESCE(c.domain,''), COALESCE(c.phone,''), COALESCE(c.industry,''),
 		       COALESCE(c.city,''), COALESCE(c.state,''), c.owner_id, COALESCE(u.name,''),
 		       (SELECT COUNT(*) FROM contacts ct WHERE ct.company_id = c.id) AS contacts_count,
-		       c.created_at, c.updated_at
+		       c.created_at, c.updated_at, `+companyBusinessColumns+`
 		FROM companies c
 		LEFT JOIN users u ON u.id = c.owner_id
 		WHERE %s
@@ -106,9 +140,15 @@ func ListCompanies(db *sql.DB, f CompanyFilter) ([]Company, int, error) {
 	list := []Company{}
 	for rows.Next() {
 		var c Company
-		if err := rows.Scan(&c.ID, &c.Name, &c.Domain, &c.Phone, &c.Industry, &c.City, &c.State,
-			&c.OwnerID, &c.OwnerName, &c.Contacts, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		var products pq.StringArray
+		targets := append([]any{&c.ID, &c.Name, &c.Domain, &c.Phone, &c.Industry, &c.City, &c.State,
+			&c.OwnerID, &c.OwnerName, &c.Contacts, &c.CreatedAt, &c.UpdatedAt}, c.businessScanTargets(&products)...)
+		if err := rows.Scan(targets...); err != nil {
 			return nil, 0, err
+		}
+		c.Products = products
+		if c.Products == nil {
+			c.Products = []string{}
 		}
 		list = append(list, c)
 	}
@@ -117,35 +157,58 @@ func ListCompanies(db *sql.DB, f CompanyFilter) ([]Company, int, error) {
 
 func CompanyByID(db *sql.DB, id int64) (*Company, error) {
 	var c Company
+	var products pq.StringArray
+	targets := append([]any{&c.ID, &c.Name, &c.Domain, &c.Phone, &c.Industry, &c.City, &c.State,
+		&c.OwnerID, &c.OwnerName, &c.CreatedAt, &c.UpdatedAt}, c.businessScanTargets(&products)...)
 	err := db.QueryRow(`
 		SELECT c.id, c.name, COALESCE(c.domain,''), COALESCE(c.phone,''), COALESCE(c.industry,''),
-		       COALESCE(c.city,''), COALESCE(c.state,''), c.owner_id, COALESCE(u.name,''), c.created_at, c.updated_at
+		       COALESCE(c.city,''), COALESCE(c.state,''), c.owner_id, COALESCE(u.name,''), c.created_at, c.updated_at, `+
+		companyBusinessColumns+`
 		FROM companies c
 		LEFT JOIN users u ON u.id = c.owner_id
 		WHERE c.id = $1`, id,
-	).Scan(&c.ID, &c.Name, &c.Domain, &c.Phone, &c.Industry, &c.City, &c.State,
-		&c.OwnerID, &c.OwnerName, &c.CreatedAt, &c.UpdatedAt)
+	).Scan(targets...)
 	if err != nil {
 		return nil, err
+	}
+	c.Products = products
+	if c.Products == nil {
+		c.Products = []string{}
 	}
 	return &c, nil
 }
 
 func CreateCompany(db *sql.DB, c *Company) error {
+	if c.Products == nil {
+		c.Products = []string{}
+	}
 	return db.QueryRow(`
-		INSERT INTO companies (name, domain, phone, industry, city, state, owner_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO companies (name, domain, phone, industry, city, state, owner_id,
+		    ec_number, economic_group, cnpj, accredited_at, representative, instagram,
+		    products, machines_count, is_client, anticipation_mode, validator, do_not_disturb)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
 		RETURNING id, created_at, updated_at`,
 		c.Name, c.Domain, c.Phone, c.Industry, c.City, c.State, c.OwnerID,
+		c.ECNumber, c.EconomicGroup, c.CNPJ, c.AccreditedAt, c.Representative, c.Instagram,
+		pq.Array(c.Products), c.MachinesCount, c.IsClient, c.AnticipationMode, c.Validator, c.DoNotDisturb,
 	).Scan(&c.ID, &c.CreatedAt, &c.UpdatedAt)
 }
 
 func UpdateCompany(db *sql.DB, c *Company) error {
+	if c.Products == nil {
+		c.Products = []string{}
+	}
 	_, err := db.Exec(`
 		UPDATE companies SET name = $1, domain = $2, phone = $3, industry = $4,
-		       city = $5, state = $6, owner_id = $7, updated_at = NOW()
-		WHERE id = $8`,
-		c.Name, c.Domain, c.Phone, c.Industry, c.City, c.State, c.OwnerID, c.ID)
+		       city = $5, state = $6, owner_id = $7,
+		       ec_number = $8, economic_group = $9, cnpj = $10, accredited_at = $11,
+		       representative = $12, instagram = $13, products = $14, machines_count = $15,
+		       is_client = $16, anticipation_mode = $17, validator = $18, do_not_disturb = $19,
+		       updated_at = NOW()
+		WHERE id = $20`,
+		c.Name, c.Domain, c.Phone, c.Industry, c.City, c.State, c.OwnerID,
+		c.ECNumber, c.EconomicGroup, c.CNPJ, c.AccreditedAt, c.Representative, c.Instagram,
+		pq.Array(c.Products), c.MachinesCount, c.IsClient, c.AnticipationMode, c.Validator, c.DoNotDisturb, c.ID)
 	return err
 }
 

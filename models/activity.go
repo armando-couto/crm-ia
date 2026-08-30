@@ -35,6 +35,8 @@ type ActivityFilter struct {
 	CompanyID int64
 	DealID    int64
 	TicketID  int64
+	Kind      string // filtra por tipo (nota, email, ligacao, reuniao, sistema)
+	Search    string // busca no conteúdo
 	Limit     int
 }
 
@@ -63,7 +65,15 @@ func ListActivities(db *sql.DB, f ActivityFilter) ([]Activity, error) {
 	}
 	cond := "1=1"
 	if len(where) > 0 {
-		cond = strings.Join(where, " OR ")
+		cond = "(" + strings.Join(where, " OR ") + ")"
+	}
+	if f.Kind != "" {
+		args = append(args, f.Kind)
+		cond += fmt.Sprintf(" AND a.kind = $%d", len(args))
+	}
+	if f.Search != "" {
+		args = append(args, "%"+strings.ToLower(f.Search)+"%")
+		cond += fmt.Sprintf(" AND LOWER(a.content) LIKE $%d", len(args))
 	}
 
 	args = append(args, f.Limit)

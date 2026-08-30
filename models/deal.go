@@ -14,19 +14,19 @@ const (
 )
 
 type Deal struct {
-	ID          int64      `json:"id"`
-	Name        string     `json:"name"`
-	Amount      float64    `json:"amount"`
-	Currency    string     `json:"currency"`
-	PipelineID  int64      `json:"pipeline_id"`
-	StageID     int64      `json:"stage_id"`
-	StageName   string     `json:"stage_name,omitempty"`
-	ContactID   *int64     `json:"contact_id"`
-	ContactName string     `json:"contact_name,omitempty"`
-	CompanyID   *int64     `json:"company_id"`
-	CompanyName string     `json:"company_name,omitempty"`
-	OwnerID     *int64     `json:"owner_id"`
-	OwnerName   string     `json:"owner_name,omitempty"`
+	ID             int64      `json:"id"`
+	Name           string     `json:"name"`
+	Amount         float64    `json:"amount"`
+	Currency       string     `json:"currency"`
+	PipelineID     int64      `json:"pipeline_id"`
+	StageID        int64      `json:"stage_id"`
+	StageName      string     `json:"stage_name,omitempty"`
+	ContactID      *int64     `json:"contact_id"`
+	ContactName    string     `json:"contact_name,omitempty"`
+	CompanyID      *int64     `json:"company_id"`
+	CompanyName    string     `json:"company_name,omitempty"`
+	OwnerID        *int64     `json:"owner_id"`
+	OwnerName      string     `json:"owner_name,omitempty"`
 	Status         string     `json:"status"`
 	Temperature    string     `json:"temperature"`
 	CloseDate      *time.Time `json:"close_date"`

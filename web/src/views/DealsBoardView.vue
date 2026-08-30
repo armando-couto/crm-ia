@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api, getToken } from '../api'
 import { formatDate, formatMoney, relativeDate } from '../format'
 import { useToastStore } from '../stores/toast'
@@ -9,6 +9,7 @@ import ModalDialog from '../components/ModalDialog.vue'
 import type { Company, Contact, Deal, FilterFieldDef, FilterGroup, Paginated, Pipeline, SavedView, User } from '../types'
 
 const router = useRouter()
+const route = useRoute()
 const toast = useToastStore()
 
 const pipelines = ref<Pipeline[]>([])
@@ -474,6 +475,11 @@ onMounted(async () => {
     contacts.value = contactsResp.data ?? []
     companies.value = companiesResp.data ?? []
     savedViews.value = viewsResp ?? []
+
+    const requested = Number(route.query.view)
+    if (requested && savedViews.value.some((v) => v.id === requested)) {
+      selectTab(`view-${requested}`)
+    }
   } catch (e: any) {
     toast.error(e.message)
     loading.value = false

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api, getToken } from '../api'
 import { formatCompact, formatDate, initials, lifecycleLabels, relativeDate } from '../format'
 import { useAuthStore } from '../stores/auth'
@@ -20,6 +20,7 @@ import type {
 } from '../types'
 
 const router = useRouter()
+const route = useRoute()
 const auth = useAuthStore()
 const toast = useToastStore()
 
@@ -513,6 +514,12 @@ onMounted(async () => {
     companies.value = companiesResp.data ?? []
     listTabs.value = (listsResp ?? []).map((l) => ({ key: `lista-${l.id}`, label: l.name, listId: l.id }))
     savedViews.value = viewsResp ?? []
+
+    // Abre direto uma visualização vinda da central (/visualizacoes?view=ID).
+    const requested = Number(route.query.view)
+    if (requested && savedViews.value.some((v) => v.id === requested)) {
+      selectTab(`view-${requested}`)
+    }
   } catch {
     /* abas e filtros opcionais */
   }

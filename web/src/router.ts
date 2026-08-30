@@ -16,6 +16,7 @@ const routes = [
   { path: '/tickets', name: 'tickets', component: () => import('./views/TicketsView.vue') },
   { path: '/tickets/:id', name: 'ticket-detail', component: () => import('./views/TicketDetailView.vue') },
   { path: '/listas', name: 'lists', component: () => import('./views/ListsView.vue') },
+  { path: '/visualizacoes', name: 'saved-views', component: () => import('./views/SavedViewsView.vue') },
   { path: '/listas/:id', name: 'list-detail', component: () => import('./views/ListDetailView.vue') },
   { path: '/projetos', name: 'projects', component: () => import('./views/ProjectsView.vue') },
   { path: '/projetos/:id', name: 'project-detail', component: () => import('./views/ProjectDetailView.vue') },

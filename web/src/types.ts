@@ -321,11 +321,12 @@ export interface Snippet {
 
 export interface SavedView {
   id: number
-  entity: 'contacts' | 'companies'
+  entity: 'contacts' | 'companies' | 'deals'
   name: string
   filters: Record<string, unknown>
   position: number
   created_by: number | null
+  created_by_name?: string
   created_at: string
 }
 

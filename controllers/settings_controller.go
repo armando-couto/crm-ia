@@ -51,11 +51,11 @@ func UpdateContactForm(ctx iris.Context) {
 	ctx.JSON(iris.Map{"fields": req.Fields})
 }
 
-// ListViews lista as visualizações salvas de uma entidade.
+// ListViews lista as visualizações salvas de uma entidade; sem entity, todas.
 func ListViews(ctx iris.Context) {
 	entity := ctx.URLParam("entity")
-	if !models.ValidViewEntity(entity) {
-		badRequest(ctx, "entity inválida (contacts ou companies)")
+	if entity != "" && !models.ValidViewEntity(entity) {
+		badRequest(ctx, "entity inválida (contacts, companies ou deals)")
 		return
 	}
 	views, err := models.ListSavedViews(utils.DB, entity)

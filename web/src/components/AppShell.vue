@@ -46,6 +46,9 @@ function logout() {
         <router-link to="/listas" active-class="active">
           <span class="icon">☰</span><span class="label">Listas</span>
         </router-link>
+        <router-link to="/visualizacoes" active-class="active">
+          <span class="icon">⊞</span><span class="label">Visualizações</span>
+        </router-link>
 
         <div class="nav-section">Comunicação</div>
         <router-link to="/caixa-de-entrada" active-class="active">

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import { formatDate } from '../format'
 import { useToastStore } from '../stores/toast'
@@ -9,6 +9,7 @@ import ModalDialog from '../components/ModalDialog.vue'
 import type { Company, FilterFieldDef, FilterGroup, Paginated, SavedView, User } from '../types'
 
 const router = useRouter()
+const route = useRoute()
 const toast = useToastStore()
 
 // ===== Abas de visualização =====
@@ -301,6 +302,11 @@ onMounted(async () => {
     ])
     users.value = usersResp
     savedViews.value = viewsResp
+
+    const requested = Number(route.query.view)
+    if (requested && savedViews.value.some((v) => v.id === requested)) {
+      selectTab(`view-${requested}`)
+    }
   } catch {
     /* opcional */
   }

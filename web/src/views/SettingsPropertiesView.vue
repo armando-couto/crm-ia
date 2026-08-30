@@ -20,7 +20,7 @@ const entityLabels: Record<string, string> = {
   tickets: 'Propriedades de Ticket'
 }
 
-export interface FieldTypeDef {
+interface FieldTypeDef {
   value: CustomProperty['field_type']
   label: string
   hint: string

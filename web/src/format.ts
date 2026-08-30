@@ -30,6 +30,13 @@ export function relativeDate(value: string | null | undefined): string {
   return d.toLocaleDateString('pt-BR')
 }
 
+const compact = new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 2 })
+
+/** Número compacto no estilo HubSpot: 3180 -> "3,18 mil". */
+export function formatCompact(value: number | null | undefined): string {
+  return compact.format(value ?? 0)
+}
+
 export function initials(name: string | undefined | null): string {
   if (!name) return '?'
   const parts = name.trim().split(/\s+/)

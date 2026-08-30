@@ -33,6 +33,8 @@ func Register(app *iris.Application) {
 
 	auth.Get("/contacts", controllers.ListContacts)
 	auth.Post("/contacts", controllers.CreateContact)
+	auth.Get("/contacts/stats", controllers.ContactStatsHandler)
+	auth.Post("/contacts/bulk", controllers.BulkContacts)
 	auth.Get("/contacts/export", controllers.ExportContacts)
 	auth.Post("/contacts/import", controllers.ImportContacts)
 	auth.Get("/contacts/{id:int64}", controllers.GetContact)

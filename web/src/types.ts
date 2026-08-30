@@ -36,6 +36,7 @@ export interface Contact {
   company_name?: string
   owner_id: number | null
   owner_name?: string
+  last_activity_at?: string | null
   created_at: string
   updated_at: string
 }

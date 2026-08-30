@@ -18,11 +18,71 @@ func contactFilterFromQuery(ctx iris.Context) models.ContactFilter {
 		OwnerID:        ctx.URLParamInt64Default("owner_id", 0),
 		CompanyID:      ctx.URLParamInt64Default("company_id", 0),
 		LifecycleStage: ctx.URLParam("lifecycle_stage"),
+		Source:         ctx.URLParam("source"),
+		Unassigned:     ctx.URLParamBoolDefault("sem_dono", false),
+		NoEmail:        ctx.URLParamBoolDefault("sem_email", false),
+		CreatedDays:    ctx.URLParamIntDefault("criado_dias", 0),
+		InactiveDays:   ctx.URLParamIntDefault("sem_atividade_dias", 0),
+		SortBy:         ctx.URLParam("sort"),
+		SortDir:        ctx.URLParam("dir"),
 		Pagination: models.Pagination{
 			Page:    ctx.URLParamIntDefault("page", 1),
 			PerPage: ctx.URLParamIntDefault("per_page", 25),
 		},
 	}
+}
+
+// ContactStatsHandler alimenta os cartões de métricas da tela de contatos.
+func ContactStatsHandler(ctx iris.Context) {
+	stats, err := models.LoadContactStats(utils.DB)
+	if err != nil {
+		serverError(ctx, err)
+		return
+	}
+	ctx.JSON(stats)
+}
+
+type bulkContactsRequest struct {
+	IDs            []int64 `json:"ids"`
+	Action         string  `json:"action"` // dono | estagio | excluir
+	OwnerID        *int64  `json:"owner_id"`
+	LifecycleStage string  `json:"lifecycle_stage"`
+}
+
+// BulkContacts aplica uma ação em massa aos contatos selecionados.
+func BulkContacts(ctx iris.Context) {
+	var req bulkContactsRequest
+	if err := ctx.ReadJSON(&req); err != nil || len(req.IDs) == 0 {
+		badRequest(ctx, "selecione ao menos um contato")
+		return
+	}
+	if len(req.IDs) > 500 {
+		badRequest(ctx, "no máximo 500 contatos por vez")
+		return
+	}
+
+	var affected int64
+	var err error
+	switch req.Action {
+	case "dono":
+		affected, err = models.BulkAssignOwner(utils.DB, req.IDs, req.OwnerID)
+	case "estagio":
+		if !models.ValidLifecycleStage(req.LifecycleStage) {
+			badRequest(ctx, "estágio do ciclo de vida inválido")
+			return
+		}
+		affected, err = models.BulkSetLifecycleStage(utils.DB, req.IDs, req.LifecycleStage)
+	case "excluir":
+		affected, err = models.BulkDeleteContacts(utils.DB, req.IDs)
+	default:
+		badRequest(ctx, "ação inválida (dono, estagio ou excluir)")
+		return
+	}
+	if err != nil {
+		serverError(ctx, err)
+		return
+	}
+	ctx.JSON(iris.Map{"affected": affected})
 }
 
 func ListContacts(ctx iris.Context) {

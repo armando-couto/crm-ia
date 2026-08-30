@@ -43,6 +43,14 @@ cd web && npm install && npm run dev
 
 No primeiro acesso o sistema cria o usuário administrador com `admin_email` / `admin_password` do `.env`.
 
+> **Não consegue logar?** O admin é criado apenas quando o banco está vazio — mudar `admin_password` depois não altera a senha existente. Para redefinir:
+>
+> ```bash
+> go run application.go -reset-admin
+> ```
+>
+> O comando aplica o `admin_email`/`admin_password` atuais do `.env` (reativa e garante papel admin) e sai.
+
 Alternativa com Docker (sobe PostgreSQL + app juntos):
 
 ```bash

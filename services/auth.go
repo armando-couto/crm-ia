@@ -122,3 +122,50 @@ func SeedAdmin(db *sql.DB) error {
 func JWTSecret() string {
 	return utils.JWTSecret
 }
+
+// ResetAdmin (comando de manutenção ./fix-crm -reset-admin) redefine a senha
+// do administrador com os valores admin_email/admin_password do .env:
+// atualiza o usuário se ele existir (reativando e garantindo papel admin)
+// ou o cria caso não exista. Útil quando a equipe fica sem acesso.
+func ResetAdmin(db *sql.DB) error {
+	email := goutils.Godotenv("admin_email")
+	password := goutils.Godotenv("admin_password")
+	if email == "" || password == "" {
+		return errors.New("configure admin_email e admin_password no .env antes de rodar -reset-admin")
+	}
+
+	hash, err := HashPassword(password)
+	if err != nil {
+		return err
+	}
+
+	user, err := models.UserByEmail(db, email)
+	if err == sql.ErrNoRows {
+		admin := &models.User{
+			Name:         "Administrador",
+			Email:        email,
+			Role:         models.RoleAdmin,
+			Active:       true,
+			PasswordHash: hash,
+		}
+		if err := models.CreateUser(db, admin); err != nil {
+			return err
+		}
+		log.Printf("Administrador criado: %s", admin.Email)
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+
+	user.Role = models.RoleAdmin
+	user.Active = true
+	if err := models.UpdateUser(db, user); err != nil {
+		return err
+	}
+	if err := models.UpdateUserPassword(db, user.ID, hash); err != nil {
+		return err
+	}
+	log.Printf("Senha do administrador %s redefinida com o admin_password do .env", user.Email)
+	return nil
+}

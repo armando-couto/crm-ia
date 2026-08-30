@@ -87,3 +87,13 @@ func TestRandomToken(t *testing.T) {
 		t.Fatal("tokens consecutivos não podem se repetir")
 	}
 }
+
+// ResetAdmin sem admin_email/admin_password no ambiente deve falhar com
+// mensagem clara (não cria usuário fantasma).
+func TestResetAdminWithoutEnv(t *testing.T) {
+	t.Setenv("admin_email", "")
+	t.Setenv("admin_password", "")
+	if err := ResetAdmin(nil); err == nil {
+		t.Fatal("sem credenciais no ambiente deveria falhar")
+	}
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"time"
 
@@ -35,6 +36,18 @@ func main() {
 	if err := migrations.Run(utils.DB); err != nil {
 		log.Fatalf("Erro ao aplicar migrations: %v", err)
 	}
+
+	// Comando de manutenção: ./fix-crm -reset-admin redefine a senha do
+	// administrador com admin_email/admin_password do .env e encerra.
+	resetAdmin := flag.Bool("reset-admin", false, "redefine a senha do administrador com admin_email/admin_password do .env e sai")
+	flag.Parse()
+	if *resetAdmin {
+		if err := services.ResetAdmin(utils.DB); err != nil {
+			log.Fatalf("Erro ao redefinir o administrador: %v", err)
+		}
+		return
+	}
+
 	if err := services.SeedAdmin(utils.DB); err != nil {
 		log.Fatalf("Erro ao criar administrador inicial: %v", err)
 	}

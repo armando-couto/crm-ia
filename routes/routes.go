@@ -33,6 +33,12 @@ func Register(app *iris.Application) {
 	admin.Put("/{id:int64}", controllers.UpdateUserByID)
 	admin.Delete("/{id:int64}", controllers.DeactivateUser)
 
+	auth.Get("/teams", controllers.ListTeams)
+	adminTeams := auth.Party("/teams", middleware.RequireRoles(models.RoleAdmin))
+	adminTeams.Post("", controllers.CreateTeam)
+	adminTeams.Put("/{id:int64}", controllers.UpdateTeam)
+	adminTeams.Delete("/{id:int64}", controllers.DeleteTeam)
+
 	auth.Get("/contacts", controllers.ListContacts)
 	auth.Post("/contacts", controllers.CreateContact)
 	auth.Get("/contacts/stats", controllers.ContactStatsHandler)

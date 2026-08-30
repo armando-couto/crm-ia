@@ -33,8 +33,8 @@ func TestValidRole(t *testing.T) {
 
 func userRows() *sqlmock.Rows {
 	now := time.Now()
-	return sqlmock.NewRows([]string{"id", "name", "email", "role", "active", "created_at", "updated_at", "password_hash"}).
-		AddRow(1, "Ana", "ana@fixpay.com.br", RoleAdmin, true, now, now, "hash")
+	return sqlmock.NewRows([]string{"id", "name", "email", "role", "active", "team_id", "team_name", "created_at", "updated_at", "password_hash"}).
+		AddRow(1, "Ana", "ana@fixpay.com.br", RoleAdmin, true, nil, "", now, now, "hash")
 }
 
 func TestUserByEmail(t *testing.T) {
@@ -44,7 +44,7 @@ func TestUserByEmail(t *testing.T) {
 	}
 	defer db.Close()
 
-	mock.ExpectQuery("SELECT (.+) FROM users WHERE email").
+	mock.ExpectQuery("SELECT (.+) FROM users u (.+) WHERE u.email").
 		WithArgs("ana@fixpay.com.br").
 		WillReturnRows(userRows())
 
@@ -70,7 +70,7 @@ func TestCreateUser(t *testing.T) {
 
 	now := time.Now()
 	mock.ExpectQuery("INSERT INTO users").
-		WithArgs("Ana", "ana@fixpay.com.br", "hash", RoleVendedor, true).
+		WithArgs("Ana", "ana@fixpay.com.br", "hash", RoleVendedor, true, nil).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at"}).AddRow(7, now, now))
 
 	u := &User{Name: "Ana", Email: "Ana@FixPay.com.br", PasswordHash: "hash", Role: RoleVendedor, Active: true}

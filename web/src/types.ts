@@ -4,8 +4,17 @@ export interface User {
   email: string
   role: 'admin' | 'gestor' | 'vendedor'
   active: boolean
+  team_id?: number | null
+  team_name?: string
   created_at: string
   updated_at: string
+}
+
+export interface Team {
+  id: number
+  name: string
+  members_count: number
+  created_at: string
 }
 
 export interface Company {

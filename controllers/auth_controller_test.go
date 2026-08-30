@@ -50,15 +50,15 @@ func newTestApp(t *testing.T) (*httpexpect.Expect, sqlmock.Sqlmock, *fakeMailer)
 
 func userRow(id int64, email, hash, role string, active bool) *sqlmock.Rows {
 	now := time.Now()
-	return sqlmock.NewRows([]string{"id", "name", "email", "role", "active", "created_at", "updated_at", "password_hash"}).
-		AddRow(id, "Usuária Teste", email, role, active, now, now, hash)
+	return sqlmock.NewRows([]string{"id", "name", "email", "role", "active", "team_id", "team_name", "created_at", "updated_at", "password_hash"}).
+		AddRow(id, "Usuária Teste", email, role, active, nil, "", now, now, hash)
 }
 
 func TestLoginSuccess(t *testing.T) {
 	e, mock, _ := newTestApp(t)
 
 	hash, _ := services.HashPassword("minha-senha")
-	mock.ExpectQuery("SELECT (.+) FROM users WHERE email").
+	mock.ExpectQuery("SELECT (.+) FROM users u (.+) WHERE u.email").
 		WithArgs("ana@fixpay.com.br").
 		WillReturnRows(userRow(1, "ana@fixpay.com.br", hash, models.RoleAdmin, true))
 
@@ -74,7 +74,7 @@ func TestLoginWrongPassword(t *testing.T) {
 	e, mock, _ := newTestApp(t)
 
 	hash, _ := services.HashPassword("senha-correta")
-	mock.ExpectQuery("SELECT (.+) FROM users WHERE email").
+	mock.ExpectQuery("SELECT (.+) FROM users u (.+) WHERE u.email").
 		WithArgs("ana@fixpay.com.br").
 		WillReturnRows(userRow(1, "ana@fixpay.com.br", hash, models.RoleAdmin, true))
 
@@ -87,7 +87,7 @@ func TestLoginInactiveUser(t *testing.T) {
 	e, mock, _ := newTestApp(t)
 
 	hash, _ := services.HashPassword("minha-senha")
-	mock.ExpectQuery("SELECT (.+) FROM users WHERE email").
+	mock.ExpectQuery("SELECT (.+) FROM users u (.+) WHERE u.email").
 		WithArgs("ana@fixpay.com.br").
 		WillReturnRows(userRow(1, "ana@fixpay.com.br", hash, models.RoleAdmin, false))
 
@@ -120,7 +120,7 @@ func TestProtectedRouteWithToken(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	mock.ExpectQuery("SELECT (.+) FROM users WHERE id").
+	mock.ExpectQuery("SELECT (.+) FROM users u (.+) WHERE u.id").
 		WithArgs(int64(1)).
 		WillReturnRows(userRow(1, "ana@fixpay.com.br", "hash", models.RoleVendedor, true))
 
@@ -167,7 +167,7 @@ func TestForgotPasswordAlwaysOK(t *testing.T) {
 	e, mock, _ := newTestApp(t)
 
 	// E-mail inexistente: resposta 200 mesmo assim, sem vazar informação.
-	mock.ExpectQuery("SELECT (.+) FROM users WHERE email").
+	mock.ExpectQuery("SELECT (.+) FROM users u (.+) WHERE u.email").
 		WithArgs("naoexiste@fixpay.com.br").
 		WillReturnError(sql.ErrNoRows)
 
@@ -179,7 +179,7 @@ func TestForgotPasswordAlwaysOK(t *testing.T) {
 func TestForgotPasswordSendsResetEmail(t *testing.T) {
 	e, mock, mailer := newTestApp(t)
 
-	mock.ExpectQuery("SELECT (.+) FROM users WHERE email").
+	mock.ExpectQuery("SELECT (.+) FROM users u (.+) WHERE u.email").
 		WithArgs("ana@fixpay.com.br").
 		WillReturnRows(userRow(1, "ana@fixpay.com.br", "hash", models.RoleAdmin, true))
 	mock.ExpectExec("INSERT INTO password_resets").

@@ -25,6 +25,7 @@ type userRequest struct {
 	Email  string `json:"email"`
 	Role   string `json:"role"`
 	Active *bool  `json:"active"`
+	TeamID *int64 `json:"team_id"`
 }
 
 func (r *userRequest) validate() string {
@@ -75,6 +76,7 @@ func CreateUser(ctx iris.Context) {
 		Email:        req.Email,
 		Role:         req.Role,
 		Active:       true,
+		TeamID:       req.TeamID,
 		PasswordHash: hash,
 	}
 	if err := models.CreateUser(utils.DB, user); err != nil {
@@ -118,6 +120,7 @@ func UpdateUserByID(ctx iris.Context) {
 	user.Name = req.Name
 	user.Email = req.Email
 	user.Role = req.Role
+	user.TeamID = req.TeamID
 	if req.Active != nil {
 		user.Active = *req.Active
 	}
@@ -125,7 +128,12 @@ func UpdateUserByID(ctx iris.Context) {
 		serverError(ctx, err)
 		return
 	}
-	ctx.JSON(user)
+	updated, err := models.UserByID(utils.DB, user.ID)
+	if err != nil {
+		handleDBError(ctx, err)
+		return
+	}
+	ctx.JSON(updated)
 }
 
 // DeactivateUser (admin) desativa o acesso sem apagar o histórico.

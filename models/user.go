@@ -18,6 +18,8 @@ type User struct {
 	Email     string    `json:"email"`
 	Role      string    `json:"role"`
 	Active    bool      `json:"active"`
+	TeamID    *int64    `json:"team_id"`
+	TeamName  string    `json:"team_name,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
 	// PasswordHash nunca é serializado para o front.
@@ -32,11 +34,16 @@ func NormalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
-const userColumns = `id, name, email, role, active, created_at, updated_at, password_hash`
+const userSelect = `
+	SELECT u.id, u.name, u.email, u.role, u.active, u.team_id, COALESCE(t.name,''),
+	       u.created_at, u.updated_at, u.password_hash
+	FROM users u
+	LEFT JOIN teams t ON t.id = u.team_id`
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
-	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.Active, &u.CreatedAt, &u.UpdatedAt, &u.PasswordHash)
+	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.Active, &u.TeamID, &u.TeamName,
+		&u.CreatedAt, &u.UpdatedAt, &u.PasswordHash)
 	if err != nil {
 		return nil, err
 	}
@@ -44,17 +51,17 @@ func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 }
 
 func UserByEmail(db *sql.DB, email string) (*User, error) {
-	row := db.QueryRow(`SELECT `+userColumns+` FROM users WHERE email = $1`, NormalizeEmail(email))
+	row := db.QueryRow(userSelect+` WHERE u.email = $1`, NormalizeEmail(email))
 	return scanUser(row)
 }
 
 func UserByID(db *sql.DB, id int64) (*User, error) {
-	row := db.QueryRow(`SELECT `+userColumns+` FROM users WHERE id = $1`, id)
+	row := db.QueryRow(userSelect+` WHERE u.id = $1`, id)
 	return scanUser(row)
 }
 
 func ListUsers(db *sql.DB) ([]User, error) {
-	rows, err := db.Query(`SELECT ` + userColumns + ` FROM users ORDER BY name`)
+	rows, err := db.Query(userSelect + ` ORDER BY u.name`)
 	if err != nil {
 		return nil, err
 	}
@@ -79,18 +86,18 @@ func CountUsers(db *sql.DB) (int, error) {
 
 func CreateUser(db *sql.DB, u *User) error {
 	return db.QueryRow(`
-		INSERT INTO users (name, email, password_hash, role, active)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO users (name, email, password_hash, role, active, team_id)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, created_at, updated_at`,
-		u.Name, NormalizeEmail(u.Email), u.PasswordHash, u.Role, u.Active,
+		u.Name, NormalizeEmail(u.Email), u.PasswordHash, u.Role, u.Active, u.TeamID,
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 }
 
 func UpdateUser(db *sql.DB, u *User) error {
 	_, err := db.Exec(`
-		UPDATE users SET name = $1, email = $2, role = $3, active = $4, updated_at = NOW()
-		WHERE id = $5`,
-		u.Name, NormalizeEmail(u.Email), u.Role, u.Active, u.ID)
+		UPDATE users SET name = $1, email = $2, role = $3, active = $4, team_id = $5, updated_at = NOW()
+		WHERE id = $6`,
+		u.Name, NormalizeEmail(u.Email), u.Role, u.Active, u.TeamID, u.ID)
 	return err
 }
 

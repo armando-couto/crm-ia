@@ -3,13 +3,26 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, getToken } from '../api'
 import { formatDate, formatMoney, relativeDate } from '../format'
+import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import AdvancedFilters from '../components/AdvancedFilters.vue'
 import ModalDialog from '../components/ModalDialog.vue'
-import type { Company, Contact, Deal, FilterFieldDef, FilterGroup, Paginated, Pipeline, SavedView, User } from '../types'
+import type {
+  Company,
+  Contact,
+  Deal,
+  FilterFieldDef,
+  FilterGroup,
+  FormField,
+  Paginated,
+  Pipeline,
+  SavedView,
+  User
+} from '../types'
 
 const router = useRouter()
 const route = useRoute()
+const auth = useAuthStore()
 const toast = useToastStore()
 
 const pipelines = ref<Pipeline[]>([])
@@ -125,16 +138,79 @@ const activeTab = ref('funil')
 
 const modalOpen = ref(false)
 const saving = ref(false)
-const form = ref({
-  name: '',
-  amount: 0,
-  stage_id: 0,
-  contact_id: null as number | null,
-  company_id: null as number | null,
-  owner_id: null as number | null,
-  temperature: '',
-  close_date: ''
-})
+const form = ref<Record<string, any>>({})
+
+// ===== Formulário dinâmico "Criar Negócio" =====
+const dealFormConfig = ref<FormField[]>([])
+const customizeOpen = ref(false)
+const customizeFields = ref<FormField[]>([])
+
+const dealFieldLabels: Record<string, string> = {
+  name: 'Nome do negócio',
+  pipeline_id: 'Pipeline',
+  stage_id: 'Fase do negócio',
+  amount: 'Valor (R$)',
+  owner_id: 'Proprietário do negócio',
+  temperature: 'Temperatura do deal',
+  contact_id: 'Contato',
+  company_id: 'Empresa',
+  close_date: 'Data de fechamento (previsão)'
+}
+
+const visibleDealFields = computed(() => dealFormConfig.value.filter((f) => f.visible))
+const formPipeline = computed(() => pipelines.value.find((p) => p.id === Number(form.value.pipeline_id)))
+const formStages = computed(() => formPipeline.value?.stages.filter((s) => !s.is_won && !s.is_lost) ?? [])
+
+async function loadDealFormConfig() {
+  try {
+    const resp = await api.get<{ fields: FormField[] }>('/settings/deal-form')
+    dealFormConfig.value = resp.fields ?? []
+  } catch {
+    /* mantém vazio até carregar */
+  }
+}
+
+function onFormPipelineChange() {
+  form.value.stage_id = formStages.value[0]?.id ?? 0
+}
+
+function openCustomize() {
+  customizeFields.value = dealFormConfig.value.map((f) => ({ ...f }))
+  customizeOpen.value = true
+}
+
+function moveField(index: number, delta: number) {
+  const target = index + delta
+  if (target < 0 || target >= customizeFields.value.length) return
+  const next = [...customizeFields.value]
+  ;[next[index], next[target]] = [next[target], next[index]]
+  customizeFields.value = next
+}
+
+const lockedDealFields = ['name', 'pipeline_id', 'stage_id']
+
+async function saveCustomize() {
+  saving.value = true
+  try {
+    const resp = await api.put<{ fields: FormField[] }>('/settings/deal-form', { fields: customizeFields.value })
+    dealFormConfig.value = resp.fields
+    toast.push('Formulário personalizado para toda a equipe')
+    customizeOpen.value = false
+  } catch (e: any) {
+    toast.error(e.message)
+  } finally {
+    saving.value = false
+  }
+}
+
+function missingRequired(): string {
+  for (const f of visibleDealFields.value) {
+    if (f.required && !String(form.value[f.key] ?? '').trim()) {
+      return `preencha o campo ${dealFieldLabels[f.key] || f.key}`
+    }
+  }
+  return ''
+}
 
 const pipeline = computed(() => pipelines.value.find((p) => p.id === pipelineId.value))
 const openStages = computed(() => pipeline.value?.stages.filter((s) => !s.is_won && !s.is_lost) ?? [])
@@ -429,6 +505,7 @@ function openNew(stageId?: number) {
   form.value = {
     name: '',
     amount: 0,
+    pipeline_id: pipelineId.value,
     stage_id: stageId || openStages.value[0]?.id || 0,
     contact_id: null,
     company_id: null,
@@ -439,17 +516,39 @@ function openNew(stageId?: number) {
   modalOpen.value = true
 }
 
-async function save() {
+async function save(addAnother = false) {
+  const msg = missingRequired()
+  if (msg) {
+    toast.error(msg)
+    return
+  }
   saving.value = true
   try {
     await api.post('/deals', {
       ...form.value,
       amount: Number(form.value.amount) || 0,
-      pipeline_id: pipelineId.value
+      pipeline_id: Number(form.value.pipeline_id) || pipelineId.value,
+      stage_id: Number(form.value.stage_id) || 0
     })
     toast.push('Negócio criado')
-    modalOpen.value = false
-    await loadBoard()
+    if (addAnother) {
+      const keepPipeline = form.value.pipeline_id
+      const keepStage = form.value.stage_id
+      form.value = {
+        name: '',
+        amount: 0,
+        pipeline_id: keepPipeline,
+        stage_id: keepStage,
+        contact_id: null,
+        company_id: null,
+        owner_id: null,
+        temperature: '',
+        close_date: ''
+      }
+    } else {
+      modalOpen.value = false
+    }
+    await reload()
   } catch (e: any) {
     toast.error(e.message)
   } finally {
@@ -459,7 +558,7 @@ async function save() {
 
 onMounted(async () => {
   try {
-    await loadPipelines()
+    await Promise.all([loadPipelines(), loadDealFormConfig()])
     if (viewMode.value === 'lista') {
       await loadList()
     } else {
@@ -754,68 +853,101 @@ onMounted(async () => {
       @apply="applyAdvanced"
     />
 
-    <ModalDialog title="Novo negócio" :open="modalOpen" wide @close="modalOpen = false">
-      <form @submit.prevent="save">
-        <div class="form-row">
-          <div class="field">
-            <label>Nome *</label>
-            <input v-model="form.name" required placeholder="ex.: Adquirência - Loja X" />
+    <!-- ===== Drawer "Criar Negócio" (formulário personalizável) ===== -->
+    <Teleport to="body">
+      <div v-if="modalOpen" class="create-overlay" @mousedown.self="modalOpen = false">
+        <aside class="create-drawer">
+          <header class="create-head">
+            <h2>Criar Negócio</h2>
+            <button type="button" class="create-close" aria-label="Fechar" @click="modalOpen = false">×</button>
+          </header>
+
+          <div class="create-body">
+            <button v-if="auth.canManage" type="button" class="customize-link" @click="openCustomize">
+              ⚙ Editar este formulário
+            </button>
+
+            <template v-for="f in visibleDealFields" :key="f.key">
+              <div class="field">
+                <label>{{ dealFieldLabels[f.key] }} <template v-if="f.required">*</template></label>
+
+                <select v-if="f.key === 'pipeline_id'" v-model.number="form.pipeline_id" @change="onFormPipelineChange">
+                  <option v-for="p in pipelines" :key="p.id" :value="p.id">{{ p.name }}</option>
+                </select>
+
+                <select v-else-if="f.key === 'stage_id'" v-model.number="form.stage_id">
+                  <option v-for="s in formStages" :key="s.id" :value="s.id">{{ s.name }}</option>
+                </select>
+
+                <input v-else-if="f.key === 'amount'" v-model.number="form.amount" type="number" min="0" step="0.01" />
+
+                <select v-else-if="f.key === 'owner_id'" v-model="form.owner_id">
+                  <option :value="null">Eu</option>
+                  <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
+                </select>
+
+                <select v-else-if="f.key === 'temperature'" v-model="form.temperature">
+                  <option value="">—</option>
+                  <option value="quente">🔴 Quente</option>
+                  <option value="media">🟡 Média</option>
+                  <option value="fria">🔵 Fria</option>
+                </select>
+
+                <select v-else-if="f.key === 'contact_id'" v-model="form.contact_id">
+                  <option :value="null">Sem contato</option>
+                  <option v-for="c in contacts" :key="c.id" :value="c.id">{{ c.first_name }} {{ c.last_name }}</option>
+                </select>
+
+                <select v-else-if="f.key === 'company_id'" v-model="form.company_id">
+                  <option :value="null">Sem empresa</option>
+                  <option v-for="co in companies" :key="co.id" :value="co.id">{{ co.name }}</option>
+                </select>
+
+                <input v-else-if="f.key === 'close_date'" v-model="form.close_date" type="date" />
+
+                <input v-else v-model="form.name" placeholder="ex.: Adquirência - Loja X" />
+              </div>
+            </template>
           </div>
-          <div class="field">
-            <label>Valor (R$)</label>
-            <input v-model.number="form.amount" type="number" min="0" step="0.01" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label>Etapa</label>
-            <select v-model.number="form.stage_id">
-              <option v-for="s in openStages" :key="s.id" :value="s.id">{{ s.name }}</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Temperatura do deal</label>
-            <select v-model="form.temperature">
-              <option value="">—</option>
-              <option value="quente">🔴 Quente</option>
-              <option value="media">🟡 Média</option>
-              <option value="fria">🔵 Fria</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label>Contato</label>
-            <select v-model="form.contact_id">
-              <option :value="null">Sem contato</option>
-              <option v-for="c in contacts" :key="c.id" :value="c.id">{{ c.first_name }} {{ c.last_name }}</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Empresa</label>
-            <select v-model="form.company_id">
-              <option :value="null">Sem empresa</option>
-              <option v-for="co in companies" :key="co.id" :value="co.id">{{ co.name }}</option>
-            </select>
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label>Dono</label>
-            <select v-model="form.owner_id">
-              <option :value="null">Eu</option>
-              <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Previsão de fechamento</label>
-            <input v-model="form.close_date" type="date" />
-          </div>
-        </div>
-        <button class="btn btn-primary" type="submit" :disabled="saving" style="width: 100%; justify-content: center">
-          {{ saving ? 'Salvando…' : 'Criar negócio' }}
-        </button>
-      </form>
+
+          <footer class="create-foot">
+            <button class="btn btn-primary" type="button" :disabled="saving" @click="save(false)">
+              {{ saving ? 'Salvando…' : 'Criar' }}
+            </button>
+            <button class="btn btn-outline" type="button" :disabled="saving" @click="save(true)">
+              Criar e adicionar outro
+            </button>
+            <button class="btn" type="button" @click="modalOpen = false">Cancelar</button>
+          </footer>
+        </aside>
+      </div>
+    </Teleport>
+
+    <ModalDialog title="Personalizar formulário de negócio" :open="customizeOpen" @close="customizeOpen = false">
+      <p class="muted" style="margin-top: 0; font-size: 13px">
+        Escolha os campos, a ordem e quais são obrigatórios. Vale para toda a equipe.
+        Nome, pipeline e fase são sempre obrigatórios.
+      </p>
+      <ul class="customize-list">
+        <li v-for="(f, i) in customizeFields" :key="f.key">
+          <span class="cf-order">
+            <button type="button" :disabled="i === 0" @click="moveField(i, -1)">↑</button>
+            <button type="button" :disabled="i === customizeFields.length - 1" @click="moveField(i, 1)">↓</button>
+          </span>
+          <span class="cf-name">{{ dealFieldLabels[f.key] }}</span>
+          <label class="cf-check" :class="{ locked: lockedDealFields.includes(f.key) }">
+            <input type="checkbox" v-model="f.visible" :disabled="lockedDealFields.includes(f.key)" />
+            Exibir
+          </label>
+          <label class="cf-check" :class="{ locked: lockedDealFields.includes(f.key) }">
+            <input type="checkbox" v-model="f.required" :disabled="lockedDealFields.includes(f.key) || !f.visible" />
+            Obrigatório
+          </label>
+        </li>
+      </ul>
+      <button class="btn btn-primary" type="button" :disabled="saving" style="width: 100%; justify-content: center" @click="saveCustomize">
+        {{ saving ? 'Salvando…' : 'Salvar formulário' }}
+      </button>
     </ModalDialog>
   </div>
 </template>
@@ -1194,6 +1326,145 @@ onMounted(async () => {
   border-left-color: var(--fix-border);
   cursor: pointer;
   opacity: 0.85;
+}
+
+/* ===== Drawer Criar Negócio ===== */
+.create-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(34, 20, 60, 0.35);
+  z-index: 160;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.create-drawer {
+  width: min(420px, 100vw);
+  background: var(--fix-surface);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  box-shadow: var(--shadow-lg);
+  animation: create-in 0.2s ease-out;
+}
+
+@keyframes create-in {
+  from {
+    transform: translateX(30px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.create-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 22px;
+  background: var(--fix-purple);
+}
+
+.create-head h2 {
+  font-size: 17px;
+  color: #fff;
+}
+
+.create-close {
+  border: none;
+  background: none;
+  font-size: 24px;
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.create-close:hover {
+  color: #fff;
+}
+
+.create-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 22px;
+}
+
+.customize-link {
+  display: block;
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--fix-purple);
+  font-size: 13px;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+
+.customize-link:hover {
+  text-decoration: underline;
+}
+
+.create-foot {
+  display: flex;
+  gap: 10px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--fix-border);
+}
+
+.customize-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.customize-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--fix-bg);
+  font-size: 13px;
+}
+
+.cf-order {
+  display: flex;
+  gap: 2px;
+}
+
+.cf-order button {
+  border: 1px solid var(--fix-border);
+  background: var(--fix-surface);
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 11px;
+  width: 22px;
+  height: 22px;
+}
+
+.cf-order button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.cf-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.cf-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  color: var(--fix-text-2);
+}
+
+.cf-check.locked {
+  opacity: 0.55;
 }
 
 .board-bottom {

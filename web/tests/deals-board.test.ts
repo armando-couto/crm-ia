@@ -199,3 +199,63 @@ describe('DealsBoardView - visão de lista', () => {
     wrapper.unmount()
   })
 })
+
+describe('DealsBoardView - drawer Criar Negócio', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    localStorage.removeItem('fixcrm_deals_view')
+  })
+
+  const dealFormFields = [
+    { key: 'name', visible: true, required: true },
+    { key: 'pipeline_id', visible: true, required: true },
+    { key: 'stage_id', visible: true, required: true },
+    { key: 'amount', visible: true, required: false },
+    { key: 'temperature', visible: false, required: false },
+    { key: 'owner_id', visible: false, required: false },
+    { key: 'contact_id', visible: false, required: false },
+    { key: 'company_id', visible: false, required: false },
+    { key: 'close_date', visible: false, required: false }
+  ]
+
+  function stubFetchWithForm() {
+    return vi.fn().mockImplementation((url: string) => {
+      const u = String(url)
+      let body: unknown = []
+      if (u.includes('/settings/deal-form')) {
+        body = { fields: dealFormFields }
+      } else if (u.includes('/pipelines')) {
+        body = pipelines
+      } else if (u.includes('/deals/board')) {
+        body = { data: deals }
+      } else if (u.includes('/views?entity=deals')) {
+        body = []
+      } else if (u.includes('/contacts?') || u.includes('/companies?')) {
+        body = { data: [], pagination: { page: 1, per_page: 100, total: 0 } }
+      }
+      return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body)) })
+    })
+  }
+
+  it('abre o drawer com os campos configurados, na ordem, ocultando os desativados', async () => {
+    vi.stubGlobal('fetch', stubFetchWithForm())
+    const wrapper = mount(DealsBoardView, {
+      global: { stubs: { 'router-link': { template: '<a><slot /></a>' }, Teleport: true } }
+    })
+    await flushPromises()
+
+    await wrapper.find('.page-head .btn-primary').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.create-drawer').exists()).toBe(true)
+    const labels = wrapper.findAll('.create-body .field label').map((l) => l.text())
+    expect(labels[0]).toContain('Nome do negócio')
+    expect(labels[1]).toContain('Pipeline')
+    expect(labels[2]).toContain('Fase do negócio')
+    expect(labels.join(' ')).toContain('Valor')
+    expect(labels.join(' ')).not.toContain('Temperatura') // oculto na config
+    expect(wrapper.text()).toContain('Criar e adicionar outro')
+    expect(wrapper.text()).toContain('Cancelar')
+    wrapper.unmount()
+  })
+})

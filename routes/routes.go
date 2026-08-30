@@ -130,6 +130,8 @@ func Register(app *iris.Application) {
 
 	auth.Get("/settings/contact-form", controllers.GetContactForm)
 	gestao.Put("/settings/contact-form", controllers.UpdateContactForm)
+	auth.Get("/settings/deal-form", controllers.GetDealForm)
+	gestao.Put("/settings/deal-form", controllers.UpdateDealForm)
 
 	auth.Get("/views", controllers.ListViews)
 	auth.Post("/views", controllers.CreateView)

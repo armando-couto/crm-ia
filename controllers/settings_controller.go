@@ -51,6 +51,47 @@ func UpdateContactForm(ctx iris.Context) {
 	ctx.JSON(iris.Map{"fields": req.Fields})
 }
 
+const dealFormKey = "deal_form"
+
+// GetDealForm devolve a configuração do formulário de criação de negócio.
+func GetDealForm(ctx iris.Context) {
+	var fields []models.FormField
+	found, err := models.GetSetting(utils.DB, dealFormKey, &fields)
+	if err != nil {
+		serverError(ctx, err)
+		return
+	}
+	if !found {
+		fields = models.DefaultDealForm()
+	}
+	ctx.JSON(iris.Map{"fields": fields})
+}
+
+// UpdateDealForm (admin/gestor) personaliza os campos do formulário de negócio.
+func UpdateDealForm(ctx iris.Context) {
+	var req struct {
+		Fields []models.FormField `json:"fields"`
+	}
+	if err := ctx.ReadJSON(&req); err != nil {
+		badRequest(ctx, "dados inválidos")
+		return
+	}
+	if err := models.ValidateDealForm(req.Fields); err != nil {
+		badRequest(ctx, err.Error())
+		return
+	}
+
+	var userID *int64
+	if claims := middlewareClaims(ctx); claims != nil {
+		userID = &claims.UserID
+	}
+	if err := models.SetSetting(utils.DB, dealFormKey, req.Fields, userID); err != nil {
+		serverError(ctx, err)
+		return
+	}
+	ctx.JSON(iris.Map{"fields": req.Fields})
+}
+
 // ListViews lista as visualizações salvas de uma entidade; sem entity, todas.
 func ListViews(ctx iris.Context) {
 	entity := ctx.URLParam("entity")

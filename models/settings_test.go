@@ -78,3 +78,48 @@ func TestCompanyOrderBy(t *testing.T) {
 		}
 	}
 }
+
+func TestDefaultDealFormIsValid(t *testing.T) {
+	if err := ValidateDealForm(DefaultDealForm()); err != nil {
+		t.Fatalf("configuração padrão deveria ser válida: %v", err)
+	}
+}
+
+func TestValidateDealForm(t *testing.T) {
+	base := func() []FormField {
+		return []FormField{
+			{Key: "name", Visible: true, Required: true},
+			{Key: "pipeline_id", Visible: true, Required: true},
+			{Key: "stage_id", Visible: true, Required: true},
+		}
+	}
+
+	if err := ValidateDealForm(base()); err != nil {
+		t.Errorf("mínima válida deveria passar: %v", err)
+	}
+
+	// Ocultar a fase quebra a criação: inválido.
+	broken := base()
+	broken[2].Visible = false
+	if err := ValidateDealForm(broken); err == nil {
+		t.Error("fase oculta deveria ser inválida")
+	}
+
+	// Pipeline opcional: inválido.
+	broken = base()
+	broken[1].Required = false
+	if err := ValidateDealForm(broken); err == nil {
+		t.Error("pipeline opcional deveria ser inválido")
+	}
+
+	// Sem o campo nome na configuração: inválido.
+	if err := ValidateDealForm(base()[1:]); err == nil {
+		t.Error("configuração sem o nome deveria ser inválida")
+	}
+
+	// Campo desconhecido: inválido.
+	unknown := append(base(), FormField{Key: "sdr", Visible: true})
+	if err := ValidateDealForm(unknown); err == nil {
+		t.Error("campo desconhecido deveria ser inválido")
+	}
+}

@@ -12,19 +12,44 @@ import (
 	"github.com/kataras/iris/v12"
 )
 
-func ListDeals(ctx iris.Context) {
+// dealFilterFromQuery monta o filtro de listagem/exportação, com 400 em af inválido.
+func dealFilterFromQuery(ctx iris.Context) (models.DealFilter, bool) {
 	f := models.DealFilter{
-		Search:     ctx.URLParam("q"),
-		PipelineID: ctx.URLParamInt64Default("pipeline_id", 0),
-		StageID:    ctx.URLParamInt64Default("stage_id", 0),
-		OwnerID:    ctx.URLParamInt64Default("owner_id", 0),
-		Status:     ctx.URLParam("status"),
-		ContactID:  ctx.URLParamInt64Default("contact_id", 0),
-		CompanyID:  ctx.URLParamInt64Default("company_id", 0),
+		Search:       ctx.URLParam("q"),
+		PipelineID:   ctx.URLParamInt64Default("pipeline_id", 0),
+		StageID:      ctx.URLParamInt64Default("stage_id", 0),
+		OwnerID:      ctx.URLParamInt64Default("owner_id", 0),
+		Status:       ctx.URLParam("status"),
+		ContactID:    ctx.URLParamInt64Default("contact_id", 0),
+		CompanyID:    ctx.URLParamInt64Default("company_id", 0),
+		Temperature:  ctx.URLParam("temperature"),
+		CreatedDays:  ctx.URLParamIntDefault("criado_dias", 0),
+		InactiveDays: ctx.URLParamIntDefault("sem_atividade_dias", 0),
+		CloseWindow:  ctx.URLParam("fechamento"),
+		SortBy:       ctx.URLParam("sort"),
+		SortDir:      ctx.URLParam("dir"),
 		Pagination: models.Pagination{
 			Page:    ctx.URLParamIntDefault("page", 1),
 			PerPage: ctx.URLParamIntDefault("per_page", 25),
 		},
+	}
+	if !models.ValidDealTemperature(f.Temperature) {
+		badRequest(ctx, "temperatura inválida (fria, media ou quente)")
+		return f, false
+	}
+	adv, err := models.ParseAdvancedFilters(ctx.URLParam("af"), models.DealFilterFieldsSpec)
+	if err != nil {
+		badRequest(ctx, err.Error())
+		return f, false
+	}
+	f.Advanced = adv
+	return f, true
+}
+
+func ListDeals(ctx iris.Context) {
+	f, ok := dealFilterFromQuery(ctx)
+	if !ok {
+		return
 	}
 	list, total, err := models.ListDeals(utils.DB, f)
 	if err != nil {
@@ -76,19 +101,11 @@ func DealsBoard(ctx iris.Context) {
 
 // ExportDeals exporta os negócios filtrados em CSV.
 func ExportDeals(ctx iris.Context) {
-	f := models.DealFilter{
-		Search:     ctx.URLParam("q"),
-		PipelineID: ctx.URLParamInt64Default("pipeline_id", 0),
-		OwnerID:    ctx.URLParamInt64Default("owner_id", 0),
-		Status:     ctx.URLParam("status"),
-		Pagination: models.Pagination{Page: 1, PerPage: 100},
-	}
-	adv, err := models.ParseAdvancedFilters(ctx.URLParam("af"), models.DealFilterFieldsSpec)
-	if err != nil {
-		badRequest(ctx, err.Error())
+	f, ok := dealFilterFromQuery(ctx)
+	if !ok {
 		return
 	}
-	f.Advanced = adv
+	f.Pagination = models.Pagination{Page: 1, PerPage: 100}
 
 	ctx.Header("Content-Type", "text/csv; charset=utf-8")
 	ctx.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="negocios-%s.csv"`, time.Now().Format("2006-01-02")))

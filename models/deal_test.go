@@ -79,3 +79,19 @@ func TestCreateDealDefaults(t *testing.T) {
 		t.Fatalf("status padrão deveria ser aberto, obtido %s", d.Status)
 	}
 }
+
+// A ordenação da lista de negócios vem da URL: whitelist obrigatória.
+func TestDealOrderBy(t *testing.T) {
+	cases := []struct{ sortBy, sortDir, want string }{
+		{"", "", "d.updated_at DESC NULLS LAST"},
+		{"amount", "desc", "d.amount DESC NULLS LAST"},
+		{"close_date", "asc", "d.close_date ASC NULLS LAST"},
+		{"last_activity", "", "last_activity_at DESC NULLS LAST"},
+		{"amount; DROP TABLE deals", "asc", "d.updated_at ASC NULLS LAST"},
+	}
+	for _, c := range cases {
+		if got := dealOrderBy(c.sortBy, c.sortDir); got != c.want {
+			t.Errorf("dealOrderBy(%q, %q) = %q, esperado %q", c.sortBy, c.sortDir, got, c.want)
+		}
+	}
+}

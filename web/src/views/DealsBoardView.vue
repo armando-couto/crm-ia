@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api, getToken } from '../api'
-import { formatMoney, relativeDate } from '../format'
+import { formatDate, formatMoney, relativeDate } from '../format'
 import { useToastStore } from '../stores/toast'
 import AdvancedFilters from '../components/AdvancedFilters.vue'
 import ModalDialog from '../components/ModalDialog.vue'
@@ -24,6 +24,39 @@ const temperatureFilter = ref('')
 const createdFilter = ref(0)
 const activityFilter = ref(0)
 const closeWindowFilter = ref('')
+
+// ===== Modo de visualização: kanban ⇄ lista =====
+const VIEW_MODE_KEY = 'fixcrm_deals_view'
+
+function loadViewMode(): 'kanban' | 'lista' {
+  try {
+    return localStorage.getItem(VIEW_MODE_KEY) === 'lista' ? 'lista' : 'kanban'
+  } catch {
+    return 'kanban'
+  }
+}
+
+const viewMode = ref<'kanban' | 'lista'>(loadViewMode())
+
+function setViewMode(mode: 'kanban' | 'lista') {
+  viewMode.value = mode
+  try {
+    localStorage.setItem(VIEW_MODE_KEY, mode)
+  } catch {
+    /* preferência só em memória */
+  }
+  reload()
+}
+
+// ===== Estado da lista =====
+const listDeals = ref<Deal[]>([])
+const listTotal = ref(0)
+const listPage = ref(1)
+const listPerPage = ref(25)
+const listSortBy = ref('updated_at')
+const listSortDir = ref<'asc' | 'desc'>('desc')
+
+const statusBadge: Record<string, string> = { aberto: 'blue', ganho: 'green', perdido: 'red' }
 
 // ===== Filtros avançados =====
 const advOpen = ref(false)
@@ -78,7 +111,7 @@ const advFields = computed<FilterFieldDef[]>(() => [
 
 function applyAdvanced(groups: FilterGroup[]) {
   advGroups.value = groups
-  loadBoard()
+  reload()
 }
 
 const users = ref<User[]>([])
@@ -112,7 +145,7 @@ const temperatureDot: Record<string, string> = { quente: '#d64550', media: '#c78
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 watch(search, () => {
   if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(loadBoard, 300)
+  searchTimer = setTimeout(reload, 300)
 })
 
 function dealsInStage(stageId: number): Deal[] {
@@ -165,6 +198,85 @@ async function loadBoard() {
   }
 }
 
+function listQuery(): string {
+  const params = new URLSearchParams({
+    pipeline_id: String(pipelineId.value),
+    page: String(listPage.value),
+    per_page: String(listPerPage.value),
+    sort: listSortBy.value,
+    dir: listSortDir.value
+  })
+  if (search.value.trim()) params.set('q', search.value.trim())
+  if (ownerFilter.value) params.set('owner_id', String(ownerFilter.value))
+  if (temperatureFilter.value) params.set('temperature', temperatureFilter.value)
+  if (createdFilter.value) params.set('criado_dias', String(createdFilter.value))
+  if (activityFilter.value) params.set('sem_atividade_dias', String(activityFilter.value))
+  if (closeWindowFilter.value) params.set('fechamento', closeWindowFilter.value)
+  if (advGroups.value.length) params.set('af', JSON.stringify({ groups: advGroups.value }))
+  return params.toString()
+}
+
+async function loadList() {
+  if (!pipelineId.value) return
+  loading.value = true
+  try {
+    const resp = await api.get<Paginated<Deal>>(`/deals?${listQuery()}`)
+    listDeals.value = resp.data
+    listTotal.value = resp.pagination.total
+  } catch (e: any) {
+    toast.error(e.message)
+  } finally {
+    loading.value = false
+  }
+}
+
+// reload recarrega o modo ativo (kanban ou lista) com os filtros atuais.
+function reload() {
+  listPage.value = 1
+  if (viewMode.value === 'lista') {
+    loadList()
+  } else {
+    loadBoard()
+  }
+}
+
+function sortListBy(column: string) {
+  if (listSortBy.value === column) {
+    listSortDir.value = listSortDir.value === 'asc' ? 'desc' : 'asc'
+  } else {
+    listSortBy.value = column
+    listSortDir.value = 'desc'
+  }
+  loadList()
+}
+
+function listSortIcon(column: string): string {
+  if (listSortBy.value !== column) return ''
+  return listSortDir.value === 'asc' ? '↑' : '↓'
+}
+
+const listPageCount = computed(() => Math.max(1, Math.ceil(listTotal.value / listPerPage.value)))
+const listPageNumbers = computed(() => {
+  const count = listPageCount.value
+  const current = listPage.value
+  const pages: (number | '…')[] = []
+  let last = 0
+  for (let i = 1; i <= count; i++) {
+    if (i === 1 || i === count || Math.abs(i - current) <= 2) {
+      if (last && i - last > 1) pages.push('…')
+      pages.push(i)
+      last = i
+    }
+  }
+  return pages
+})
+
+function goToListPage(p: number | '…') {
+  if (p === '…' || p === listPage.value) return
+  listPage.value = p
+  loadList()
+}
+
 // ===== Visualizações salvas =====
 const hasActiveFilters = computed(
   () =>
@@ -185,6 +297,9 @@ function applyFilters(filters: Record<string, any>) {
   activityFilter.value = Number(filters.sem_atividade_dias) || 0
   closeWindowFilter.value = filters.fechamento ?? ''
   advGroups.value = Array.isArray(filters.af) ? filters.af : []
+  if (filters.modo === 'lista' || filters.modo === 'kanban') {
+    viewMode.value = filters.modo
+  }
   if (filters.pipeline_id && pipelines.value.some((p) => p.id === Number(filters.pipeline_id))) {
     pipelineId.value = Number(filters.pipeline_id)
   }
@@ -198,7 +313,7 @@ function selectTab(key: string) {
   } else {
     applyFilters({})
   }
-  loadBoard()
+  reload()
 }
 
 async function saveCurrentView() {
@@ -216,6 +331,7 @@ async function saveCurrentView() {
         sem_atividade_dias: activityFilter.value,
         fechamento: closeWindowFilter.value,
         af: advGroups.value,
+        modo: viewMode.value,
         pipeline_id: pipelineId.value
       }
     })
@@ -343,7 +459,11 @@ async function save() {
 onMounted(async () => {
   try {
     await loadPipelines()
-    await loadBoard()
+    if (viewMode.value === 'lista') {
+      await loadList()
+    } else {
+      await loadBoard()
+    }
     const [usersResp, contactsResp, companiesResp, viewsResp] = await Promise.all([
       api.get<User[]>('/users'),
       api.get<Paginated<Contact>>('/contacts?per_page=100'),
@@ -366,6 +486,24 @@ onMounted(async () => {
     <div class="page-head board-head">
       <h1>Negócios</h1>
       <div class="toolbar">
+        <span class="view-toggle" role="group" aria-label="Modo de visualização">
+          <button
+            type="button"
+            :class="{ active: viewMode === 'kanban' }"
+            title="Visão de quadro (kanban)"
+            @click="setViewMode('kanban')"
+          >
+            ▦ Quadro
+          </button>
+          <button
+            type="button"
+            :class="{ active: viewMode === 'lista' }"
+            title="Visão de lista"
+            @click="setViewMode('lista')"
+          >
+            ☰ Lista
+          </button>
+        </span>
         <button class="btn btn-outline" type="button" @click="exportCSV">Exportar</button>
         <button class="btn btn-primary" type="button" @click="openNew()">+ Novo negócio</button>
       </div>
@@ -396,33 +534,33 @@ onMounted(async () => {
 
     <!-- Filtros rápidos -->
     <div class="toolbar filters">
-      <select v-model.number="pipelineId" @change="loadBoard">
+      <select v-model.number="pipelineId" @change="reload">
         <option v-for="p in pipelines" :key="p.id" :value="p.id">{{ p.name }}</option>
       </select>
       <input v-model="search" type="search" placeholder="Pesquisar negócios…" />
-      <select v-model.number="ownerFilter" @change="loadBoard">
+      <select v-model.number="ownerFilter" @change="reload">
         <option :value="0">Proprietário do negócio</option>
         <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
       </select>
-      <select v-model="temperatureFilter" @change="loadBoard">
+      <select v-model="temperatureFilter" @change="reload">
         <option value="">Temperatura</option>
         <option value="quente">🔴 Quente</option>
         <option value="media">🟡 Média</option>
         <option value="fria">🔵 Fria</option>
       </select>
-      <select v-model.number="createdFilter" @change="loadBoard">
+      <select v-model.number="createdFilter" @change="reload">
         <option :value="0">Data de criação</option>
         <option :value="7">Últimos 7 dias</option>
         <option :value="30">Últimos 30 dias</option>
         <option :value="90">Últimos 90 dias</option>
       </select>
-      <select v-model.number="activityFilter" @change="loadBoard">
+      <select v-model.number="activityFilter" @change="reload">
         <option :value="0">Última atividade</option>
         <option :value="7">Sem atividade há 7+ dias</option>
         <option :value="30">Sem atividade há 30+ dias</option>
         <option :value="45">Sem atividade há 45+ dias</option>
       </select>
-      <select v-model="closeWindowFilter" @change="loadBoard">
+      <select v-model="closeWindowFilter" @change="reload">
         <option value="">Data de fechamento</option>
         <option value="fecham_mes">Fecham este mês</option>
         <option value="previsao_vencida">Previsão vencida</option>
@@ -438,6 +576,77 @@ onMounted(async () => {
 
     <div v-if="loading" class="muted board-loading">Carregando negócios…</div>
 
+    <!-- ===== Visão de lista ===== -->
+    <div v-else-if="viewMode === 'lista'" class="table-wrap list-view">
+      <table class="data">
+        <thead>
+          <tr>
+            <th class="sortable" @click="sortListBy('name')">Nome do negócio {{ listSortIcon('name') }}</th>
+            <th>Etapa</th>
+            <th class="sortable" @click="sortListBy('amount')">Valor {{ listSortIcon('amount') }}</th>
+            <th>Temperatura</th>
+            <th>Proprietário</th>
+            <th>Empresa / Contato</th>
+            <th class="sortable" @click="sortListBy('last_activity')">Última atividade {{ listSortIcon('last_activity') }}</th>
+            <th class="sortable" @click="sortListBy('close_date')">Fechamento {{ listSortIcon('close_date') }}</th>
+            <th class="sortable" @click="sortListBy('created_at')">Criado em {{ listSortIcon('created_at') }}</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="d in listDeals" :key="d.id" @click="router.push(`/negocios/${d.id}`)">
+            <td><strong>{{ d.name }}</strong></td>
+            <td>
+              <span class="badge" :class="statusBadge[d.status]">
+                {{ d.status === 'aberto' ? d.stage_name : d.status }}
+              </span>
+            </td>
+            <td>{{ formatMoney(d.amount) }}</td>
+            <td>
+              <span v-if="d.temperature" class="temp">
+                <span class="temp-dot" :style="{ background: temperatureDot[d.temperature] }"></span>
+                {{ temperatureLabels[d.temperature] }}
+              </span>
+              <span v-else class="muted">—</span>
+            </td>
+            <td :class="{ muted: !d.owner_name }">{{ d.owner_name || 'Nenhum proprietário' }}</td>
+            <td class="muted">{{ d.company_name || d.contact_name || '—' }}</td>
+            <td class="muted">{{ d.last_activity_at ? relativeDate(d.last_activity_at) : '—' }}</td>
+            <td class="muted">{{ formatDate(d.close_date) }}</td>
+            <td class="muted">{{ formatDate(d.created_at) }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <div v-if="!listDeals.length" class="empty-state">
+        <strong>Nenhum negócio encontrado</strong>
+        Ajuste os filtros ou crie o primeiro negócio.
+      </div>
+
+      <div class="pager" v-if="listPageCount > 1 || listTotal > 25">
+        <button class="btn btn-outline btn-sm" :disabled="listPage === 1" @click="goToListPage(listPage - 1)">‹ Voltar</button>
+        <button
+          v-for="(p, i) in listPageNumbers"
+          :key="`${p}-${i}`"
+          type="button"
+          class="page-btn"
+          :class="{ current: p === listPage, dots: p === '…' }"
+          :disabled="p === '…'"
+          @click="goToListPage(p)"
+        >
+          {{ p }}
+        </button>
+        <button class="btn btn-outline btn-sm" :disabled="listPage >= listPageCount" @click="goToListPage(listPage + 1)">
+          Próximo ›
+        </button>
+        <select v-model.number="listPerPage" @change="listPage = 1; loadList()">
+          <option :value="25">25 por página</option>
+          <option :value="50">50 por página</option>
+          <option :value="100">100 por página</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- ===== Visão de quadro (kanban) ===== -->
     <div v-else class="board">
       <div
         v-for="stage in openStages"
@@ -526,7 +735,9 @@ onMounted(async () => {
     </div>
 
     <div class="board-bottom" v-if="!loading">
-      <span class="badge gray">{{ totalDeals }} negócio(s) no quadro</span>
+      <span class="badge gray">
+        {{ viewMode === 'lista' ? `${listTotal} negócio(s)` : `${totalDeals} negócio(s) no quadro` }}
+      </span>
     </div>
 
     <AdvancedFilters
@@ -702,6 +913,80 @@ onMounted(async () => {
 
 .board-loading {
   padding: 24px 0;
+}
+
+.view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--fix-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.view-toggle button {
+  border: none;
+  background: var(--fix-surface);
+  padding: 8px 14px;
+  font-size: 13px;
+  color: var(--fix-text-2);
+  cursor: pointer;
+}
+
+.view-toggle button.active {
+  background: var(--fix-purple);
+  color: #fff;
+  font-weight: 600;
+}
+
+.list-view {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.pager {
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.page-btn {
+  min-width: 30px;
+  height: 30px;
+  border: none;
+  background: none;
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--fix-text-2);
+  cursor: pointer;
+}
+
+.page-btn:hover:not(.current):not(.dots) {
+  background: var(--fix-purple-tint);
+}
+
+.page-btn.current {
+  background: var(--fix-purple);
+  color: #fff;
+  font-weight: 600;
+}
+
+.page-btn.dots {
+  cursor: default;
+}
+
+.pager select {
+  padding: 5px 8px;
+  border: 1px solid var(--fix-border);
+  border-radius: 8px;
+  font-size: 13px;
+  margin-left: 8px;
+}
+
+.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+
+.sortable:hover {
+  color: var(--fix-purple);
 }
 
 .board {

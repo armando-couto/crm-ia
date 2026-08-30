@@ -145,3 +145,57 @@ describe('DealsBoardView', () => {
     wrapper.unmount()
   })
 })
+
+describe('DealsBoardView - visão de lista', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    localStorage.removeItem('fixcrm_deals_view')
+  })
+
+  function stubFetchWithList() {
+    return vi.fn().mockImplementation((url: string) => {
+      const u = String(url)
+      let body: unknown = []
+      if (u.includes('/pipelines')) {
+        body = pipelines
+      } else if (u.includes('/deals/board')) {
+        body = { data: deals }
+      } else if (u.includes('/deals?')) {
+        body = { data: deals, pagination: { page: 1, per_page: 25, total: 2 } }
+      } else if (u.includes('/views?entity=deals')) {
+        body = []
+      } else if (u.includes('/contacts?') || u.includes('/companies?')) {
+        body = { data: [], pagination: { page: 1, per_page: 100, total: 0 } }
+      }
+      return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body)) })
+    })
+  }
+
+  it('alterna do quadro para a lista e mostra a tabela', async () => {
+    vi.stubGlobal('fetch', stubFetchWithList())
+    const wrapper = mount(DealsBoardView, {
+      global: { stubs: { 'router-link': { template: '<a><slot /></a>' }, Teleport: true } }
+    })
+    await flushPromises()
+
+    // Começa no quadro
+    expect(wrapper.find('.board').exists()).toBe(true)
+    expect(wrapper.find('.list-view').exists()).toBe(false)
+
+    const listBtn = wrapper.findAll('.view-toggle button')[1]
+    await listBtn.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.list-view').exists()).toBe(true)
+    expect(wrapper.find('.board').exists()).toBe(false)
+    const headers = wrapper.findAll('.list-view th').map((h) => h.text())
+    expect(headers.join(' ')).toContain('Nome do negócio')
+    expect(headers.join(' ')).toContain('Última atividade')
+    expect(wrapper.text()).toContain('Adquirência Loja X')
+    expect(wrapper.text()).toContain('2 negócio(s)')
+
+    // Preferência persistida no navegador
+    expect(localStorage.getItem('fixcrm_deals_view')).toBe('lista')
+    wrapper.unmount()
+  })
+})

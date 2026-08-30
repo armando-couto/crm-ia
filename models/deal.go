@@ -42,15 +42,41 @@ func ValidDealTemperature(t string) bool {
 }
 
 type DealFilter struct {
-	Search     string
-	PipelineID int64
-	StageID    int64
-	OwnerID    int64
-	Status     string
-	ContactID  int64
-	CompanyID  int64
-	Advanced   *AdvancedFilters
+	Search       string
+	PipelineID   int64
+	StageID      int64
+	OwnerID      int64
+	Status       string
+	ContactID    int64
+	CompanyID    int64
+	Temperature  string
+	CreatedDays  int
+	InactiveDays int
+	CloseWindow  string // fecham_mes | previsao_vencida
+	SortBy       string
+	SortDir      string
+	Advanced     *AdvancedFilters
 	Pagination
+}
+
+// dealOrderBy valida a ordenação contra uma lista fechada de colunas.
+func dealOrderBy(sortBy, sortDir string) string {
+	column := map[string]string{
+		"name":          "LOWER(d.name)",
+		"amount":        "d.amount",
+		"created_at":    "d.created_at",
+		"updated_at":    "d.updated_at",
+		"close_date":    "d.close_date",
+		"last_activity": "last_activity_at",
+	}[sortBy]
+	if column == "" {
+		column = "d.updated_at"
+	}
+	dir := "DESC"
+	if strings.EqualFold(sortDir, "asc") {
+		dir = "ASC"
+	}
+	return column + " " + dir + " NULLS LAST"
 }
 
 const dealSelect = `
@@ -110,6 +136,21 @@ func ListDeals(db *sql.DB, f DealFilter) ([]Deal, int, error) {
 	if f.CompanyID > 0 {
 		add("d.company_id = $%d", f.CompanyID)
 	}
+	if f.Temperature != "" {
+		add("d.temperature = $%d", f.Temperature)
+	}
+	if f.CreatedDays > 0 {
+		add("d.created_at >= NOW() - make_interval(days => $%d)", f.CreatedDays)
+	}
+	if f.InactiveDays > 0 {
+		add("NOT EXISTS (SELECT 1 FROM activities a WHERE a.deal_id = d.id AND a.created_at >= NOW() - make_interval(days => $%d))", f.InactiveDays)
+	}
+	switch f.CloseWindow {
+	case "fecham_mes":
+		where = append(where, "d.close_date >= date_trunc('month', NOW()) AND d.close_date < date_trunc('month', NOW()) + INTERVAL '1 month'")
+	case "previsao_vencida":
+		where = append(where, "d.status = 'aberto' AND d.close_date < CURRENT_DATE")
+	}
 	if adv := BuildAdvancedWhere(f.Advanced, DealFilterFieldsSpec, &args); adv != "" {
 		where = append(where, adv)
 	}
@@ -122,8 +163,8 @@ func ListDeals(db *sql.DB, f DealFilter) ([]Deal, int, error) {
 	}
 
 	args = append(args, f.PerPage, f.Offset())
-	rows, err := db.Query(fmt.Sprintf(`%s WHERE %s ORDER BY d.updated_at DESC LIMIT $%d OFFSET $%d`,
-		dealSelect, cond, len(args)-1, len(args)), args...)
+	rows, err := db.Query(fmt.Sprintf(`%s WHERE %s ORDER BY %s LIMIT $%d OFFSET $%d`,
+		dealSelect, cond, dealOrderBy(f.SortBy, f.SortDir), len(args)-1, len(args)), args...)
 	if err != nil {
 		return nil, 0, err
 	}

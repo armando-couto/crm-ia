@@ -35,6 +35,7 @@ type Meeting struct {
 type MeetingFilter struct {
 	ContactID int64
 	CompanyID int64
+	DealID    int64
 	UserID    int64
 	Status    string
 	Period    string // proximas | passadas
@@ -75,6 +76,9 @@ func ListMeetings(db *sql.DB, f MeetingFilter) ([]Meeting, int, error) {
 	}
 	if f.CompanyID > 0 {
 		add("m.company_id = $%d", f.CompanyID)
+	}
+	if f.DealID > 0 {
+		add("m.deal_id = $%d", f.DealID)
 	}
 	if f.UserID > 0 {
 		add("m.user_id = $%d", f.UserID)

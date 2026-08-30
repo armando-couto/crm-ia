@@ -15,6 +15,7 @@ func ListMeetings(ctx iris.Context) {
 	f := models.MeetingFilter{
 		ContactID: ctx.URLParamInt64Default("contact_id", 0),
 		CompanyID: ctx.URLParamInt64Default("company_id", 0),
+		DealID:    ctx.URLParamInt64Default("deal_id", 0),
 		UserID:    ctx.URLParamInt64Default("user_id", 0),
 		Status:    ctx.URLParam("status"),
 		Period:    ctx.URLParam("period"),

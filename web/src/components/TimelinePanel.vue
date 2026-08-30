@@ -3,12 +3,13 @@ import { onMounted, ref } from 'vue'
 import { api } from '../api'
 import { useToastStore } from '../stores/toast'
 import { relativeDate } from '../format'
-import type { Activity } from '../types'
+import type { Activity, MessageTemplate, Snippet } from '../types'
 
 const props = defineProps<{
   contactId?: number
   companyId?: number
   dealId?: number
+  ticketId?: number
   /** Habilita o formulário de envio de e-mail (requer contato com e-mail). */
   emailContactId?: number
 }>()
@@ -23,6 +24,39 @@ const emailOpen = ref(false)
 const emailSubject = ref('')
 const emailBody = ref('')
 const sending = ref(false)
+
+const templates = ref<MessageTemplate[]>([])
+const snippets = ref<Snippet[]>([])
+const templateId = ref(0)
+const snippetId = ref(0)
+
+// Preenche assunto/corpo com o modelo escolhido, com as variáveis do contato.
+async function applyTemplate() {
+  if (!templateId.value || !props.emailContactId) return
+  try {
+    const resp = await api.get<{ subject: string; body: string }>(
+      `/templates/${templateId.value}/render?contact_id=${props.emailContactId}`
+    )
+    emailSubject.value = resp.subject
+    emailBody.value = resp.body
+  } catch (e: any) {
+    toast.error(e.message)
+  } finally {
+    templateId.value = 0
+  }
+}
+
+// Insere o snippet no campo em edição (e-mail ou nota).
+function applySnippet() {
+  const snippet = snippets.value.find((s) => s.id === snippetId.value)
+  snippetId.value = 0
+  if (!snippet) return
+  if (emailOpen.value) {
+    emailBody.value = emailBody.value ? `${emailBody.value}\n${snippet.body}` : snippet.body
+  } else {
+    noteContent.value = noteContent.value ? `${noteContent.value}\n${snippet.body}` : snippet.body
+  }
+}
 
 const kindIcons: Record<string, string> = {
   nota: '✎',
@@ -45,6 +79,7 @@ function query(): string {
   if (props.contactId) params.set('contact_id', String(props.contactId))
   if (props.companyId) params.set('company_id', String(props.companyId))
   if (props.dealId) params.set('deal_id', String(props.dealId))
+  if (props.ticketId) params.set('ticket_id', String(props.ticketId))
   return params.toString()
 }
 
@@ -68,7 +103,8 @@ async function addNote() {
       content: noteContent.value.trim(),
       contact_id: props.contactId || null,
       company_id: props.companyId || null,
-      deal_id: props.dealId || null
+      deal_id: props.dealId || null,
+      ticket_id: props.ticketId || null
     })
     noteContent.value = ''
     toast.push('Atividade registrada')
@@ -100,7 +136,15 @@ async function sendEmail() {
   }
 }
 
-onMounted(load)
+onMounted(async () => {
+  await load()
+  try {
+    templates.value = await api.get<MessageTemplate[]>('/templates')
+    snippets.value = await api.get<Snippet[]>('/snippets')
+  } catch {
+    /* biblioteca opcional */
+  }
+})
 defineExpose({ reload: load })
 </script>
 
@@ -113,9 +157,19 @@ defineExpose({ reload: load })
           <option value="ligacao">Ligação</option>
           <option value="reuniao">Reunião</option>
         </select>
-        <button v-if="emailContactId" class="btn btn-outline btn-sm" type="button" @click="emailOpen = !emailOpen">
-          ✉ Enviar e-mail
-        </button>
+        <div class="composer-tools">
+          <select v-if="emailOpen && templates.length" v-model.number="templateId" @change="applyTemplate">
+            <option :value="0">Modelo…</option>
+            <option v-for="t in templates" :key="t.id" :value="t.id">{{ t.name }}</option>
+          </select>
+          <select v-if="snippets.length" v-model.number="snippetId" @change="applySnippet">
+            <option :value="0">Snippet…</option>
+            <option v-for="s in snippets" :key="s.id" :value="s.id">{{ s.shortcut }}</option>
+          </select>
+          <button v-if="emailContactId" class="btn btn-outline btn-sm" type="button" @click="emailOpen = !emailOpen">
+            ✉ Enviar e-mail
+          </button>
+        </div>
       </div>
 
       <template v-if="!emailOpen">
@@ -185,6 +239,13 @@ defineExpose({ reload: load })
   justify-content: space-between;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
+}
+
+.composer-tools {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .composer select,

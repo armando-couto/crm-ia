@@ -17,6 +17,7 @@ func ListTasks(ctx iris.Context) {
 		ContactID: ctx.URLParamInt64Default("contact_id", 0),
 		CompanyID: ctx.URLParamInt64Default("company_id", 0),
 		DealID:    ctx.URLParamInt64Default("deal_id", 0),
+		ProjectID: ctx.URLParamInt64Default("project_id", 0),
 		Status:    ctx.URLParam("status"),
 		Pagination: models.Pagination{
 			Page:    ctx.URLParamIntDefault("page", 1),
@@ -42,6 +43,7 @@ type taskRequest struct {
 	ContactID   *int64 `json:"contact_id"`
 	CompanyID   *int64 `json:"company_id"`
 	DealID      *int64 `json:"deal_id"`
+	ProjectID   *int64 `json:"project_id"`
 }
 
 func (r *taskRequest) validate() string {
@@ -89,6 +91,7 @@ func (r *taskRequest) apply(t *models.Task, due *time.Time) {
 	t.ContactID = r.ContactID
 	t.CompanyID = r.CompanyID
 	t.DealID = r.DealID
+	t.ProjectID = r.ProjectID
 }
 
 func CreateTask(ctx iris.Context) {

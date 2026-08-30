@@ -34,8 +34,39 @@ function logout() {
         <router-link to="/negocios" active-class="active">
           <span class="icon">◈</span><span class="label">Negócios</span>
         </router-link>
+        <router-link to="/tickets" active-class="active">
+          <span class="icon">◎</span><span class="label">Tickets</span>
+        </router-link>
         <router-link to="/tarefas" active-class="active">
           <span class="icon">✓</span><span class="label">Tarefas</span>
+        </router-link>
+        <router-link to="/projetos" active-class="active">
+          <span class="icon">▤</span><span class="label">Projetos</span>
+        </router-link>
+        <router-link to="/listas" active-class="active">
+          <span class="icon">☰</span><span class="label">Listas</span>
+        </router-link>
+
+        <div class="nav-section">Comunicação</div>
+        <router-link to="/caixa-de-entrada" active-class="active">
+          <span class="icon">✉</span><span class="label">Caixa de entrada</span>
+        </router-link>
+        <router-link to="/chamadas" active-class="active">
+          <span class="icon">☎</span><span class="label">Chamadas</span>
+        </router-link>
+        <router-link to="/reunioes" active-class="active">
+          <span class="icon">⚑</span><span class="label">Reuniões</span>
+        </router-link>
+
+        <div class="nav-section">Biblioteca</div>
+        <router-link to="/manuais" active-class="active">
+          <span class="icon">✎</span><span class="label">Manuais</span>
+        </router-link>
+        <router-link to="/modelos" active-class="active">
+          <span class="icon">▣</span><span class="label">Modelos</span>
+        </router-link>
+        <router-link to="/snippets" active-class="active">
+          <span class="icon">❝</span><span class="label">Snippets</span>
         </router-link>
 
         <template v-if="auth.canManage">

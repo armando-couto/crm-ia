@@ -164,3 +164,142 @@ export interface SearchResult {
   title: string
   sub: string
 }
+
+export interface Ticket {
+  id: number
+  subject: string
+  description: string
+  status: 'aberto' | 'pendente' | 'resolvido' | 'fechado'
+  priority: string
+  contact_id: number | null
+  contact_name?: string
+  company_id: number | null
+  company_name?: string
+  owner_id: number | null
+  owner_name?: string
+  closed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ListRules {
+  lifecycle_stage?: string
+  owner_id?: number
+  source?: string
+}
+
+export interface ContactList {
+  id: number
+  name: string
+  kind: 'estatica' | 'dinamica'
+  rules?: ListRules
+  created_by: number | null
+  members_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface Project {
+  id: number
+  name: string
+  description: string
+  status: 'ativo' | 'concluido' | 'arquivado'
+  due_date: string | null
+  owner_id: number | null
+  owner_name?: string
+  tasks_total: number
+  tasks_done: number
+  created_at: string
+  updated_at: string
+}
+
+export interface Conversation {
+  id: number
+  subject: string
+  contact_id: number | null
+  contact_name?: string
+  peer_email: string
+  status: 'aberta' | 'fechada'
+  unread: boolean
+  last_message_at: string
+  last_preview?: string
+  created_at: string
+}
+
+export interface ConversationMessage {
+  id: number
+  conversation_id: number
+  direction: 'recebida' | 'enviada'
+  from_email: string
+  to_email: string
+  subject: string
+  body: string
+  user_id: number | null
+  user_name?: string
+  created_at: string
+}
+
+export interface Call {
+  id: number
+  direction: 'entrada' | 'saida'
+  outcome: string
+  duration_seconds: number
+  notes: string
+  called_at: string
+  contact_id: number | null
+  contact_name?: string
+  company_id: number | null
+  deal_id: number | null
+  user_id: number | null
+  user_name?: string
+  created_at: string
+}
+
+export interface Meeting {
+  id: number
+  title: string
+  status: 'agendada' | 'realizada' | 'cancelada' | 'nao_compareceu'
+  starts_at: string
+  ends_at: string | null
+  location: string
+  notes: string
+  contact_id: number | null
+  contact_name?: string
+  company_id: number | null
+  deal_id: number | null
+  user_id: number | null
+  user_name?: string
+  created_at: string
+  updated_at: string
+}
+
+export interface Playbook {
+  id: number
+  name: string
+  description: string
+  body: string
+  active: boolean
+  created_by: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface MessageTemplate {
+  id: number
+  name: string
+  subject: string
+  body: string
+  created_by: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface Snippet {
+  id: number
+  name: string
+  shortcut: string
+  body: string
+  created_by: number | null
+  created_at: string
+  updated_at: string
+}

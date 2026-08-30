@@ -23,6 +23,7 @@ type Task struct {
 	ContactName string     `json:"contact_name,omitempty"`
 	CompanyID   *int64     `json:"company_id"`
 	DealID      *int64     `json:"deal_id"`
+	ProjectID   *int64     `json:"project_id"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
@@ -32,6 +33,7 @@ type TaskFilter struct {
 	ContactID int64
 	CompanyID int64
 	DealID    int64
+	ProjectID int64
 	Status    string // pendente | concluida | atrasada
 	Pagination
 }
@@ -40,7 +42,7 @@ const taskSelect = `
 	SELECT t.id, t.title, COALESCE(t.description,''), t.type, t.priority, t.due_date, t.completed_at,
 	       t.owner_id, COALESCE(u.name,''),
 	       t.contact_id, COALESCE(ct.first_name || ' ' || COALESCE(ct.last_name,''), ''),
-	       t.company_id, t.deal_id, t.created_at, t.updated_at
+	       t.company_id, t.deal_id, t.project_id, t.created_at, t.updated_at
 	FROM tasks t
 	LEFT JOIN users u ON u.id = t.owner_id
 	LEFT JOIN contacts ct ON ct.id = t.contact_id`
@@ -48,7 +50,7 @@ const taskSelect = `
 func scanTask(row interface{ Scan(...any) error }) (*Task, error) {
 	var t Task
 	err := row.Scan(&t.ID, &t.Title, &t.Description, &t.Type, &t.Priority, &t.DueDate, &t.CompletedAt,
-		&t.OwnerID, &t.OwnerName, &t.ContactID, &t.ContactName, &t.CompanyID, &t.DealID,
+		&t.OwnerID, &t.OwnerName, &t.ContactID, &t.ContactName, &t.CompanyID, &t.DealID, &t.ProjectID,
 		&t.CreatedAt, &t.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -77,6 +79,9 @@ func ListTasks(db *sql.DB, f TaskFilter) ([]Task, int, error) {
 	}
 	if f.DealID > 0 {
 		add("t.deal_id = $%d", f.DealID)
+	}
+	if f.ProjectID > 0 {
+		add("t.project_id = $%d", f.ProjectID)
 	}
 	switch f.Status {
 	case "pendente":
@@ -127,19 +132,19 @@ func CreateTask(db *sql.DB, t *Task) error {
 		t.Priority = "media"
 	}
 	return db.QueryRow(`
-		INSERT INTO tasks (title, description, type, priority, due_date, owner_id, contact_id, company_id, deal_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO tasks (title, description, type, priority, due_date, owner_id, contact_id, company_id, deal_id, project_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at`,
-		t.Title, t.Description, t.Type, t.Priority, t.DueDate, t.OwnerID, t.ContactID, t.CompanyID, t.DealID,
+		t.Title, t.Description, t.Type, t.Priority, t.DueDate, t.OwnerID, t.ContactID, t.CompanyID, t.DealID, t.ProjectID,
 	).Scan(&t.ID, &t.CreatedAt, &t.UpdatedAt)
 }
 
 func UpdateTask(db *sql.DB, t *Task) error {
 	_, err := db.Exec(`
 		UPDATE tasks SET title = $1, description = $2, type = $3, priority = $4, due_date = $5,
-		       owner_id = $6, contact_id = $7, company_id = $8, deal_id = $9, updated_at = NOW()
-		WHERE id = $10`,
-		t.Title, t.Description, t.Type, t.Priority, t.DueDate, t.OwnerID, t.ContactID, t.CompanyID, t.DealID, t.ID)
+		       owner_id = $6, contact_id = $7, company_id = $8, deal_id = $9, project_id = $10, updated_at = NOW()
+		WHERE id = $11`,
+		t.Title, t.Description, t.Type, t.Priority, t.DueDate, t.OwnerID, t.ContactID, t.CompanyID, t.DealID, t.ProjectID, t.ID)
 	return err
 }
 

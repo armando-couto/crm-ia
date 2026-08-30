@@ -18,10 +18,11 @@ func ListActivities(ctx iris.Context) {
 		ContactID: ctx.URLParamInt64Default("contact_id", 0),
 		CompanyID: ctx.URLParamInt64Default("company_id", 0),
 		DealID:    ctx.URLParamInt64Default("deal_id", 0),
+		TicketID:  ctx.URLParamInt64Default("ticket_id", 0),
 		Limit:     ctx.URLParamIntDefault("limit", 50),
 	}
-	if f.ContactID == 0 && f.CompanyID == 0 && f.DealID == 0 {
-		badRequest(ctx, "informe contact_id, company_id ou deal_id")
+	if f.ContactID == 0 && f.CompanyID == 0 && f.DealID == 0 && f.TicketID == 0 {
+		badRequest(ctx, "informe contact_id, company_id, deal_id ou ticket_id")
 		return
 	}
 	list, err := models.ListActivities(utils.DB, f)
@@ -38,6 +39,7 @@ type activityRequest struct {
 	ContactID *int64 `json:"contact_id"`
 	CompanyID *int64 `json:"company_id"`
 	DealID    *int64 `json:"deal_id"`
+	TicketID  *int64 `json:"ticket_id"`
 }
 
 // CreateActivityHandler registra manualmente nota, ligação ou reunião na timeline.
@@ -59,8 +61,8 @@ func CreateActivityHandler(ctx iris.Context) {
 		badRequest(ctx, "tipo inválido (nota, ligacao ou reuniao)")
 		return
 	}
-	if req.ContactID == nil && req.CompanyID == nil && req.DealID == nil {
-		badRequest(ctx, "vincule a atividade a um contato, empresa ou negócio")
+	if req.ContactID == nil && req.CompanyID == nil && req.DealID == nil && req.TicketID == nil {
+		badRequest(ctx, "vincule a atividade a um contato, empresa, negócio ou ticket")
 		return
 	}
 
@@ -70,6 +72,7 @@ func CreateActivityHandler(ctx iris.Context) {
 		ContactID: req.ContactID,
 		CompanyID: req.CompanyID,
 		DealID:    req.DealID,
+		TicketID:  req.TicketID,
 	}
 	if claims := middlewareClaims(ctx); claims != nil {
 		a.UserID = &claims.UserID

@@ -36,6 +36,7 @@ type ContactFilter struct {
 	OwnerID        int64
 	CompanyID      int64
 	LifecycleStage string
+	Source         string
 	Pagination
 }
 
@@ -81,6 +82,10 @@ func ListContacts(db *sql.DB, f ContactFilter) ([]Contact, int, error) {
 	if f.LifecycleStage != "" {
 		args = append(args, f.LifecycleStage)
 		where = append(where, fmt.Sprintf("c.lifecycle_stage = $%d", len(args)))
+	}
+	if f.Source != "" {
+		args = append(args, f.Source)
+		where = append(where, fmt.Sprintf("c.source = $%d", len(args)))
 	}
 	cond := strings.Join(where, " AND ")
 

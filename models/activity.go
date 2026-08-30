@@ -26,6 +26,7 @@ type Activity struct {
 	ContactID *int64          `json:"contact_id"`
 	CompanyID *int64          `json:"company_id"`
 	DealID    *int64          `json:"deal_id"`
+	TicketID  *int64          `json:"ticket_id"`
 	CreatedAt time.Time       `json:"created_at"`
 }
 
@@ -33,6 +34,7 @@ type ActivityFilter struct {
 	ContactID int64
 	CompanyID int64
 	DealID    int64
+	TicketID  int64
 	Limit     int
 }
 
@@ -56,6 +58,9 @@ func ListActivities(db *sql.DB, f ActivityFilter) ([]Activity, error) {
 	if f.DealID > 0 {
 		add("a.deal_id = $%d", f.DealID)
 	}
+	if f.TicketID > 0 {
+		add("a.ticket_id = $%d", f.TicketID)
+	}
 	cond := "1=1"
 	if len(where) > 0 {
 		cond = strings.Join(where, " OR ")
@@ -64,7 +69,7 @@ func ListActivities(db *sql.DB, f ActivityFilter) ([]Activity, error) {
 	args = append(args, f.Limit)
 	rows, err := db.Query(fmt.Sprintf(`
 		SELECT a.id, a.kind, a.content, a.metadata, a.user_id, COALESCE(u.name,''),
-		       a.contact_id, a.company_id, a.deal_id, a.created_at
+		       a.contact_id, a.company_id, a.deal_id, a.ticket_id, a.created_at
 		FROM activities a
 		LEFT JOIN users u ON u.id = a.user_id
 		WHERE %s
@@ -80,7 +85,7 @@ func ListActivities(db *sql.DB, f ActivityFilter) ([]Activity, error) {
 		var a Activity
 		var metadata sql.NullString
 		if err := rows.Scan(&a.ID, &a.Kind, &a.Content, &metadata, &a.UserID, &a.UserName,
-			&a.ContactID, &a.CompanyID, &a.DealID, &a.CreatedAt); err != nil {
+			&a.ContactID, &a.CompanyID, &a.DealID, &a.TicketID, &a.CreatedAt); err != nil {
 			return nil, err
 		}
 		if metadata.Valid {
@@ -97,10 +102,10 @@ func CreateActivity(db *sql.DB, a *Activity) error {
 		metadata = string(a.Metadata)
 	}
 	return db.QueryRow(`
-		INSERT INTO activities (kind, content, metadata, user_id, contact_id, company_id, deal_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
+		INSERT INTO activities (kind, content, metadata, user_id, contact_id, company_id, deal_id, ticket_id)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id, created_at`,
-		a.Kind, a.Content, metadata, a.UserID, a.ContactID, a.CompanyID, a.DealID,
+		a.Kind, a.Content, metadata, a.UserID, a.ContactID, a.CompanyID, a.DealID, a.TicketID,
 	).Scan(&a.ID, &a.CreatedAt)
 }
 

@@ -32,6 +32,63 @@ const sortDir = ref<'asc' | 'desc'>('asc')
 const loading = ref(false)
 const users = ref<User[]>([])
 
+// ===== Configuração de colunas (persistida no navegador) =====
+interface ColumnDef {
+  key: string
+  label: string
+}
+
+const allColumns: ColumnDef[] = [
+  { key: 'ec_number', label: 'Número do EC' },
+  { key: 'cnpj', label: 'CNPJ/CPF' },
+  { key: 'domain', label: 'Domínio' },
+  { key: 'industry', label: 'Segmento' },
+  { key: 'city', label: 'Cidade/UF' },
+  { key: 'phone', label: 'Telefone' },
+  { key: 'representative', label: 'Representante' },
+  { key: 'products', label: 'Produtos' },
+  { key: 'machines', label: 'Máquinas' },
+  { key: 'is_client', label: 'Cliente?' },
+  { key: 'contacts', label: 'Contatos' },
+  { key: 'owner', label: 'Proprietário' },
+  { key: 'created', label: 'Data de criação' }
+]
+
+const defaultColumns = ['ec_number', 'domain', 'industry', 'city', 'contacts', 'owner', 'created']
+const COLUMNS_KEY = 'fixcrm_company_columns'
+
+function loadColumns(): string[] {
+  try {
+    const raw = localStorage.getItem(COLUMNS_KEY)
+    if (raw) {
+      const parsed = JSON.parse(raw)
+      if (Array.isArray(parsed) && parsed.length) return parsed
+    }
+  } catch {
+    /* usa padrão */
+  }
+  return [...defaultColumns]
+}
+
+const visibleColumns = ref<string[]>(loadColumns())
+const columnsOpen = ref(false)
+
+function toggleColumn(key: string) {
+  if (visibleColumns.value.includes(key)) {
+    visibleColumns.value = visibleColumns.value.filter((k) => k !== key)
+  } else {
+    // Mantém a ordem canônica das colunas.
+    visibleColumns.value = allColumns.map((c) => c.key).filter((k) => visibleColumns.value.includes(k) || k === key)
+  }
+  try {
+    localStorage.setItem(COLUMNS_KEY, JSON.stringify(visibleColumns.value))
+  } catch {
+    /* preferências só em memória */
+  }
+}
+
+const shownColumns = computed(() => allColumns.filter((c) => visibleColumns.value.includes(c.key)))
+
 // ===== Filtros avançados =====
 const advOpen = ref(false)
 const advGroups = ref<FilterGroup[]>([])
@@ -311,23 +368,46 @@ onMounted(async () => {
         <thead>
           <tr>
             <th class="sortable" @click="sortByColumn('name')">Nome da empresa {{ sortIcon('name') }}</th>
-            <th>Domínio</th>
-            <th>Segmento</th>
-            <th>Cidade/UF</th>
-            <th class="sortable" @click="sortByColumn('contacts')">Contatos {{ sortIcon('contacts') }}</th>
-            <th>Proprietário</th>
-            <th class="sortable" @click="sortByColumn('created_at')">Data de criação {{ sortIcon('created_at') }}</th>
+            <template v-for="col in shownColumns" :key="col.key">
+              <th v-if="col.key === 'contacts'" class="sortable" @click="sortByColumn('contacts')">
+                Contatos {{ sortIcon('contacts') }}
+              </th>
+              <th v-else-if="col.key === 'created'" class="sortable" @click="sortByColumn('created_at')">
+                Data de criação {{ sortIcon('created_at') }}
+              </th>
+              <th v-else>{{ col.label }}</th>
+            </template>
+            <th style="width: 34px">
+              <button type="button" class="col-config" title="Exibir configurações (colunas)" @click.stop="columnsOpen = true">⚙</button>
+            </th>
           </tr>
         </thead>
         <tbody>
           <tr v-for="c in companies" :key="c.id" @click="router.push(`/empresas/${c.id}`)">
             <td><strong>{{ c.name }}</strong></td>
-            <td>{{ c.domain || '—' }}</td>
-            <td>{{ c.industry || '—' }}</td>
-            <td>{{ c.city ? `${c.city}${c.state ? '/' + c.state : ''}` : '—' }}</td>
-            <td>{{ c.contacts_count ?? 0 }}</td>
-            <td :class="{ muted: !c.owner_name }">{{ c.owner_name || 'Nenhum proprietário' }}</td>
-            <td class="muted">{{ formatDate(c.created_at) }}</td>
+            <template v-for="col in shownColumns" :key="col.key">
+              <td v-if="col.key === 'ec_number'">{{ c.ec_number || '—' }}</td>
+              <td v-else-if="col.key === 'cnpj'">{{ c.cnpj || '—' }}</td>
+              <td v-else-if="col.key === 'domain'">{{ c.domain || '—' }}</td>
+              <td v-else-if="col.key === 'industry'">{{ c.industry || '—' }}</td>
+              <td v-else-if="col.key === 'city'">{{ c.city ? `${c.city}${c.state ? '/' + c.state : ''}` : '—' }}</td>
+              <td v-else-if="col.key === 'phone'">{{ c.phone || '—' }}</td>
+              <td v-else-if="col.key === 'representative'">{{ c.representative || '—' }}</td>
+              <td v-else-if="col.key === 'products'">
+                <span v-if="!c.products?.length" class="muted">—</span>
+                <span v-else class="muted">{{ c.products.join(', ') }}</span>
+              </td>
+              <td v-else-if="col.key === 'machines'">{{ c.machines_count ?? 0 }}</td>
+              <td v-else-if="col.key === 'is_client'">
+                <span class="badge" :class="c.is_client ? 'green' : 'gray'">{{ c.is_client ? 'Cliente' : 'Não' }}</span>
+              </td>
+              <td v-else-if="col.key === 'contacts'">{{ c.contacts_count ?? 0 }}</td>
+              <td v-else-if="col.key === 'owner'" :class="{ muted: !c.owner_name }">
+                {{ c.owner_name || 'Nenhum proprietário' }}
+              </td>
+              <td v-else-if="col.key === 'created'" class="muted">{{ formatDate(c.created_at) }}</td>
+            </template>
+            <td></td>
           </tr>
         </tbody>
       </table>
@@ -366,6 +446,23 @@ onMounted(async () => {
       @close="advOpen = false"
       @apply="applyAdvanced"
     />
+
+    <ModalDialog title="Exibir configurações" :open="columnsOpen" @close="columnsOpen = false">
+      <p class="muted" style="margin-top: 0; font-size: 13px">
+        Escolha as colunas exibidas na tabela de empresas (a preferência fica salva neste navegador).
+      </p>
+      <ul class="columns-list">
+        <li v-for="col in allColumns" :key="col.key">
+          <label>
+            <input type="checkbox" :checked="visibleColumns.includes(col.key)" @change="toggleColumn(col.key)" />
+            {{ col.label }}
+          </label>
+        </li>
+      </ul>
+      <button class="btn btn-primary" type="button" style="width: 100%; justify-content: center" @click="columnsOpen = false">
+        Concluir
+      </button>
+    </ModalDialog>
 
     <ModalDialog title="Nova empresa" :open="modalOpen" wide @close="modalOpen = false">
       <form @submit.prevent="save">
@@ -510,6 +607,38 @@ onMounted(async () => {
 .sortable {
   cursor: pointer;
   user-select: none;
+}
+
+.col-config {
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--fix-text-3);
+  padding: 2px 4px;
+  border-radius: 5px;
+}
+
+.col-config:hover {
+  color: var(--fix-purple);
+  background: var(--fix-purple-tint);
+}
+
+.columns-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.columns-list label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
 }
 
 .sortable:hover {

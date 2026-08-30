@@ -58,6 +58,7 @@ func Register(app *iris.Application) {
 
 	auth.Get("/deals", controllers.ListDeals)
 	auth.Get("/deals/board", controllers.DealsBoard)
+	auth.Get("/deals/export", controllers.ExportDeals)
 	auth.Post("/deals", controllers.CreateDeal)
 	auth.Get("/deals/{id:int64}", controllers.GetDeal)
 	auth.Put("/deals/{id:int64}", controllers.UpdateDeal)

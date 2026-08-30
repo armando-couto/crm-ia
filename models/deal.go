@@ -27,12 +27,18 @@ type Deal struct {
 	CompanyName string     `json:"company_name,omitempty"`
 	OwnerID     *int64     `json:"owner_id"`
 	OwnerName   string     `json:"owner_name,omitempty"`
-	Status      string     `json:"status"`
-	CloseDate   *time.Time `json:"close_date"`
-	Position    int        `json:"position"`
-	ClosedAt    *time.Time `json:"closed_at"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
+	Status         string     `json:"status"`
+	Temperature    string     `json:"temperature"`
+	CloseDate      *time.Time `json:"close_date"`
+	Position       int        `json:"position"`
+	ClosedAt       *time.Time `json:"closed_at"`
+	LastActivityAt *time.Time `json:"last_activity_at"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+}
+
+func ValidDealTemperature(t string) bool {
+	return t == "" || t == "fria" || t == "media" || t == "quente"
 }
 
 type DealFilter struct {
@@ -51,7 +57,9 @@ const dealSelect = `
 	       d.contact_id, COALESCE(ct.first_name || ' ' || COALESCE(ct.last_name,''), ''),
 	       d.company_id, COALESCE(co.name,''),
 	       d.owner_id, COALESCE(u.name,''),
-	       d.status, d.close_date, d.position, d.closed_at, d.created_at, d.updated_at
+	       d.status, COALESCE(d.temperature,''), d.close_date, d.position, d.closed_at,
+	       (SELECT MAX(a.created_at) FROM activities a WHERE a.deal_id = d.id) AS last_activity_at,
+	       d.created_at, d.updated_at
 	FROM deals d
 	JOIN pipeline_stages s ON s.id = d.stage_id
 	LEFT JOIN contacts ct ON ct.id = d.contact_id
@@ -62,7 +70,8 @@ func scanDeal(row interface{ Scan(...any) error }) (*Deal, error) {
 	var d Deal
 	err := row.Scan(&d.ID, &d.Name, &d.Amount, &d.Currency, &d.PipelineID, &d.StageID, &d.StageName,
 		&d.ContactID, &d.ContactName, &d.CompanyID, &d.CompanyName, &d.OwnerID, &d.OwnerName,
-		&d.Status, &d.CloseDate, &d.Position, &d.ClosedAt, &d.CreatedAt, &d.UpdatedAt)
+		&d.Status, &d.Temperature, &d.CloseDate, &d.Position, &d.ClosedAt, &d.LastActivityAt,
+		&d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -127,10 +136,43 @@ func ListDeals(db *sql.DB, f DealFilter) ([]Deal, int, error) {
 	return list, total, rows.Err()
 }
 
-// BoardDeals retorna os negócios abertos de um pipeline, ordenados para o kanban.
-func BoardDeals(db *sql.DB, pipelineID int64) ([]Deal, error) {
-	rows, err := db.Query(dealSelect+` WHERE d.pipeline_id = $1 AND d.status = 'aberto'
-		ORDER BY d.stage_id, d.position, d.id`, pipelineID)
+// BoardFilter restringe o kanban (busca, dono e temperatura).
+type BoardFilter struct {
+	PipelineID  int64
+	OwnerID     int64
+	Search      string
+	Temperature string
+	// IncludeClosed inclui negócios ganhos/perdidos fechados recentemente.
+	ClosedDays int
+}
+
+// BoardDeals retorna os negócios do pipeline para o kanban: os abertos e,
+// opcionalmente, os fechados nos últimos N dias (colunas de ganho/perda).
+func BoardDeals(db *sql.DB, f BoardFilter) ([]Deal, error) {
+	where := []string{"d.pipeline_id = $1"}
+	args := []any{f.PipelineID}
+	if f.ClosedDays > 0 {
+		args = append(args, f.ClosedDays)
+		where = append(where, fmt.Sprintf(
+			"(d.status = 'aberto' OR d.closed_at >= NOW() - make_interval(days => $%d))", len(args)))
+	} else {
+		where = append(where, "d.status = 'aberto'")
+	}
+	if f.OwnerID > 0 {
+		args = append(args, f.OwnerID)
+		where = append(where, fmt.Sprintf("d.owner_id = $%d", len(args)))
+	}
+	if f.Search != "" {
+		args = append(args, "%"+strings.ToLower(f.Search)+"%")
+		where = append(where, fmt.Sprintf("LOWER(d.name) LIKE $%d", len(args)))
+	}
+	if f.Temperature != "" {
+		args = append(args, f.Temperature)
+		where = append(where, fmt.Sprintf("d.temperature = $%d", len(args)))
+	}
+
+	rows, err := db.Query(dealSelect+` WHERE `+strings.Join(where, " AND ")+`
+		ORDER BY d.stage_id, d.position, d.id`, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -160,21 +202,21 @@ func CreateDeal(db *sql.DB, d *Deal) error {
 		d.Status = DealAberto
 	}
 	return db.QueryRow(`
-		INSERT INTO deals (name, amount, currency, pipeline_id, stage_id, contact_id, company_id, owner_id, status, close_date, position)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10,
+		INSERT INTO deals (name, amount, currency, pipeline_id, stage_id, contact_id, company_id, owner_id, status, temperature, close_date, position)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
 		        COALESCE((SELECT MAX(position) + 1 FROM deals WHERE stage_id = $5), 0))
 		RETURNING id, position, created_at, updated_at`,
 		d.Name, d.Amount, d.Currency, d.PipelineID, d.StageID, d.ContactID, d.CompanyID,
-		d.OwnerID, d.Status, d.CloseDate,
+		d.OwnerID, d.Status, d.Temperature, d.CloseDate,
 	).Scan(&d.ID, &d.Position, &d.CreatedAt, &d.UpdatedAt)
 }
 
 func UpdateDeal(db *sql.DB, d *Deal) error {
 	_, err := db.Exec(`
 		UPDATE deals SET name = $1, amount = $2, currency = $3, contact_id = $4, company_id = $5,
-		       owner_id = $6, close_date = $7, updated_at = NOW()
-		WHERE id = $8`,
-		d.Name, d.Amount, d.Currency, d.ContactID, d.CompanyID, d.OwnerID, d.CloseDate, d.ID)
+		       owner_id = $6, temperature = $7, close_date = $8, updated_at = NOW()
+		WHERE id = $9`,
+		d.Name, d.Amount, d.Currency, d.ContactID, d.CompanyID, d.OwnerID, d.Temperature, d.CloseDate, d.ID)
 	return err
 }
 

@@ -85,9 +85,11 @@ export interface Deal {
   owner_id: number | null
   owner_name?: string
   status: 'aberto' | 'ganho' | 'perdido'
+  temperature?: string
   close_date: string | null
   position: number
   closed_at: string | null
+  last_activity_at?: string | null
   created_at: string
   updated_at: string
 }

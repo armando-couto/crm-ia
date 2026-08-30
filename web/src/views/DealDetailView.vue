@@ -63,6 +63,7 @@ function openEdit() {
     contact_id: deal.value.contact_id,
     company_id: deal.value.company_id,
     owner_id: deal.value.owner_id,
+    temperature: deal.value.temperature || '',
     close_date: deal.value.close_date ? deal.value.close_date.slice(0, 10) : ''
   }
   editOpen.value = true
@@ -161,6 +162,13 @@ onMounted(async () => {
             </dd>
             <dt>Dono</dt>
             <dd>{{ deal.owner_name || '—' }}</dd>
+            <dt>Temperatura</dt>
+            <dd>
+              <template v-if="deal.temperature === 'quente'">🔴 Quente</template>
+              <template v-else-if="deal.temperature === 'media'">🟡 Média</template>
+              <template v-else-if="deal.temperature === 'fria'">🔵 Fria</template>
+              <template v-else>—</template>
+            </dd>
             <dt>Previsão</dt>
             <dd>{{ formatDate(deal.close_date) }}</dd>
             <dt>Fechado em</dt>
@@ -216,6 +224,15 @@ onMounted(async () => {
             <label>Previsão de fechamento</label>
             <input v-model="form.close_date" type="date" />
           </div>
+        </div>
+        <div class="field">
+          <label>Temperatura do deal</label>
+          <select v-model="form.temperature">
+            <option value="">—</option>
+            <option value="quente">🔴 Quente</option>
+            <option value="media">🟡 Média</option>
+            <option value="fria">🔵 Fria</option>
+          </select>
         </div>
         <button class="btn btn-primary" type="submit" :disabled="saving" style="width: 100%; justify-content: center">
           {{ saving ? 'Salvando…' : 'Salvar alterações' }}

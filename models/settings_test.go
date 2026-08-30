@@ -56,10 +56,10 @@ func TestValidateContactForm(t *testing.T) {
 }
 
 func TestValidViewEntity(t *testing.T) {
-	if !ValidViewEntity("contacts") || !ValidViewEntity("companies") {
-		t.Error("contacts e companies deveriam ser válidas")
+	if !ValidViewEntity("contacts") || !ValidViewEntity("companies") || !ValidViewEntity("deals") {
+		t.Error("contacts, companies e deals deveriam ser válidas")
 	}
-	if ValidViewEntity("deals") || ValidViewEntity("") {
+	if ValidViewEntity("tickets") || ValidViewEntity("") {
 		t.Error("entidades desconhecidas não podem ser válidas")
 	}
 }

@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"encoding/csv"
 	"fmt"
 	"strings"
 	"time"
@@ -34,19 +35,67 @@ func ListDeals(ctx iris.Context) {
 	ctx.JSON(iris.Map{"data": list, "pagination": f.Pagination})
 }
 
-// DealsBoard retorna o kanban (negócios abertos do pipeline agrupados no front).
+// DealsBoard retorna o kanban do pipeline: abertos + fechados dos últimos 30 dias
+// (para as colunas de ganho/perda mostrarem contagem, como no HubSpot).
 func DealsBoard(ctx iris.Context) {
-	pipelineID := ctx.URLParamInt64Default("pipeline_id", 0)
-	if pipelineID == 0 {
+	f := models.BoardFilter{
+		PipelineID:  ctx.URLParamInt64Default("pipeline_id", 0),
+		OwnerID:     ctx.URLParamInt64Default("owner_id", 0),
+		Search:      ctx.URLParam("q"),
+		Temperature: ctx.URLParam("temperature"),
+		ClosedDays:  ctx.URLParamIntDefault("fechados_dias", 30),
+	}
+	if f.PipelineID == 0 {
 		badRequest(ctx, "informe o pipeline_id")
 		return
 	}
-	deals, err := models.BoardDeals(utils.DB, pipelineID)
+	if !models.ValidDealTemperature(f.Temperature) {
+		badRequest(ctx, "temperatura inválida (fria, media ou quente)")
+		return
+	}
+	deals, err := models.BoardDeals(utils.DB, f)
 	if err != nil {
 		serverError(ctx, err)
 		return
 	}
 	ctx.JSON(iris.Map{"data": deals})
+}
+
+// ExportDeals exporta os negócios filtrados em CSV.
+func ExportDeals(ctx iris.Context) {
+	f := models.DealFilter{
+		Search:     ctx.URLParam("q"),
+		PipelineID: ctx.URLParamInt64Default("pipeline_id", 0),
+		OwnerID:    ctx.URLParamInt64Default("owner_id", 0),
+		Status:     ctx.URLParam("status"),
+		Pagination: models.Pagination{Page: 1, PerPage: 100},
+	}
+
+	ctx.Header("Content-Type", "text/csv; charset=utf-8")
+	ctx.Header("Content-Disposition", fmt.Sprintf(`attachment; filename="negocios-%s.csv"`, time.Now().Format("2006-01-02")))
+
+	w := csv.NewWriter(ctx.ResponseWriter())
+	defer w.Flush()
+	w.Write([]string{"nome", "valor", "etapa", "status", "temperatura", "contato", "empresa", "dono", "previsao", "criado"})
+
+	for {
+		list, total, err := models.ListDeals(utils.DB, f)
+		if err != nil {
+			return
+		}
+		for _, d := range list {
+			closeDate := ""
+			if d.CloseDate != nil {
+				closeDate = d.CloseDate.Format("2006-01-02")
+			}
+			w.Write([]string{d.Name, fmt.Sprintf("%.2f", d.Amount), d.StageName, d.Status, d.Temperature,
+				d.ContactName, d.CompanyName, d.OwnerName, closeDate, d.CreatedAt.Format("2006-01-02")})
+		}
+		if f.Page*f.PerPage >= total || len(list) == 0 {
+			return
+		}
+		f.Page++
+	}
 }
 
 func GetDeal(ctx iris.Context) {
@@ -59,15 +108,16 @@ func GetDeal(ctx iris.Context) {
 }
 
 type dealRequest struct {
-	Name       string  `json:"name"`
-	Amount     float64 `json:"amount"`
-	Currency   string  `json:"currency"`
-	PipelineID int64   `json:"pipeline_id"`
-	StageID    int64   `json:"stage_id"`
-	ContactID  *int64  `json:"contact_id"`
-	CompanyID  *int64  `json:"company_id"`
-	OwnerID    *int64  `json:"owner_id"`
-	CloseDate  string  `json:"close_date"` // YYYY-MM-DD
+	Name        string  `json:"name"`
+	Amount      float64 `json:"amount"`
+	Currency    string  `json:"currency"`
+	PipelineID  int64   `json:"pipeline_id"`
+	StageID     int64   `json:"stage_id"`
+	ContactID   *int64  `json:"contact_id"`
+	CompanyID   *int64  `json:"company_id"`
+	OwnerID     *int64  `json:"owner_id"`
+	Temperature string  `json:"temperature"`
+	CloseDate   string  `json:"close_date"` // YYYY-MM-DD
 }
 
 func (r *dealRequest) validate(creating bool) string {
@@ -80,6 +130,9 @@ func (r *dealRequest) validate(creating bool) string {
 	}
 	if creating && (r.PipelineID == 0 || r.StageID == 0) {
 		return "informe pipeline e etapa"
+	}
+	if !models.ValidDealTemperature(r.Temperature) {
+		return "temperatura inválida (fria, media ou quente)"
 	}
 	return ""
 }
@@ -122,15 +175,16 @@ func CreateDeal(ctx iris.Context) {
 	}
 
 	deal := &models.Deal{
-		Name:       req.Name,
-		Amount:     req.Amount,
-		Currency:   req.Currency,
-		PipelineID: req.PipelineID,
-		StageID:    req.StageID,
-		ContactID:  req.ContactID,
-		CompanyID:  req.CompanyID,
-		OwnerID:    req.OwnerID,
-		CloseDate:  closeDate,
+		Name:        req.Name,
+		Amount:      req.Amount,
+		Currency:    req.Currency,
+		PipelineID:  req.PipelineID,
+		StageID:     req.StageID,
+		ContactID:   req.ContactID,
+		CompanyID:   req.CompanyID,
+		OwnerID:     req.OwnerID,
+		Temperature: req.Temperature,
+		CloseDate:   closeDate,
 	}
 	if deal.OwnerID == nil {
 		if claims := middlewareClaims(ctx); claims != nil {
@@ -182,6 +236,7 @@ func UpdateDeal(ctx iris.Context) {
 	deal.ContactID = req.ContactID
 	deal.CompanyID = req.CompanyID
 	deal.OwnerID = req.OwnerID
+	deal.Temperature = req.Temperature
 	deal.CloseDate = closeDate
 	if err := models.UpdateDeal(utils.DB, deal); err != nil {
 		serverError(ctx, err)

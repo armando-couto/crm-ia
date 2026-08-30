@@ -19,7 +19,7 @@ type SavedView struct {
 }
 
 func ValidViewEntity(entity string) bool {
-	return entity == "contacts" || entity == "companies"
+	return entity == "contacts" || entity == "companies" || entity == "deals"
 }
 
 func ListSavedViews(db *sql.DB, entity string) ([]SavedView, error) {

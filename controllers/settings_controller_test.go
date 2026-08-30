@@ -81,7 +81,7 @@ func TestCreateSavedViewValidation(t *testing.T) {
 	// Entidade inválida
 	e.POST("/api/v1/views").
 		WithHeader("Authorization", "Bearer "+token).
-		WithJSON(map[string]any{"entity": "deals", "name": "X", "filters": map[string]any{}}).
+		WithJSON(map[string]any{"entity": "tickets", "name": "X", "filters": map[string]any{}}).
 		Expect().Status(iris.StatusBadRequest)
 
 	// Nome vazio

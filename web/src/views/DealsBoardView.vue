@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { api } from '../api'
-import { formatMoney } from '../format'
+import { api, getToken } from '../api'
+import { formatMoney, relativeDate } from '../format'
 import { useToastStore } from '../stores/toast'
 import ModalDialog from '../components/ModalDialog.vue'
-import type { Company, Contact, Deal, Paginated, Pipeline, User } from '../types'
+import type { Company, Contact, Deal, Paginated, Pipeline, SavedView, User } from '../types'
 
 const router = useRouter()
 const toast = useToastStore()
@@ -17,9 +17,17 @@ const loading = ref(true)
 const dragging = ref<number | null>(null)
 const dragOverStage = ref<number | null>(null)
 
+const search = ref('')
+const ownerFilter = ref(0)
+const temperatureFilter = ref('')
+
 const users = ref<User[]>([])
 const contacts = ref<Contact[]>([])
 const companies = ref<Company[]>([])
+
+// ===== Visualizações salvas =====
+const savedViews = ref<SavedView[]>([])
+const activeTab = ref('funil')
 
 const modalOpen = ref(false)
 const saving = ref(false)
@@ -30,6 +38,7 @@ const form = ref({
   contact_id: null as number | null,
   company_id: null as number | null,
   owner_id: null as number | null,
+  temperature: '',
   close_date: ''
 })
 
@@ -37,13 +46,32 @@ const pipeline = computed(() => pipelines.value.find((p) => p.id === pipelineId.
 const openStages = computed(() => pipeline.value?.stages.filter((s) => !s.is_won && !s.is_lost) ?? [])
 const closedStages = computed(() => pipeline.value?.stages.filter((s) => s.is_won || s.is_lost) ?? [])
 
+const temperatureLabels: Record<string, string> = { quente: 'Quente', media: 'Média', fria: 'Fria' }
+const temperatureDot: Record<string, string> = { quente: '#d64550', media: '#c78a1b', fria: '#2b7ecb' }
+
+let searchTimer: ReturnType<typeof setTimeout> | null = null
+watch(search, () => {
+  if (searchTimer) clearTimeout(searchTimer)
+  searchTimer = setTimeout(loadBoard, 300)
+})
+
 function dealsInStage(stageId: number): Deal[] {
-  return deals.value.filter((d) => d.stage_id === stageId)
+  return deals.value.filter((d) => d.stage_id === stageId && d.status === 'aberto')
+}
+
+function closedInStage(stageId: number): Deal[] {
+  return deals.value.filter((d) => d.stage_id === stageId && d.status !== 'aberto')
 }
 
 function stageTotal(stageId: number): number {
   return dealsInStage(stageId).reduce((sum, d) => sum + d.amount, 0)
 }
+
+function stageWeighted(stage: { id: number; probability: number }): number {
+  return (stageTotal(stage.id) * stage.probability) / 100
+}
+
+const totalDeals = computed(() => deals.value.length)
 
 async function loadPipelines() {
   pipelines.value = await api.get<Pipeline[]>('/pipelines')
@@ -52,11 +80,19 @@ async function loadPipelines() {
   }
 }
 
+function boardQuery(): string {
+  const params = new URLSearchParams({ pipeline_id: String(pipelineId.value) })
+  if (search.value.trim()) params.set('q', search.value.trim())
+  if (ownerFilter.value) params.set('owner_id', String(ownerFilter.value))
+  if (temperatureFilter.value) params.set('temperature', temperatureFilter.value)
+  return params.toString()
+}
+
 async function loadBoard() {
   if (!pipelineId.value) return
   loading.value = true
   try {
-    const resp = await api.get<{ data: Deal[] }>(`/deals/board?pipeline_id=${pipelineId.value}`)
+    const resp = await api.get<{ data: Deal[] }>(`/deals/board?${boardQuery()}`)
     deals.value = resp.data
   } catch (e: any) {
     toast.error(e.message)
@@ -65,6 +101,87 @@ async function loadBoard() {
   }
 }
 
+// ===== Visualizações salvas =====
+const hasActiveFilters = computed(
+  () => !!search.value.trim() || !!ownerFilter.value || !!temperatureFilter.value
+)
+
+function applyFilters(filters: Record<string, any>) {
+  search.value = filters.q ?? ''
+  ownerFilter.value = Number(filters.owner_id) || 0
+  temperatureFilter.value = filters.temperature ?? ''
+  if (filters.pipeline_id && pipelines.value.some((p) => p.id === Number(filters.pipeline_id))) {
+    pipelineId.value = Number(filters.pipeline_id)
+  }
+}
+
+function selectTab(key: string) {
+  activeTab.value = key
+  if (key.startsWith('view-')) {
+    const view = savedViews.value.find((v) => v.id === Number(key.replace('view-', '')))
+    if (view) applyFilters((view.filters as Record<string, any>) || {})
+  } else {
+    applyFilters({})
+  }
+  loadBoard()
+}
+
+async function saveCurrentView() {
+  const name = prompt('Nome da visualização (ex.: Funil Limpo, Congelados):')
+  if (!name?.trim()) return
+  try {
+    const view = await api.post<SavedView>('/views', {
+      entity: 'deals',
+      name: name.trim(),
+      filters: {
+        q: search.value.trim(),
+        owner_id: ownerFilter.value,
+        temperature: temperatureFilter.value,
+        pipeline_id: pipelineId.value
+      }
+    })
+    savedViews.value = [...savedViews.value, view]
+    activeTab.value = `view-${view.id}`
+    toast.push('Visualização salva para toda a equipe')
+  } catch (e: any) {
+    toast.error(e.message)
+  }
+}
+
+async function deleteView(viewId: number) {
+  if (!confirm('Remover esta visualização?')) return
+  try {
+    await api.delete(`/views/${viewId}`)
+    savedViews.value = savedViews.value.filter((v) => v.id !== viewId)
+    if (activeTab.value === `view-${viewId}`) selectTab('funil')
+    toast.push('Visualização removida')
+  } catch (e: any) {
+    toast.error(e.message)
+  }
+}
+
+async function exportCSV() {
+  try {
+    const params = new URLSearchParams({ pipeline_id: String(pipelineId.value) })
+    if (search.value.trim()) params.set('q', search.value.trim())
+    if (ownerFilter.value) params.set('owner_id', String(ownerFilter.value))
+    const resp = await fetch(`/api/v1/deals/export?${params}`, {
+      headers: { Authorization: `Bearer ${getToken()}` }
+    })
+    if (!resp.ok) throw new Error('falha na exportação')
+    const blob = await resp.blob()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `negocios-${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  } catch (e: any) {
+    toast.error(e.message)
+  }
+}
+
+// ===== Drag & drop =====
 function onDragStart(deal: Deal, event: DragEvent) {
   dragging.value = deal.id
   event.dataTransfer?.setData('text/plain', String(deal.id))
@@ -86,17 +203,15 @@ async function onDrop(stageId: number) {
   if (!deal || deal.stage_id === stageId) return
 
   const previousStage = deal.stage_id
-  deal.stage_id = stageId // atualização otimista
+  deal.stage_id = stageId
   try {
     const updated = await api.patch<Deal>(`/deals/${dealId}/stage`, {
       stage_id: stageId,
       position: dealsInStage(stageId).length
     })
+    deals.value = deals.value.map((d) => (d.id === dealId ? updated : d))
     if (updated.status !== 'aberto') {
-      deals.value = deals.value.filter((d) => d.id !== dealId)
       toast.push(`Negócio ${updated.status === 'ganho' ? 'ganho! 🎉' : 'marcado como perdido'}`)
-    } else {
-      deals.value = deals.value.map((d) => (d.id === dealId ? updated : d))
     }
   } catch (e: any) {
     deal.stage_id = previousStage
@@ -106,8 +221,8 @@ async function onDrop(stageId: number) {
 
 async function closeDeal(deal: Deal, won: boolean) {
   try {
-    await api.patch(`/deals/${deal.id}/close`, { won })
-    deals.value = deals.value.filter((d) => d.id !== deal.id)
+    const updated = await api.patch<Deal>(`/deals/${deal.id}/close`, { won })
+    deals.value = deals.value.map((d) => (d.id === deal.id ? updated : d))
     toast.push(won ? 'Negócio ganho! 🎉' : 'Negócio marcado como perdido')
   } catch (e: any) {
     toast.error(e.message)
@@ -122,6 +237,7 @@ function openNew(stageId?: number) {
     contact_id: null,
     company_id: null,
     owner_id: null,
+    temperature: '',
     close_date: ''
   }
   modalOpen.value = true
@@ -149,14 +265,16 @@ onMounted(async () => {
   try {
     await loadPipelines()
     await loadBoard()
-    const [usersResp, contactsResp, companiesResp] = await Promise.all([
+    const [usersResp, contactsResp, companiesResp, viewsResp] = await Promise.all([
       api.get<User[]>('/users'),
       api.get<Paginated<Contact>>('/contacts?per_page=100'),
-      api.get<Paginated<Company>>('/companies?per_page=100')
+      api.get<Paginated<Company>>('/companies?per_page=100'),
+      api.get<SavedView[]>('/views?entity=deals')
     ])
     users.value = usersResp
-    contacts.value = contactsResp.data
-    companies.value = companiesResp.data
+    contacts.value = contactsResp.data ?? []
+    companies.value = companiesResp.data ?? []
+    savedViews.value = viewsResp ?? []
   } catch (e: any) {
     toast.error(e.message)
     loading.value = false
@@ -169,11 +287,53 @@ onMounted(async () => {
     <div class="page-head board-head">
       <h1>Negócios</h1>
       <div class="toolbar">
-        <select v-model.number="pipelineId" @change="loadBoard">
-          <option v-for="p in pipelines" :key="p.id" :value="p.id">{{ p.name }}</option>
-        </select>
+        <button class="btn btn-outline" type="button" @click="exportCSV">Exportar</button>
         <button class="btn btn-primary" type="button" @click="openNew()">+ Novo negócio</button>
       </div>
+    </div>
+
+    <!-- Abas de visualização -->
+    <div class="tabs">
+      <span class="tab-wrap">
+        <button type="button" class="tab" :class="{ active: activeTab === 'funil' }" @click="selectTab('funil')">
+          Funil
+        </button>
+      </span>
+      <span v-for="v in savedViews" :key="v.id" class="tab-wrap">
+        <button type="button" class="tab" :class="{ active: activeTab === `view-${v.id}` }" @click="selectTab(`view-${v.id}`)">
+          {{ v.name }}
+        </button>
+        <button
+          v-if="activeTab === `view-${v.id}`"
+          type="button"
+          class="tab-close"
+          title="Remover visualização"
+          @click="deleteView(v.id)"
+        >
+          ×
+        </button>
+      </span>
+    </div>
+
+    <!-- Filtros rápidos -->
+    <div class="toolbar filters">
+      <select v-model.number="pipelineId" @change="loadBoard">
+        <option v-for="p in pipelines" :key="p.id" :value="p.id">{{ p.name }}</option>
+      </select>
+      <input v-model="search" type="search" placeholder="Pesquisar negócios…" />
+      <select v-model.number="ownerFilter" @change="loadBoard">
+        <option :value="0">Proprietário do negócio</option>
+        <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
+      </select>
+      <select v-model="temperatureFilter" @change="loadBoard">
+        <option value="">Temperatura</option>
+        <option value="quente">🔴 Quente</option>
+        <option value="media">🟡 Média</option>
+        <option value="fria">🔵 Fria</option>
+      </select>
+      <button v-if="hasActiveFilters" class="btn btn-outline btn-sm save-view" type="button" @click="saveCurrentView">
+        ☆ Salvar visualização
+      </button>
     </div>
 
     <div v-if="loading" class="muted board-loading">Carregando negócios…</div>
@@ -189,8 +349,7 @@ onMounted(async () => {
         @drop.prevent="onDrop(stage.id)"
       >
         <header>
-          <span class="stage-name">{{ stage.name }}</span>
-          <span class="stage-meta">{{ dealsInStage(stage.id).length }} · {{ formatMoney(stageTotal(stage.id)) }}</span>
+          <span class="stage-name">{{ stage.name }} <span class="stage-count">{{ dealsInStage(stage.id).length }}</span></span>
         </header>
 
         <div class="cards">
@@ -205,9 +364,19 @@ onMounted(async () => {
             @click="router.push(`/negocios/${deal.id}`)"
           >
             <strong>{{ deal.name }}</strong>
+            <span class="muted small" v-if="deal.company_name || deal.contact_name">
+              {{ deal.company_name || deal.contact_name }}
+            </span>
             <span class="amount">{{ formatMoney(deal.amount) }}</span>
-            <span class="muted small" v-if="deal.contact_name || deal.company_name">
-              {{ deal.contact_name || deal.company_name }}
+            <div class="card-meta">
+              <span v-if="deal.temperature" class="temp">
+                <span class="temp-dot" :style="{ background: temperatureDot[deal.temperature] }"></span>
+                {{ temperatureLabels[deal.temperature] }}
+              </span>
+              <span class="muted small" v-if="deal.owner_name">{{ deal.owner_name }}</span>
+            </div>
+            <span class="muted small activity" v-if="deal.last_activity_at">
+              Atividade {{ relativeDate(deal.last_activity_at) }}
             </span>
             <div class="deal-actions" @click.stop>
               <button type="button" class="win" title="Marcar como ganho" @click="closeDeal(deal, true)">✓</button>
@@ -217,6 +386,11 @@ onMounted(async () => {
 
           <button class="add-in-column" type="button" @click="openNew(stage.id)">+ Adicionar</button>
         </div>
+
+        <footer class="column-foot">
+          <span>{{ formatMoney(stageTotal(stage.id)) }} · Valor total</span>
+          <span>{{ formatMoney(stageWeighted(stage)) }} ({{ stage.probability }}%) · Valor ponderado</span>
+        </footer>
       </div>
 
       <div
@@ -229,10 +403,30 @@ onMounted(async () => {
         @drop.prevent="onDrop(stage.id)"
       >
         <header>
-          <span class="stage-name">{{ stage.is_won ? '✓' : '✕' }} {{ stage.name }}</span>
+          <span class="stage-name">
+            {{ stage.is_won ? '✓' : '✕' }} {{ stage.name }}
+            <span class="stage-count">{{ closedInStage(stage.id).length }}</span>
+          </span>
         </header>
-        <p class="drop-hint">Arraste aqui para fechar</p>
+        <div class="cards">
+          <article
+            v-for="deal in closedInStage(stage.id)"
+            :key="deal.id"
+            class="deal-card closed-card"
+            @click="router.push(`/negocios/${deal.id}`)"
+          >
+            <strong>{{ deal.name }}</strong>
+            <span class="amount">{{ formatMoney(deal.amount) }}</span>
+          </article>
+        </div>
+        <footer class="column-foot">
+          <span>{{ formatMoney(closedInStage(stage.id).reduce((s, d) => s + d.amount, 0)) }} · últimos 30 dias</span>
+        </footer>
       </div>
+    </div>
+
+    <div class="board-bottom" v-if="!loading">
+      <span class="badge gray">{{ totalDeals }} negócio(s) no quadro</span>
     </div>
 
     <ModalDialog title="Novo negócio" :open="modalOpen" wide @close="modalOpen = false">
@@ -255,8 +449,13 @@ onMounted(async () => {
             </select>
           </div>
           <div class="field">
-            <label>Previsão de fechamento</label>
-            <input v-model="form.close_date" type="date" />
+            <label>Temperatura do deal</label>
+            <select v-model="form.temperature">
+              <option value="">—</option>
+              <option value="quente">🔴 Quente</option>
+              <option value="media">🟡 Média</option>
+              <option value="fria">🔵 Fria</option>
+            </select>
           </div>
         </div>
         <div class="form-row">
@@ -275,12 +474,18 @@ onMounted(async () => {
             </select>
           </div>
         </div>
-        <div class="field">
-          <label>Dono</label>
-          <select v-model="form.owner_id">
-            <option :value="null">Eu</option>
-            <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
-          </select>
+        <div class="form-row">
+          <div class="field">
+            <label>Dono</label>
+            <select v-model="form.owner_id">
+              <option :value="null">Eu</option>
+              <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Previsão de fechamento</label>
+            <input v-model="form.close_date" type="date" />
+          </div>
         </div>
         <button class="btn btn-primary" type="submit" :disabled="saving" style="width: 100%; justify-content: center">
           {{ saving ? 'Salvando…' : 'Criar negócio' }}
@@ -299,7 +504,66 @@ onMounted(async () => {
 }
 
 .board-head {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+}
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  border-bottom: 1px solid var(--fix-border);
+  margin-bottom: 12px;
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.tab-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.tab {
+  padding: 8px 14px;
+  border: none;
+  background: none;
+  font-size: 14px;
+  color: var(--fix-text-2);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  white-space: nowrap;
+}
+
+.tab:hover {
+  color: var(--fix-purple);
+}
+
+.tab.active {
+  color: var(--fix-purple);
+  border-bottom-color: var(--fix-purple);
+  font-weight: 600;
+}
+
+.tab-close {
+  border: none;
+  background: none;
+  color: var(--fix-text-3);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.tab-close:hover {
+  color: var(--fix-red);
+  background: var(--fix-red-tint);
+}
+
+.filters {
+  margin-bottom: 14px;
+  flex-shrink: 0;
+}
+
+.save-view {
+  color: var(--fix-purple);
 }
 
 .board-loading {
@@ -311,7 +575,7 @@ onMounted(async () => {
   gap: 14px;
   overflow-x: auto;
   flex: 1;
-  padding-bottom: 16px;
+  padding-bottom: 8px;
   align-items: stretch;
 }
 
@@ -334,19 +598,23 @@ onMounted(async () => {
 
 .column header {
   padding: 12px 14px 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
 }
 
 .stage-name {
   font-weight: 600;
   font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
-.stage-meta {
-  font-size: 12px;
-  color: var(--fix-text-3);
+.stage-count {
+  background: var(--fix-surface);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--fix-text-2);
 }
 
 .cards {
@@ -355,6 +623,7 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1;
 }
 
 .deal-card {
@@ -387,6 +656,32 @@ onMounted(async () => {
 
 .small {
   font-size: 12px;
+}
+
+.card-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.temp {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--fix-text-2);
+}
+
+.temp-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.activity {
+  margin-top: 2px;
 }
 
 .deal-actions {
@@ -440,11 +735,18 @@ onMounted(async () => {
   color: var(--fix-purple);
 }
 
+.column-foot {
+  border-top: 1px solid var(--fix-border);
+  padding: 8px 14px;
+  font-size: 11px;
+  color: var(--fix-text-3);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .column.closed {
-  width: 150px;
-  align-items: center;
-  justify-content: flex-start;
-  text-align: center;
+  width: 220px;
 }
 
 .column.won {
@@ -463,9 +765,14 @@ onMounted(async () => {
   color: var(--fix-red);
 }
 
-.drop-hint {
-  font-size: 12px;
-  color: var(--fix-text-3);
-  padding: 0 12px;
+.closed-card {
+  border-left-color: var(--fix-border);
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.board-bottom {
+  padding: 10px 0 4px;
+  flex-shrink: 0;
 }
 </style>

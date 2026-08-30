@@ -53,9 +53,15 @@ func main() {
 	//-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_ Rotas -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
 	routes.Register(app)
 
+	// Porta padrão: 9000 em produção (Swarm/stack mapeiam 9000) e 6998 em
+	// desenvolvimento; port_server no .env sempre tem prioridade.
 	port := goutils.Godotenv("port_server")
 	if port == "" {
-		port = "9000"
+		if goutils.Godotenv("env") == "production" {
+			port = "9000"
+		} else {
+			port = "6998"
+		}
 	}
 	app.Listen(":" + port)
 }

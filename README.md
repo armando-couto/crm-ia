@@ -34,10 +34,10 @@ Pré-requisitos: Go 1.24+, Node 22+, PostgreSQL.
 cp .env.example .env          # ajuste host/user/senha do seu PostgreSQL local
 createdb fixcrm               # crie o banco (as migrations rodam sozinhas na subida)
 
-# 2. Backend (porta 9000)
+# 2. Backend (porta 6998 em desenvolvimento)
 go run application.go
 
-# 3. Frontend com hot reload (porta 5173, proxy /api -> 9000)
+# 3. Frontend com hot reload (porta 5173, proxy /api -> 6998)
 cd web && npm install && npm run dev
 ```
 
@@ -86,7 +86,7 @@ Ver [.env.example](.env.example). No Linux o binário lê `.env.production`; nos
 | Chave | Descrição |
 | ----- | --------- |
 | `host`, `port_banco`, `user`, `password`, `dbname` | Conexão PostgreSQL |
-| `port_server` | Porta HTTP (padrão 9000) |
+| `port_server` | Porta HTTP (padrão: 6998 em desenvolvimento, 9000 em produção) |
 | `app_url` | URL pública do CRM (links dos e-mails) |
 | `jwt_secret` | Segredo do JWT (obrigatório) |
 | `admin_email`, `admin_password` | Admin inicial (criado só com o banco vazio) |

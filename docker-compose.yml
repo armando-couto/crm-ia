@@ -22,7 +22,8 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     ports:
-      - '9000:9000'
+      # Porta de desenvolvimento (defina port_server=6998 no seu .env.production local)
+      - '6998:6998'
     depends_on:
       db:
         condition: service_healthy

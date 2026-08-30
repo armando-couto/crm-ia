@@ -23,9 +23,32 @@ type Company struct {
 }
 
 type CompanyFilter struct {
-	Search  string
-	OwnerID int64
+	Search      string
+	OwnerID     int64
+	Industry    string
+	Unassigned  bool // sem dono
+	CreatedDays int  // criadas nos últimos N dias
+	SortBy      string
+	SortDir     string
 	Pagination
+}
+
+// companyOrderBy valida a ordenação contra uma lista fechada de colunas.
+func companyOrderBy(sortBy, sortDir string) string {
+	column := map[string]string{
+		"name":       "LOWER(c.name)",
+		"created_at": "c.created_at",
+		"updated_at": "c.updated_at",
+		"contacts":   "contacts_count",
+	}[sortBy]
+	if column == "" {
+		column = "LOWER(c.name)"
+	}
+	dir := "DESC"
+	if sortBy == "" || strings.EqualFold(sortDir, "asc") {
+		dir = "ASC"
+	}
+	return column + " " + dir + " NULLS LAST"
 }
 
 func ListCompanies(db *sql.DB, f CompanyFilter) ([]Company, int, error) {
@@ -41,6 +64,17 @@ func ListCompanies(db *sql.DB, f CompanyFilter) ([]Company, int, error) {
 		args = append(args, f.OwnerID)
 		where = append(where, fmt.Sprintf("c.owner_id = $%d", len(args)))
 	}
+	if f.Industry != "" {
+		args = append(args, strings.ToLower(f.Industry))
+		where = append(where, fmt.Sprintf("LOWER(COALESCE(c.industry,'')) = $%d", len(args)))
+	}
+	if f.Unassigned {
+		where = append(where, "c.owner_id IS NULL")
+	}
+	if f.CreatedDays > 0 {
+		args = append(args, f.CreatedDays)
+		where = append(where, fmt.Sprintf("c.created_at >= NOW() - make_interval(days => $%d)", len(args)))
+	}
 	cond := strings.Join(where, " AND ")
 
 	var total int
@@ -53,13 +87,13 @@ func ListCompanies(db *sql.DB, f CompanyFilter) ([]Company, int, error) {
 	rows, err := db.Query(fmt.Sprintf(`
 		SELECT c.id, c.name, COALESCE(c.domain,''), COALESCE(c.phone,''), COALESCE(c.industry,''),
 		       COALESCE(c.city,''), COALESCE(c.state,''), c.owner_id, COALESCE(u.name,''),
-		       (SELECT COUNT(*) FROM contacts ct WHERE ct.company_id = c.id),
+		       (SELECT COUNT(*) FROM contacts ct WHERE ct.company_id = c.id) AS contacts_count,
 		       c.created_at, c.updated_at
 		FROM companies c
 		LEFT JOIN users u ON u.id = c.owner_id
 		WHERE %s
-		ORDER BY c.name
-		LIMIT $%d OFFSET $%d`, cond, len(args)-1, len(args)), args...)
+		ORDER BY %s
+		LIMIT $%d OFFSET $%d`, cond, companyOrderBy(f.SortBy, f.SortDir), len(args)-1, len(args)), args...)
 	if err != nil {
 		return nil, 0, err
 	}

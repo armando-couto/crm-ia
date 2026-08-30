@@ -11,8 +11,13 @@ import (
 
 func ListCompanies(ctx iris.Context) {
 	f := models.CompanyFilter{
-		Search:  ctx.URLParam("q"),
-		OwnerID: ctx.URLParamInt64Default("owner_id", 0),
+		Search:      ctx.URLParam("q"),
+		OwnerID:     ctx.URLParamInt64Default("owner_id", 0),
+		Industry:    ctx.URLParam("industry"),
+		Unassigned:  ctx.URLParamBoolDefault("sem_dono", false),
+		CreatedDays: ctx.URLParamIntDefault("criado_dias", 0),
+		SortBy:      ctx.URLParam("sort"),
+		SortDir:     ctx.URLParam("dir"),
 		Pagination: models.Pagination{
 			Page:    ctx.URLParamIntDefault("page", 1),
 			PerPage: ctx.URLParamIntDefault("per_page", 25),

@@ -304,3 +304,19 @@ export interface Snippet {
   created_at: string
   updated_at: string
 }
+
+export interface SavedView {
+  id: number
+  entity: 'contacts' | 'companies'
+  name: string
+  filters: Record<string, unknown>
+  position: number
+  created_by: number | null
+  created_at: string
+}
+
+export interface FormField {
+  key: string
+  visible: boolean
+  required: boolean
+}

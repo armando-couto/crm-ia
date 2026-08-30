@@ -6,23 +6,31 @@ import { formatCompact, formatDate, initials, lifecycleLabels, relativeDate } fr
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import ModalDialog from '../components/ModalDialog.vue'
-import type { Company, Contact, ContactList, Paginated, User } from '../types'
+import type { Company, Contact, ContactList, FormField, Paginated, SavedView, User } from '../types'
 
 const router = useRouter()
 const auth = useAuthStore()
 const toast = useToastStore()
 
 // ===== Abas de visualização =====
-type ViewTab = { key: string; label: string; listId?: number }
+type ViewTab = { key: string; label: string; listId?: number; viewId?: number }
 const baseTabs: ViewTab[] = [
   { key: 'todos', label: 'Todos os contatos' },
   { key: 'meus', label: 'Meus contatos' },
   { key: 'sem-dono', label: 'Não atribuídos' }
 ]
 const listTabs = ref<ViewTab[]>([])
+const savedViews = ref<SavedView[]>([])
 const activeTab = ref('todos')
-const tabs = computed(() => [...baseTabs, ...listTabs.value])
+const viewTabs = computed<ViewTab[]>(() =>
+  savedViews.value.map((v) => ({ key: `view-${v.id}`, label: v.name, viewId: v.id }))
+)
+const tabs = computed(() => [...baseTabs, ...viewTabs.value, ...listTabs.value])
 const isListTab = computed(() => activeTab.value.startsWith('lista-'))
+const activeViewId = computed(() => {
+  if (!activeTab.value.startsWith('view-')) return 0
+  return Number(activeTab.value.replace('view-', ''))
+})
 
 // ===== Estado da listagem =====
 interface Stats {
@@ -57,18 +65,79 @@ const companies = ref<Company[]>([])
 
 const modalOpen = ref(false)
 const importOpen = ref(false)
+const customizeOpen = ref(false)
 const saving = ref(false)
-const form = ref({
-  first_name: '',
-  last_name: '',
-  email: '',
-  phone: '',
-  job_title: '',
-  lifecycle_stage: 'lead',
-  source: '',
-  company_id: null as number | null,
-  owner_id: null as number | null
-})
+const form = ref<Record<string, any>>({})
+
+// ===== Formulário dinâmico de criação =====
+const formConfig = ref<FormField[]>([])
+const customizeFields = ref<FormField[]>([])
+
+const fieldLabels: Record<string, string> = {
+  email: 'E-mail',
+  first_name: 'Nome',
+  last_name: 'Sobrenome',
+  phone: 'Número de telefone',
+  job_title: 'Cargo',
+  lifecycle_stage: 'Fase do ciclo de vida',
+  source: 'Fonte do registro',
+  company_id: 'Empresa',
+  owner_id: 'Proprietário do contato'
+}
+
+const visibleFields = computed(() => formConfig.value.filter((f) => f.visible))
+
+function resetForm() {
+  form.value = {
+    first_name: '',
+    last_name: '',
+    email: '',
+    phone: '',
+    job_title: '',
+    lifecycle_stage: 'lead',
+    source: '',
+    company_id: null,
+    owner_id: null
+  }
+}
+
+async function loadFormConfig() {
+  try {
+    const resp = await api.get<{ fields: FormField[] }>('/settings/contact-form')
+    formConfig.value = resp.fields
+  } catch {
+    /* mantém padrão local */
+  }
+}
+
+function openCustomize() {
+  customizeFields.value = formConfig.value.map((f) => ({ ...f }))
+  customizeOpen.value = true
+}
+
+function moveField(index: number, delta: number) {
+  const target = index + delta
+  if (target < 0 || target >= customizeFields.value.length) return
+  const next = [...customizeFields.value]
+  ;[next[index], next[target]] = [next[target], next[index]]
+  customizeFields.value = next
+}
+
+async function saveCustomize() {
+  saving.value = true
+  try {
+    const resp = await api.put<{ fields: FormField[] }>('/settings/contact-form', {
+      fields: customizeFields.value
+    })
+    formConfig.value = resp.fields
+    toast.push('Formulário personalizado para toda a equipe')
+    customizeOpen.value = false
+  } catch (e: any) {
+    toast.error(e.message)
+  } finally {
+    saving.value = false
+  }
+}
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 watch(search, () => {
@@ -136,7 +205,13 @@ async function loadStats() {
 function selectTab(key: string) {
   activeTab.value = key
   page.value = 1
-  cardFilter.value = ''
+  if (key.startsWith('view-')) {
+    // A aba de visualização hidrata os filtros salvos (visíveis na barra).
+    const view = savedViews.value.find((v) => v.id === Number(key.replace('view-', '')))
+    if (view) applyFilters((view.filters as Record<string, any>) || {})
+  } else {
+    applyFilters({})
+  }
   load()
 }
 
@@ -216,13 +291,29 @@ function bulkDelete() {
 }
 
 // ===== Criação / importação / exportação =====
-async function save() {
+function missingRequired(): string {
+  for (const f of visibleFields.value) {
+    if (f.required && !String(form.value[f.key] ?? '').trim()) {
+      return `preencha o campo ${fieldLabels[f.key] || f.key}`
+    }
+  }
+  return ''
+}
+
+async function save(addAnother = false) {
+  const msg = missingRequired()
+  if (msg) {
+    toast.error(msg)
+    return
+  }
   saving.value = true
   try {
     await api.post('/contacts', form.value)
     toast.push('Contato criado')
-    modalOpen.value = false
     resetForm()
+    if (!addAnother) {
+      modalOpen.value = false
+    }
     await Promise.all([load(), loadStats()])
   } catch (e: any) {
     toast.error(e.message)
@@ -231,17 +322,67 @@ async function save() {
   }
 }
 
-function resetForm() {
-  form.value = {
-    first_name: '',
-    last_name: '',
-    email: '',
-    phone: '',
-    job_title: '',
-    lifecycle_stage: 'lead',
-    source: '',
-    company_id: null,
-    owner_id: null
+// ===== Visualizações salvas =====
+const hasActiveFilters = computed(
+  () =>
+    !!search.value.trim() ||
+    !!stageFilter.value ||
+    !!ownerFilter.value ||
+    !!createdFilter.value ||
+    !!activityFilter.value ||
+    !!cardFilter.value
+)
+
+function currentFilters(): Record<string, unknown> {
+  return {
+    q: search.value.trim(),
+    lifecycle_stage: stageFilter.value,
+    owner_id: ownerFilter.value,
+    criado_dias: createdFilter.value,
+    sem_atividade_dias: activityFilter.value,
+    card: cardFilter.value,
+    sort: sortBy.value,
+    dir: sortDir.value
+  }
+}
+
+function applyFilters(filters: Record<string, any>) {
+  search.value = filters.q ?? ''
+  stageFilter.value = filters.lifecycle_stage ?? ''
+  ownerFilter.value = Number(filters.owner_id) || 0
+  createdFilter.value = Number(filters.criado_dias) || 0
+  activityFilter.value = Number(filters.sem_atividade_dias) || 0
+  cardFilter.value = filters.card ?? ''
+  sortBy.value = filters.sort || 'created_at'
+  sortDir.value = filters.dir === 'asc' ? 'asc' : 'desc'
+}
+
+async function saveCurrentView() {
+  const name = prompt('Nome da visualização (ex.: Leads do site sem dono):')
+  if (!name?.trim()) return
+  try {
+    const view = await api.post<SavedView>('/views', {
+      entity: 'contacts',
+      name: name.trim(),
+      filters: currentFilters()
+    })
+    savedViews.value = [...savedViews.value, view]
+    activeTab.value = `view-${view.id}`
+    toast.push('Visualização salva para toda a equipe')
+  } catch (e: any) {
+    toast.error(e.message)
+  }
+}
+
+async function deleteView(viewId: number) {
+  if (!confirm('Remover esta visualização? Os contatos não são afetados.')) return
+  try {
+    await api.delete(`/views/${viewId}`)
+    savedViews.value = savedViews.value.filter((v) => v.id !== viewId)
+    if (activeViewId.value === viewId) selectTab('todos')
+    toast.push('Visualização removida')
+  } catch (e: any) {
+    toast.error(e.message)
   }
 }
 
@@ -306,15 +447,18 @@ function goToPage(p: number | '…') {
 }
 
 onMounted(async () => {
-  await Promise.all([load(), loadStats()])
+  resetForm()
+  await Promise.all([load(), loadStats(), loadFormConfig()])
   try {
     users.value = await api.get<User[]>('/users')
-    const [companiesResp, listsResp] = await Promise.all([
+    const [companiesResp, listsResp, viewsResp] = await Promise.all([
       api.get<Paginated<Company>>('/companies?per_page=100'),
-      api.get<ContactList[]>('/lists')
+      api.get<ContactList[]>('/lists'),
+      api.get<SavedView[]>('/views?entity=contacts')
     ])
     companies.value = companiesResp.data
     listTabs.value = listsResp.map((l) => ({ key: `lista-${l.id}`, label: l.name, listId: l.id }))
+    savedViews.value = viewsResp
   } catch {
     /* abas e filtros opcionais */
   }
@@ -343,16 +487,20 @@ const stageBadge: Record<string, string> = {
 
     <!-- Abas de visualização -->
     <div class="tabs">
-      <button
-        v-for="t in tabs"
-        :key="t.key"
-        type="button"
-        class="tab"
-        :class="{ active: activeTab === t.key }"
-        @click="selectTab(t.key)"
-      >
-        {{ t.label }}
-      </button>
+      <span v-for="t in tabs" :key="t.key" class="tab-wrap">
+        <button type="button" class="tab" :class="{ active: activeTab === t.key }" @click="selectTab(t.key)">
+          {{ t.label }}
+        </button>
+        <button
+          v-if="t.viewId && activeTab === t.key"
+          type="button"
+          class="tab-close"
+          title="Remover visualização"
+          @click="deleteView(t.viewId)"
+        >
+          ×
+        </button>
+      </span>
       <button type="button" class="tab add" title="Criar visualização (lista)" @click="router.push('/listas')">+</button>
     </div>
 
@@ -379,6 +527,14 @@ const stageBadge: Record<string, string> = {
         <option :value="30">Sem atividade há 30+ dias</option>
         <option :value="90">Sem atividade há 90+ dias</option>
       </select>
+      <button
+        v-if="hasActiveFilters"
+        class="btn btn-outline btn-sm save-view"
+        type="button"
+        @click="saveCurrentView"
+      >
+        ☆ Salvar visualização
+      </button>
     </div>
 
     <!-- Cartões de métricas -->
@@ -497,64 +653,80 @@ const stageBadge: Record<string, string> = {
       </div>
     </div>
 
-    <ModalDialog title="Adicionar contato" :open="modalOpen" wide @close="modalOpen = false">
-      <form @submit.prevent="save">
-        <div class="form-row">
+    <ModalDialog title="Criar contato" :open="modalOpen" @close="modalOpen = false">
+      <button
+        v-if="auth.canManage"
+        type="button"
+        class="customize-link"
+        @click="openCustomize"
+      >
+        ⚙ Editar este formulário
+      </button>
+
+      <form @submit.prevent="save(false)">
+        <template v-for="f in visibleFields" :key="f.key">
           <div class="field">
-            <label>Nome *</label>
-            <input v-model="form.first_name" required />
-          </div>
-          <div class="field">
-            <label>Sobrenome</label>
-            <input v-model="form.last_name" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label>E-mail</label>
-            <input v-model="form.email" type="email" />
-          </div>
-          <div class="field">
-            <label>Telefone</label>
-            <input v-model="form.phone" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label>Cargo</label>
-            <input v-model="form.job_title" />
-          </div>
-          <div class="field">
-            <label>Origem</label>
-            <input v-model="form.source" placeholder="site, indicação, evento…" />
-          </div>
-        </div>
-        <div class="form-row">
-          <div class="field">
-            <label>Estágio</label>
-            <select v-model="form.lifecycle_stage">
+            <label>{{ fieldLabels[f.key] }} <template v-if="f.required">*</template></label>
+
+            <select v-if="f.key === 'lifecycle_stage'" v-model="form.lifecycle_stage">
               <option v-for="(label, key) in lifecycleLabels" :key="key" :value="key">{{ label }}</option>
             </select>
-          </div>
-          <div class="field">
-            <label>Empresa</label>
-            <select v-model="form.company_id">
+
+            <select v-else-if="f.key === 'company_id'" v-model="form.company_id">
               <option :value="null">Sem empresa</option>
               <option v-for="co in companies" :key="co.id" :value="co.id">{{ co.name }}</option>
             </select>
+
+            <select v-else-if="f.key === 'owner_id'" v-model="form.owner_id">
+              <option :value="null">Eu</option>
+              <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
+            </select>
+
+            <input
+              v-else
+              v-model="form[f.key]"
+              :type="f.key === 'email' ? 'email' : 'text'"
+              :required="f.required"
+            />
           </div>
+        </template>
+
+        <div class="create-actions">
+          <button class="btn btn-primary" type="submit" :disabled="saving">
+            {{ saving ? 'Salvando…' : 'Criar' }}
+          </button>
+          <button class="btn btn-outline" type="button" :disabled="saving" @click="save(true)">
+            Criar e adicionar outro
+          </button>
+          <button class="btn" type="button" @click="modalOpen = false">Cancelar</button>
         </div>
-        <div class="field">
-          <label>Proprietário</label>
-          <select v-model="form.owner_id">
-            <option :value="null">Eu</option>
-            <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
-          </select>
-        </div>
-        <button class="btn btn-primary" type="submit" :disabled="saving" style="width: 100%; justify-content: center">
-          {{ saving ? 'Salvando…' : 'Criar contato' }}
-        </button>
       </form>
+    </ModalDialog>
+
+    <ModalDialog title="Personalizar formulário de contato" :open="customizeOpen" @close="customizeOpen = false">
+      <p class="muted" style="margin-top: 0; font-size: 13px">
+        Escolha os campos, a ordem e quais são obrigatórios. Vale para toda a equipe.
+      </p>
+      <ul class="customize-list">
+        <li v-for="(f, i) in customizeFields" :key="f.key">
+          <span class="cf-order">
+            <button type="button" :disabled="i === 0" @click="moveField(i, -1)">↑</button>
+            <button type="button" :disabled="i === customizeFields.length - 1" @click="moveField(i, 1)">↓</button>
+          </span>
+          <span class="cf-name">{{ fieldLabels[f.key] }}</span>
+          <label class="cf-check" :class="{ locked: f.key === 'first_name' }">
+            <input type="checkbox" v-model="f.visible" :disabled="f.key === 'first_name'" />
+            Exibir
+          </label>
+          <label class="cf-check" :class="{ locked: f.key === 'first_name' }">
+            <input type="checkbox" v-model="f.required" :disabled="f.key === 'first_name' || !f.visible" />
+            Obrigatório
+          </label>
+        </li>
+      </ul>
+      <button class="btn btn-primary" type="button" :disabled="saving" style="width: 100%; justify-content: center" @click="saveCustomize">
+        {{ saving ? 'Salvando…' : 'Salvar formulário' }}
+      </button>
     </ModalDialog>
 
     <ModalDialog title="Importar contatos (CSV)" :open="importOpen" @close="importOpen = false">
@@ -606,6 +778,105 @@ const stageBadge: Record<string, string> = {
 .tab.add {
   font-size: 16px;
   padding: 9px 12px;
+}
+
+.tab-wrap {
+  display: inline-flex;
+  align-items: center;
+}
+
+.tab-close {
+  border: none;
+  background: none;
+  color: var(--fix-text-3);
+  cursor: pointer;
+  font-size: 15px;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.tab-close:hover {
+  color: var(--fix-red);
+  background: var(--fix-red-tint);
+}
+
+.save-view {
+  color: var(--fix-purple);
+}
+
+.customize-link {
+  display: block;
+  margin-left: auto;
+  border: none;
+  background: none;
+  color: var(--fix-purple);
+  font-size: 13px;
+  cursor: pointer;
+  margin-bottom: 10px;
+}
+
+.customize-link:hover {
+  text-decoration: underline;
+}
+
+.create-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.customize-list {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.customize-list li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--fix-bg);
+  font-size: 13px;
+}
+
+.cf-order {
+  display: flex;
+  gap: 2px;
+}
+
+.cf-order button {
+  border: 1px solid var(--fix-border);
+  background: var(--fix-surface);
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 11px;
+  width: 22px;
+  height: 22px;
+}
+
+.cf-order button:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.cf-name {
+  flex: 1;
+  font-weight: 500;
+}
+
+.cf-check {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+  color: var(--fix-text-2);
+}
+
+.cf-check.locked {
+  opacity: 0.55;
 }
 
 .filters {

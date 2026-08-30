@@ -126,6 +126,14 @@ func Register(app *iris.Application) {
 	auth.Put("/snippets/{id:int64}", controllers.UpdateSnippet)
 	auth.Delete("/snippets/{id:int64}", controllers.DeleteSnippet)
 
+	auth.Get("/settings/contact-form", controllers.GetContactForm)
+	gestao.Put("/settings/contact-form", controllers.UpdateContactForm)
+
+	auth.Get("/views", controllers.ListViews)
+	auth.Post("/views", controllers.CreateView)
+	auth.Put("/views/{id:int64}", controllers.RenameView)
+	auth.Delete("/views/{id:int64}", controllers.DeleteView)
+
 	auth.Get("/dashboard", controllers.Dashboard)
 	auth.Get("/search", controllers.Search)
 

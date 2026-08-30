@@ -1,0 +1,33 @@
+# Ambiente local de desenvolvimento.
+# Em produção roda apenas o container do Fix CRM (o PostgreSQL fica em outro servidor).
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: fixcrm
+      POSTGRES_USER: fixcrm
+      POSTGRES_PASSWORD: fixcrm
+    ports:
+      - '5432:5432'
+    volumes:
+      - fixcrm_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U fixcrm -d fixcrm']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - '9000:9000'
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./.env.production:/app/.env.production:ro
+
+volumes:
+  fixcrm_pgdata:

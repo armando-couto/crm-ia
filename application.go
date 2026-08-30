@@ -1,0 +1,61 @@
+package main
+
+import (
+	"log"
+	"time"
+
+	"fixpay/fix-crm/migrations"
+	"fixpay/fix-crm/routes"
+	"fixpay/fix-crm/services"
+	"fixpay/fix-crm/utils"
+
+	"github.com/armando-couto/goutils"
+	"github.com/kataras/iris/v12"
+	_ "github.com/lib/pq"
+)
+
+func main() {
+	//-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_ Configuração inicial Iris/APP -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+	app := iris.Default()
+	app.Use(iris.Compression)
+	app.SetRoutesNoLog(true)
+
+	utils.LoadConfig()
+	if utils.JWTSecret == "" {
+		log.Fatal("Chave jwt_secret não encontrada!")
+	}
+
+	////////////////////////////////////////////////////////////////////////
+	// Banco de dados
+	utils.DB = goutils.ConnectionBDPostgreSQL("FixCRM", "disable", false)
+	utils.DB.SetMaxOpenConns(40)
+	utils.DB.SetMaxIdleConns(20)
+	utils.DB.SetConnMaxLifetime(5 * time.Minute)
+
+	if err := migrations.Run(utils.DB); err != nil {
+		log.Fatalf("Erro ao aplicar migrations: %v", err)
+	}
+	if err := services.SeedAdmin(utils.DB); err != nil {
+		log.Fatalf("Erro ao criar administrador inicial: %v", err)
+	}
+	////////////////////////////////////////////////////////////////////////
+
+	////////////////////////////////////////////////////////////////////////
+	// E-mail (Mandrill) — opcional em desenvolvimento
+	mailer, err := services.NewMandrillMailer()
+	if err != nil {
+		log.Printf("Aviso: envio de e-mails desabilitado (%v)", err)
+	} else {
+		services.Mail = mailer
+	}
+	////////////////////////////////////////////////////////////////////////
+
+	//-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_ Rotas -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+	routes.Register(app)
+
+	port := goutils.Godotenv("port_server")
+	if port == "" {
+		port = "9000"
+	}
+	app.Listen(":" + port)
+}

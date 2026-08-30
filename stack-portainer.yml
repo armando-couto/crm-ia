@@ -1,0 +1,14 @@
+version: "3"
+services:
+  app:
+    container_name: fix-crm
+    image: fixpay/fix-crm:latest
+    restart: always
+    ports:
+      - "9000:9000"
+    deploy:
+      replicas: 1
+      # Ajuste o hostname do nó do Swarm onde o Fix CRM deve rodar:
+      # placement:
+      #   constraints:
+      #     - node.hostname == NOME-DO-NO

@@ -200,3 +200,118 @@ func TestSalesAnalytics(t *testing.T) {
 		t.Fatal("o funil deveria trazer as etapas do pipeline")
 	}
 }
+
+// A visão por categoria agrupa nos baldes certos e respeita o "excluído".
+func TestCategoryForecastBuckets(t *testing.T) {
+	db := testDB(t)
+	cleanTables(t, db)
+	db.Exec(`DELETE FROM sales_goals`)
+	db.Exec(`DELETE FROM forecast_submissions`)
+
+	ana := createTestUser(t, db, "ana.cat@fixpay.com.br")
+	var stageID, pipelineID int64
+	db.QueryRow(`SELECT id, pipeline_id FROM pipeline_stages WHERE NOT is_won AND NOT is_lost
+		ORDER BY position LIMIT 1`).Scan(&stageID, &pipelineID)
+
+	now := time.Now()
+	fechamento := time.Date(now.Year(), now.Month(), 15, 0, 0, 0, 0, time.Local)
+	period := now.Format("2006-01")
+
+	// Um negócio em cada balde, mais um excluído e um ganho.
+	for _, spec := range []struct {
+		amount   float64
+		category string
+	}{
+		{1000, models.ForecastPipeline},
+		{2000, models.ForecastBestCase},
+		{4000, models.ForecastCommitted},
+		{9999, models.ForecastExcluded},
+	} {
+		deal := &models.Deal{Name: "N", Amount: spec.amount, PipelineID: pipelineID,
+			StageID: stageID, OwnerID: &ana, CloseDate: &fechamento}
+		if err := models.CreateDeal(db, deal); err != nil {
+			t.Fatal(err)
+		}
+		deal.ForecastCategory = spec.category
+		if err := models.UpdateDeal(db, deal); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ganho := &models.Deal{Name: "Ganho", Amount: 3000, PipelineID: pipelineID,
+		StageID: stageID, OwnerID: &ana}
+	if err := models.CreateDeal(db, ganho); err != nil {
+		t.Fatal(err)
+	}
+	if err := models.CloseDeal(db, ganho.ID, true); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := models.SaveGoal(db, &ana, period, 10000); err != nil {
+		t.Fatal(err)
+	}
+	if err := models.SaveSubmission(db, ana, period, 7500, "pipeline forte"); err != nil {
+		t.Fatal(err)
+	}
+
+	forecast, err := models.LoadCategoryForecast(db, period, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if forecast.Pipeline != 1000 || forecast.BestCase != 2000 || forecast.Committed != 4000 {
+		t.Fatalf("baldes errados: %+v", forecast)
+	}
+	if forecast.Closed != 3000 {
+		t.Fatalf("o ganho deveria contar como fechado: %v", forecast.Closed)
+	}
+	// O excluído (9999) não aparece em lugar nenhum.
+	total := forecast.Pipeline + forecast.BestCase + forecast.Committed + forecast.Closed
+	if total != 10000 {
+		t.Fatalf("o excluído vazou para os números: %v", total)
+	}
+	if forecast.Gap != 7000 {
+		t.Fatalf("lacuna esperada 7000 (10000 - 3000), veio %v", forecast.Gap)
+	}
+	if len(forecast.Rows) != 1 || forecast.Rows[0].Submitted != 7500 ||
+		forecast.Rows[0].SubmittedNote != "pipeline forte" {
+		t.Fatalf("o envio do vendedor deveria aparecer na linha: %+v", forecast.Rows)
+	}
+	if forecast.Submitted != 7500 {
+		t.Fatalf("a soma dos envios deveria ser 7500: %v", forecast.Submitted)
+	}
+}
+
+// O envio sobrescreve o anterior do mesmo mês (um por pessoa por período).
+func TestSubmissionUpsert(t *testing.T) {
+	db := testDB(t)
+	db.Exec(`DELETE FROM forecast_submissions`)
+
+	ana := createTestUser(t, db, "ana.sub@fixpay.com.br")
+	period := time.Now().Format("2006-01")
+
+	if err := models.SaveSubmission(db, ana, period, 5000, "primeira"); err != nil {
+		t.Fatal(err)
+	}
+	if err := models.SaveSubmission(db, ana, period, 8000, "revisada"); err != nil {
+		t.Fatal(err)
+	}
+
+	sub, err := models.MySubmission(db, ana, period)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sub == nil || sub.Amount != 8000 || sub.Note != "revisada" {
+		t.Fatalf("o envio deveria ser sobrescrito: %+v", sub)
+	}
+
+	var total int
+	db.QueryRow(`SELECT COUNT(*) FROM forecast_submissions WHERE user_id = $1`, ana).Scan(&total)
+	if total != 1 {
+		t.Fatalf("deveria existir um envio só, veio %d", total)
+	}
+
+	// Sem envio no período seguinte, volta nil.
+	proximo := time.Now().AddDate(0, 1, 0).Format("2006-01")
+	if sub, _ := models.MySubmission(db, ana, proximo); sub != nil {
+		t.Fatalf("mês sem envio deveria voltar nil: %+v", sub)
+	}
+}

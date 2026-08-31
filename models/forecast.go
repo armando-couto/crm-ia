@@ -343,3 +343,226 @@ func LoadSalesAnalytics(db *sql.DB, days int, pipelineID int64) (*SalesAnalytics
 	}
 	return a, actRows.Err()
 }
+
+// ===== Categorias de previsão (Sales Forecast) =====
+
+// Categorias, da menos à mais certa. "excluido" fica fora dos números.
+const (
+	ForecastExcluded  = "excluido"
+	ForecastPipeline  = "pipeline"
+	ForecastBestCase  = "melhor_caso"
+	ForecastCommitted = "comprometido"
+	ForecastClosed    = "fechado"
+)
+
+var forecastCategories = []string{
+	ForecastExcluded, ForecastPipeline, ForecastBestCase, ForecastCommitted, ForecastClosed,
+}
+
+// ForecastCategoryLabels alimenta o seletor no negócio e as colunas da tela.
+var ForecastCategoryLabels = map[string]string{
+	ForecastExcluded:  "Excluído",
+	ForecastPipeline:  "Pipeline",
+	ForecastBestCase:  "Melhor caso",
+	ForecastCommitted: "Comprometido",
+	ForecastClosed:    "Fechado",
+}
+
+func ValidForecastCategory(c string) bool {
+	if c == "" {
+		return true
+	}
+	for _, v := range forecastCategories {
+		if v == c {
+			return true
+		}
+	}
+	return false
+}
+
+// CategoryRow é a linha de um vendedor na visão por categoria: quanto ele tem
+// em cada balde no período, mais o número que ele mesmo submeteu.
+type CategoryRow struct {
+	OwnerID   *int64  `json:"owner_id"`
+	OwnerName string  `json:"owner_name"`
+	Pipeline  float64 `json:"pipeline"`
+	BestCase  float64 `json:"best_case"`
+	Committed float64 `json:"committed"`
+	Closed    float64 `json:"closed"`
+	Goal      float64 `json:"goal"`
+	// Envio de previsão do próprio vendedor (0 quando não enviou).
+	Submitted     float64 `json:"submitted"`
+	SubmittedNote string  `json:"submitted_note,omitempty"`
+}
+
+// CategoryForecast é a visão por categoria do período inteiro.
+type CategoryForecast struct {
+	Period    string        `json:"period"`
+	Rows      []CategoryRow `json:"rows"`
+	Pipeline  float64       `json:"pipeline"`
+	BestCase  float64       `json:"best_case"`
+	Committed float64       `json:"committed"`
+	Closed    float64       `json:"closed"`
+	Submitted float64       `json:"submitted"`
+	TeamGoal  float64       `json:"team_goal"`
+	// Lacuna: meta menos o que já fechou.
+	Gap float64 `json:"gap"`
+}
+
+// LoadCategoryForecast agrega os negócios do período pelos baldes de categoria.
+// Ganhos contam como "fechado" independentemente da categoria marcada; abertos
+// entram no balde escolhido pelo vendedor (excluído fica de fora).
+func LoadCategoryForecast(db *sql.DB, period string, pipelineID int64) (*CategoryForecast, error) {
+	start, err := parsePeriod(period)
+	if err != nil {
+		return nil, err
+	}
+	end := start.AddDate(0, 1, 0)
+
+	pipelineFilter := ""
+	args := []any{start, end}
+	if pipelineID > 0 {
+		args = append(args, pipelineID)
+		pipelineFilter = fmt.Sprintf(" AND d.pipeline_id = $%d", len(args))
+	}
+
+	query := fmt.Sprintf(`
+		SELECT d.owner_id, COALESCE(u.name, 'Sem dono'),
+		       COALESCE(SUM(d.amount) FILTER (
+		           WHERE d.status = 'aberto' AND d.forecast_category = 'pipeline'), 0),
+		       COALESCE(SUM(d.amount) FILTER (
+		           WHERE d.status = 'aberto' AND d.forecast_category = 'melhor_caso'), 0),
+		       COALESCE(SUM(d.amount) FILTER (
+		           WHERE d.status = 'aberto' AND d.forecast_category = 'comprometido'), 0),
+		       COALESCE(SUM(d.amount) FILTER (WHERE d.status = 'ganho'), 0)
+		FROM deals d
+		LEFT JOIN users u ON u.id = d.owner_id
+		WHERE ((d.status = 'ganho' AND d.closed_at >= $1 AND d.closed_at < $2)
+		    OR (d.status = 'aberto' AND d.close_date >= $1 AND d.close_date < $2
+		        AND d.forecast_category <> 'excluido'))%s
+		GROUP BY d.owner_id, u.name
+		ORDER BY 6 DESC, 5 DESC`, pipelineFilter)
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	forecast := &CategoryForecast{Period: start.Format("2006-01"), Rows: []CategoryRow{}}
+	for rows.Next() {
+		var r CategoryRow
+		if err := rows.Scan(&r.OwnerID, &r.OwnerName, &r.Pipeline, &r.BestCase,
+			&r.Committed, &r.Closed); err != nil {
+			return nil, err
+		}
+		forecast.Rows = append(forecast.Rows, r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	goals, teamGoal, err := loadGoals(db, start)
+	if err != nil {
+		return nil, err
+	}
+	forecast.TeamGoal = teamGoal
+
+	submissions, err := loadSubmissions(db, start)
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range forecast.Rows {
+		row := &forecast.Rows[i]
+		if row.OwnerID != nil {
+			row.Goal = goals[*row.OwnerID]
+			if sub, ok := submissions[*row.OwnerID]; ok {
+				row.Submitted = sub.Amount
+				row.SubmittedNote = sub.Note
+			}
+		}
+		forecast.Pipeline += row.Pipeline
+		forecast.BestCase += row.BestCase
+		forecast.Committed += row.Committed
+		forecast.Closed += row.Closed
+		forecast.Submitted += row.Submitted
+	}
+	forecast.Gap = forecast.TeamGoal - forecast.Closed
+
+	return forecast, nil
+}
+
+// ===== Envio de previsão =====
+
+// ForecastSubmission é o número que o vendedor submete para o período.
+type ForecastSubmission struct {
+	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
+	UserName  string    `json:"user_name,omitempty"`
+	Period    string    `json:"period"`
+	Amount    float64   `json:"amount"`
+	Note      string    `json:"note"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// SaveSubmission grava (ou atualiza) o envio do vendedor para o mês.
+func SaveSubmission(db *sql.DB, userID int64, period string, amount float64, note string) error {
+	start, err := parsePeriod(period)
+	if err != nil {
+		return err
+	}
+	if amount < 0 {
+		return fmt.Errorf("o valor previsto não pode ser negativo")
+	}
+	_, err = db.Exec(`
+		INSERT INTO forecast_submissions (user_id, period, amount, note)
+		VALUES ($1, $2, $3, $4)
+		ON CONFLICT (user_id, period)
+		DO UPDATE SET amount = EXCLUDED.amount, note = EXCLUDED.note, updated_at = NOW()`,
+		userID, start, amount, note)
+	return err
+}
+
+// loadSubmissions devolve os envios do mês indexados por vendedor.
+func loadSubmissions(db *sql.DB, start time.Time) (map[int64]ForecastSubmission, error) {
+	rows, err := db.Query(`
+		SELECT user_id, amount, note FROM forecast_submissions WHERE period = $1`, start)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := map[int64]ForecastSubmission{}
+	for rows.Next() {
+		var s ForecastSubmission
+		if err := rows.Scan(&s.UserID, &s.Amount, &s.Note); err != nil {
+			return nil, err
+		}
+		out[s.UserID] = s
+	}
+	return out, rows.Err()
+}
+
+// MySubmission devolve o envio do próprio vendedor no período (nil sem envio).
+func MySubmission(db *sql.DB, userID int64, period string) (*ForecastSubmission, error) {
+	start, err := parsePeriod(period)
+	if err != nil {
+		return nil, err
+	}
+	var s ForecastSubmission
+	var p time.Time
+	err = db.QueryRow(`
+		SELECT id, user_id, period, amount, note, updated_at
+		FROM forecast_submissions WHERE user_id = $1 AND period = $2`,
+		userID, start,
+	).Scan(&s.ID, &s.UserID, &p, &s.Amount, &s.Note, &s.UpdatedAt)
+	if err == sql.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	s.Period = p.Format("2006-01")
+	return &s, nil
+}

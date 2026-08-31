@@ -215,3 +215,84 @@ func TestActivitiesFeed(t *testing.T) {
 	item.Value("kind").IsEqual("ligacao")
 	item.Value("contact_name").IsEqual("Ana Silva")
 }
+
+// ===== Sales Forecast: categorias e envio =====
+
+func TestCategoryForecastHandler(t *testing.T) {
+	e, mock, _ := newTestApp(t)
+	token := adminToken(t)
+
+	mock.ExpectQuery("FROM deals").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"owner_id", "owner_name", "pipeline", "best_case", "committed", "closed",
+		}).AddRow(int64(1), "Ana", 1000.0, 2000.0, 4000.0, 3000.0))
+	mock.ExpectQuery("FROM sales_goals").
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "amount"}).AddRow(int64(1), 10000.0))
+	mock.ExpectQuery("FROM forecast_submissions").
+		WillReturnRows(sqlmock.NewRows([]string{"user_id", "amount", "note"}).
+			AddRow(int64(1), 7500.0, "pipeline forte"))
+
+	resp := e.GET("/api/v1/forecast/categories").
+		WithHeader("Authorization", "Bearer "+token).
+		WithQuery("period", "2026-09").
+		Expect().Status(iris.StatusOK).JSON().Object()
+
+	f := resp.Value("forecast").Object()
+	f.Value("closed").IsEqual(3000)
+	f.Value("gap").IsEqual(7000)
+	f.Value("submitted").IsEqual(7500)
+	resp.Value("categories").Object().ContainsKey("melhor_caso")
+}
+
+func TestSubmitForecast(t *testing.T) {
+	e, mock, _ := newTestApp(t)
+	token := adminToken(t)
+
+	mock.ExpectExec("INSERT INTO forecast_submissions").
+		WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO audit_log").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectQuery("FROM forecast_submissions").
+		WillReturnRows(sqlmock.NewRows([]string{
+			"id", "user_id", "period", "amount", "note", "updated_at",
+		}).AddRow(1, int64(1), time.Now(), 7500.0, "pipeline forte", time.Now()))
+
+	e.PUT("/api/v1/forecast/submission").
+		WithHeader("Authorization", "Bearer "+token).
+		WithJSON(map[string]any{"period": "2026-09", "amount": 7500, "note": "pipeline forte"}).
+		Expect().Status(iris.StatusOK).
+		JSON().Object().Value("submission").Object().Value("amount").IsEqual(7500)
+}
+
+func TestSubmitForecastRejectsNegative(t *testing.T) {
+	e, _, _ := newTestApp(t)
+	token := adminToken(t)
+
+	e.PUT("/api/v1/forecast/submission").
+		WithHeader("Authorization", "Bearer "+token).
+		WithJSON(map[string]any{"period": "2026-09", "amount": -50}).
+		Expect().Status(iris.StatusBadRequest)
+}
+
+func TestSetDealForecastCategoryValidates(t *testing.T) {
+	e, mock, _ := newTestApp(t)
+	token := adminToken(t)
+
+	mock.ExpectQuery("FROM deals").WillReturnRows(dealRowForecast(5))
+
+	e.PATCH("/api/v1/deals/5/forecast").
+		WithHeader("Authorization", "Bearer "+token).
+		WithJSON(map[string]any{"forecast_category": "chute"}).
+		Expect().Status(iris.StatusBadRequest)
+}
+
+// dealRowForecast monta a linha do negócio no formato do dealSelect.
+func dealRowForecast(id int64) *sqlmock.Rows {
+	now := time.Now()
+	return sqlmock.NewRows([]string{
+		"id", "name", "amount", "currency", "pipeline_id", "stage_id", "stage_name",
+		"contact_id", "contact_name", "company_id", "company_name", "owner_id", "owner_name",
+		"status", "temperature", "forecast_category", "close_date", "position", "closed_at",
+		"last_activity_at", "created_at", "updated_at",
+	}).AddRow(id, "Negócio", 1000.0, "BRL", int64(1), int64(1), "Proposta",
+		nil, "", nil, "", nil, "", "aberto", "", "pipeline", nil, 0, nil, nil, now, now)
+}

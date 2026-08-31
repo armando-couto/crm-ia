@@ -14,27 +14,29 @@ const (
 )
 
 type Deal struct {
-	ID             int64      `json:"id"`
-	Name           string     `json:"name"`
-	Amount         float64    `json:"amount"`
-	Currency       string     `json:"currency"`
-	PipelineID     int64      `json:"pipeline_id"`
-	StageID        int64      `json:"stage_id"`
-	StageName      string     `json:"stage_name,omitempty"`
-	ContactID      *int64     `json:"contact_id"`
-	ContactName    string     `json:"contact_name,omitempty"`
-	CompanyID      *int64     `json:"company_id"`
-	CompanyName    string     `json:"company_name,omitempty"`
-	OwnerID        *int64     `json:"owner_id"`
-	OwnerName      string     `json:"owner_name,omitempty"`
-	Status         string     `json:"status"`
-	Temperature    string     `json:"temperature"`
-	CloseDate      *time.Time `json:"close_date"`
-	Position       int        `json:"position"`
-	ClosedAt       *time.Time `json:"closed_at"`
-	LastActivityAt *time.Time `json:"last_activity_at"`
-	CreatedAt      time.Time  `json:"created_at"`
-	UpdatedAt      time.Time  `json:"updated_at"`
+	ID          int64   `json:"id"`
+	Name        string  `json:"name"`
+	Amount      float64 `json:"amount"`
+	Currency    string  `json:"currency"`
+	PipelineID  int64   `json:"pipeline_id"`
+	StageID     int64   `json:"stage_id"`
+	StageName   string  `json:"stage_name,omitempty"`
+	ContactID   *int64  `json:"contact_id"`
+	ContactName string  `json:"contact_name,omitempty"`
+	CompanyID   *int64  `json:"company_id"`
+	CompanyName string  `json:"company_name,omitempty"`
+	OwnerID     *int64  `json:"owner_id"`
+	OwnerName   string  `json:"owner_name,omitempty"`
+	Status      string  `json:"status"`
+	Temperature string  `json:"temperature"`
+	// Categoria de previsão (Sales Forecast): a chance de fechar no período.
+	ForecastCategory string     `json:"forecast_category"`
+	CloseDate        *time.Time `json:"close_date"`
+	Position         int        `json:"position"`
+	ClosedAt         *time.Time `json:"closed_at"`
+	LastActivityAt   *time.Time `json:"last_activity_at"`
+	CreatedAt        time.Time  `json:"created_at"`
+	UpdatedAt        time.Time  `json:"updated_at"`
 }
 
 func ValidDealTemperature(t string) bool {
@@ -84,7 +86,8 @@ const dealSelect = `
 	       d.contact_id, COALESCE(ct.first_name || ' ' || COALESCE(ct.last_name,''), ''),
 	       d.company_id, COALESCE(co.name,''),
 	       d.owner_id, COALESCE(u.name,''),
-	       d.status, COALESCE(d.temperature,''), d.close_date, d.position, d.closed_at,
+	       d.status, COALESCE(d.temperature,''), COALESCE(d.forecast_category,'pipeline'),
+	       d.close_date, d.position, d.closed_at,
 	       (SELECT MAX(a.created_at) FROM activities a WHERE a.deal_id = d.id) AS last_activity_at,
 	       d.created_at, d.updated_at
 	FROM deals d
@@ -97,7 +100,7 @@ func scanDeal(row interface{ Scan(...any) error }) (*Deal, error) {
 	var d Deal
 	err := row.Scan(&d.ID, &d.Name, &d.Amount, &d.Currency, &d.PipelineID, &d.StageID, &d.StageName,
 		&d.ContactID, &d.ContactName, &d.CompanyID, &d.CompanyName, &d.OwnerID, &d.OwnerName,
-		&d.Status, &d.Temperature, &d.CloseDate, &d.Position, &d.ClosedAt, &d.LastActivityAt,
+		&d.Status, &d.Temperature, &d.ForecastCategory, &d.CloseDate, &d.Position, &d.ClosedAt, &d.LastActivityAt,
 		&d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -280,11 +283,15 @@ func CreateDeal(db *sql.DB, d *Deal) error {
 }
 
 func UpdateDeal(db *sql.DB, d *Deal) error {
+	if d.ForecastCategory == "" {
+		d.ForecastCategory = ForecastPipeline
+	}
 	_, err := db.Exec(`
 		UPDATE deals SET name = $1, amount = $2, currency = $3, contact_id = $4, company_id = $5,
-		       owner_id = $6, temperature = $7, close_date = $8, updated_at = NOW()
-		WHERE id = $9`,
-		d.Name, d.Amount, d.Currency, d.ContactID, d.CompanyID, d.OwnerID, d.Temperature, d.CloseDate, d.ID)
+		       owner_id = $6, temperature = $7, close_date = $8, forecast_category = $9, updated_at = NOW()
+		WHERE id = $10`,
+		d.Name, d.Amount, d.Currency, d.ContactID, d.CompanyID, d.OwnerID, d.Temperature,
+		d.CloseDate, d.ForecastCategory, d.ID)
 	return err
 }
 

@@ -368,16 +368,43 @@ const forecast = {
   gap: 11000
 }
 
+const categoryForecast = {
+  period: '2026-08',
+  rows: [
+    {
+      owner_id: 1,
+      owner_name: 'Ana',
+      pipeline: 1000,
+      best_case: 2000,
+      committed: 4000,
+      closed: 3000,
+      goal: 10000,
+      submitted: 7500,
+      submitted_note: 'pipeline forte'
+    }
+  ],
+  pipeline: 1000,
+  best_case: 2000,
+  committed: 4000,
+  closed: 3000,
+  submitted: 7500,
+  team_goal: 10000,
+  gap: 7000
+}
+
 describe('ForecastView', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     loginAs('admin')
     vi.stubGlobal(
       'fetch',
-      vi.fn().mockImplementation((url: string) => {
+      vi.fn().mockImplementation((url: string, options?: any) => {
         const path = String(url)
         let body: unknown = forecast
-        if (path.includes('/pipelines')) body = { data: [] }
+        if (options?.method === 'PUT') body = { submission: { id: 1, user_id: 1, period: '2026-08', amount: 7500, note: 'ok', updated_at: '' } }
+        else if (path.includes('/forecast/categories')) body = { forecast: categoryForecast }
+        else if (path.includes('/forecast/submission')) body = { submission: null }
+        else if (path.includes('/pipelines')) body = { data: [] }
         else if (path.includes('/users')) body = [{ id: 1, name: 'Ana' }]
         else if (path.includes('/goals')) body = { data: [] }
         return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body)) })
@@ -410,6 +437,39 @@ describe('ForecastView', () => {
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('Metas')
+    // Mas todo mundo pode enviar a própria previsão.
+    expect(wrapper.text()).toContain('Enviar previsão')
+  })
+
+  it('troca para a visão por categoria com os baldes do Sales Forecast', async () => {
+    const wrapper = mount(ForecastView, { global: { stubs: routerStubs } })
+    await flushPromises()
+
+    await wrapper.findAll('.view-tabs .btn')[1].trigger('click')
+    await flushPromises()
+
+    const text = wrapper.text().replace(/\u00a0/g, ' ')
+    expect(text).toContain('Comprometido')
+    expect(text).toContain('Melhor caso')
+    expect(text).toContain('R$ 3.000,00') // fechado
+    expect(text).toContain('R$ 7.000,00') // lacuna
+    expect(text).toContain('pipeline forte') // observação do envio
+  })
+
+  it('envia a previsão do vendedor', async () => {
+    const wrapper = mount(ForecastView, { global: { stubs: routerStubs } })
+    await flushPromises()
+
+    await wrapper.findAll('.filters > .btn').at(-1)!.trigger('click')
+    await flushPromises()
+
+    const vm = wrapper.vm as any
+    vm.submitDraft = { amount: 7500, note: 'pipeline forte' }
+    await vm.submitForecast()
+    await flushPromises()
+
+    const put = (globalThis.fetch as any).mock.calls.find((c: any[]) => c[1]?.method === 'PUT')
+    expect(JSON.parse(put![1].body)).toMatchObject({ amount: 7500, note: 'pipeline forte' })
   })
 })
 

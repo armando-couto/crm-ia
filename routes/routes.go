@@ -76,6 +76,7 @@ func Register(app *iris.Application) {
 	auth.Put("/deals/{id:int64}", can(models.PermDealsEdit), controllers.UpdateDeal)
 	auth.Patch("/deals/{id:int64}/stage", can(models.PermDealsEdit), controllers.MoveDeal)
 	auth.Patch("/deals/{id:int64}/close", can(models.PermDealsEdit), controllers.CloseDealHandler)
+	auth.Patch("/deals/{id:int64}/forecast", can(models.PermDealsEdit), controllers.SetDealForecastCategory)
 	auth.Delete("/deals/{id:int64}", can(models.PermDealsDelete), controllers.DeleteDeal)
 
 	auth.Get("/tasks", can(models.PermTasksView), controllers.ListTasks)
@@ -173,6 +174,9 @@ func Register(app *iris.Application) {
 
 	// Previsão, metas e análise de vendas.
 	auth.Get("/forecast", can(models.PermForecastView), controllers.ForecastHandler)
+	auth.Get("/forecast/categories", can(models.PermForecastView), controllers.CategoryForecastHandler)
+	auth.Get("/forecast/submission", can(models.PermForecastView), controllers.MySubmissionHandler)
+	auth.Put("/forecast/submission", can(models.PermForecastView), controllers.SubmitForecast)
 	auth.Get("/sales-analytics", can(models.PermForecastView), controllers.SalesAnalyticsHandler)
 	auth.Get("/goals", can(models.PermForecastView), controllers.ListGoals)
 	auth.Put("/goals", can(models.PermGoalsManage), controllers.SaveGoal)

@@ -6,12 +6,22 @@ import { useToastStore } from '../stores/toast'
 import { formatMoney } from '../format'
 import ModalDialog from '../components/ModalDialog.vue'
 import StatCard from '../components/StatCard.vue'
-import type { Forecast, Pipeline, SalesGoal, User } from '../types'
+import type { CategoryForecast, Forecast, ForecastSubmission, Pipeline, SalesGoal, User } from '../types'
 
 const auth = useAuthStore()
 const toast = useToastStore()
 
 const forecast = ref<Forecast | null>(null)
+const categories = ref<CategoryForecast | null>(null)
+
+// Visões do Sales Forecast: por etapa (estatística) ou por categoria (manual).
+const view = ref<'etapa' | 'categoria'>('etapa')
+
+// Envio de previsão: o número que o próprio vendedor submete para o mês.
+const submitOpen = ref(false)
+const submission = ref<ForecastSubmission | null>(null)
+const submitDraft = ref({ amount: 0, note: '' })
+const submitting = ref(false)
 const pipelines = ref<Pipeline[]>([])
 const users = ref<User[]>([])
 const loading = ref(true)
@@ -56,11 +66,45 @@ async function load() {
   loading.value = true
   try {
     const query = `?period=${period.value}${pipelineId.value ? `&pipeline_id=${pipelineId.value}` : ''}`
-    forecast.value = await api.get<Forecast>(`/forecast${query}`)
+    const [byStage, byCategory, mySub] = await Promise.all([
+      api.get<Forecast>(`/forecast${query}`),
+      api.get<{ forecast: CategoryForecast }>(`/forecast/categories${query}`),
+      api.get<{ submission: ForecastSubmission | null }>(`/forecast/submission?period=${period.value}`)
+    ])
+    forecast.value = byStage
+    categories.value = byCategory.forecast
+    submission.value = mySub.submission
   } catch (e: any) {
     toast.error(e.message)
   } finally {
     loading.value = false
+  }
+}
+
+function openSubmit() {
+  submitDraft.value = {
+    amount: submission.value?.amount ?? 0,
+    note: submission.value?.note ?? ''
+  }
+  submitOpen.value = true
+}
+
+async function submitForecast() {
+  submitting.value = true
+  try {
+    const resp = await api.put<{ submission: ForecastSubmission }>('/forecast/submission', {
+      period: period.value,
+      amount: submitDraft.value.amount,
+      note: submitDraft.value.note
+    })
+    submission.value = resp.submission
+    toast.push('Previsão enviada')
+    submitOpen.value = false
+    await load()
+  } catch (e: any) {
+    toast.error(e.message)
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -130,6 +174,14 @@ onMounted(async () => {
         </p>
       </div>
       <div class="filters">
+        <div class="view-tabs">
+          <button class="btn" :class="{ 'btn-primary': view === 'etapa' }" type="button" @click="view = 'etapa'">
+            Etapa do negócio
+          </button>
+          <button class="btn" :class="{ 'btn-primary': view === 'categoria' }" type="button" @click="view = 'categoria'">
+            Categoria de previsão
+          </button>
+        </div>
         <select v-model="period">
           <option v-for="p in periods" :key="p" :value="p">{{ periodLabel(p) }}</option>
         </select>
@@ -138,12 +190,15 @@ onMounted(async () => {
           <option v-for="p in pipelines" :key="p.id" :value="p.id">{{ p.name }}</option>
         </select>
         <button v-if="canSetGoals" class="btn" type="button" @click="openGoals">Metas</button>
+        <button class="btn" type="button" @click="openSubmit">
+          {{ submission ? 'Atualizar previsão' : 'Enviar previsão' }}
+        </button>
       </div>
     </div>
 
     <p v-if="loading" class="muted">Calculando previsão…</p>
 
-    <template v-else-if="forecast">
+    <template v-else-if="view === 'etapa' && forecast">
       <div class="stats">
         <StatCard label="Ganho no mês" :value="formatMoney(forecast.won)" tone="green" />
         <StatCard
@@ -226,6 +281,110 @@ onMounted(async () => {
       </div>
     </template>
 
+    <!-- ===== Visão por categoria de previsão ===== -->
+    <template v-else-if="view === 'categoria' && categories">
+      <div class="stats">
+        <StatCard label="Meta" :value="formatMoney(categories.team_goal)" />
+        <StatCard label="Fechado" :value="formatMoney(categories.closed)" tone="green" />
+        <StatCard
+          label="Lacuna"
+          :value="formatMoney(Math.max(0, categories.gap))"
+          hint="meta menos o fechado"
+          :tone="categories.gap > 0 ? 'red' : 'green'"
+        />
+        <StatCard
+          label="Envio de previsão"
+          :value="formatMoney(categories.submitted)"
+          hint="soma do que a equipe submeteu"
+          tone="purple"
+        />
+      </div>
+
+      <div v-if="!categories.rows.length" class="card empty">
+        <p class="muted">
+          Nenhum negócio classificado para {{ periodLabel(period) }}. Defina a categoria de
+          previsão nos negócios com fechamento neste mês.
+        </p>
+      </div>
+
+      <div v-else class="table-wrap">
+        <table class="data">
+          <thead>
+            <tr>
+              <th>Vendedor</th>
+              <th style="width: 160px">Cumprimento da meta</th>
+              <th style="width: 120px">Fechado</th>
+              <th style="width: 130px">Comprometido</th>
+              <th style="width: 120px">Melhor caso</th>
+              <th style="width: 120px">Pipeline</th>
+              <th style="width: 140px">Previsão enviada</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in categories.rows" :key="row.owner_id ?? 0">
+              <td><strong>{{ row.owner_name }}</strong></td>
+              <td>
+                <template v-if="row.goal">
+                  <div class="mini-track">
+                    <div
+                      class="mini-fill"
+                      :class="{ ok: row.closed >= row.goal }"
+                      :style="{ width: `${Math.min(100, (row.closed / row.goal) * 100)}%` }"
+                    ></div>
+                  </div>
+                  <span class="small">
+                    {{ ((row.closed / row.goal) * 100).toFixed(0) }}% de {{ formatMoney(row.goal) }}
+                  </span>
+                </template>
+                <span v-else class="muted small">sem meta</span>
+              </td>
+              <td><strong>{{ formatMoney(row.closed) }}</strong></td>
+              <td>{{ formatMoney(row.committed) }}</td>
+              <td>{{ formatMoney(row.best_case) }}</td>
+              <td class="muted">{{ formatMoney(row.pipeline) }}</td>
+              <td>
+                <template v-if="row.submitted">
+                  {{ formatMoney(row.submitted) }}
+                  <div v-if="row.submitted_note" class="muted small" :title="row.submitted_note">
+                    {{ row.submitted_note }}
+                  </div>
+                </template>
+                <span v-else class="muted small">não enviou</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="muted footer-note">
+        Ganhos contam como <strong>Fechado</strong> automaticamente; os abertos entram no balde
+        escolhido em cada negócio, e "Excluído" fica fora da previsão.
+      </p>
+    </template>
+
+    <!-- ===== Envio de previsão ===== -->
+    <ModalDialog :title="`Envio de previsão · ${periodLabel(period)}`" :open="submitOpen" @close="submitOpen = false">
+      <p class="muted" style="margin-top: 0">
+        O número que você prevê fechar no mês, na sua avaliação — ele aparece na coluna
+        "Previsão enviada" ao lado dos valores calculados.
+      </p>
+      <div class="field">
+        <label>Valor previsto</label>
+        <input v-model.number="submitDraft.amount" type="number" min="0" step="100" />
+      </div>
+      <div class="field">
+        <label>Observação</label>
+        <textarea v-model="submitDraft.note" rows="3" placeholder="O que sustenta esse número?"></textarea>
+      </div>
+
+      <template #footer>
+        <button class="btn" type="button" @click="submitOpen = false">Cancelar</button>
+        <button class="btn btn-primary" type="button" :disabled="submitting" @click="submitForecast">
+          {{ submitting ? 'Enviando…' : 'Enviar previsão' }}
+        </button>
+      </template>
+    </ModalDialog>
+
     <!-- ===== Metas do mês ===== -->
     <ModalDialog :title="`Metas de ${periodLabel(period)}`" :open="goalsOpen" @close="goalsOpen = false">
       <p class="muted" style="margin-top: 0">
@@ -255,6 +414,18 @@ onMounted(async () => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
+}
+
+.view-tabs {
+  display: flex;
+  gap: 6px;
+  margin-right: 8px;
+}
+
+.footer-note {
+  margin-top: 14px;
+  font-size: 12px;
 }
 
 .filters select {

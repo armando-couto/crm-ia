@@ -31,6 +31,26 @@ const pendingTasks = computed(() => tasks.value.filter((t) => !t.completed_at))
 
 const temperatureLabels: Record<string, string> = { quente: '🔴 Quente', media: '🟡 Média', fria: '🔵 Fria' }
 
+// Categorias do Sales Forecast, da menos à mais certa.
+const forecastLabels: Record<string, string> = {
+  excluido: 'Excluído',
+  pipeline: 'Pipeline',
+  melhor_caso: 'Melhor caso',
+  comprometido: 'Comprometido',
+  fechado: 'Fechado'
+}
+
+/** Muda a categoria de previsão direto na ficha, sem abrir a edição. */
+async function setForecastCategory(event: Event) {
+  const category = (event.target as HTMLSelectElement).value
+  try {
+    deal.value = await api.patch<Deal>(`/deals/${id}/forecast`, { forecast_category: category })
+    toast.push('Categoria de previsão atualizada')
+  } catch (e: any) {
+    toast.error(e.message)
+  }
+}
+
 // ===== Central de atividades =====
 type ActivityTab = 'todas' | 'nota' | 'email' | 'ligacao' | 'tarefas' | 'reunioes'
 const activityTab = ref<ActivityTab>('todas')
@@ -347,6 +367,18 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
           <dd>{{ formatMoney(deal.amount) }}</dd>
           <dt>Temperatura do deal</dt>
           <dd>{{ deal.temperature ? temperatureLabels[deal.temperature] : '—' }}</dd>
+          <dt>Categoria de previsão</dt>
+          <dd>
+            <select
+              v-if="deal.status === 'aberto'"
+              class="forecast-select"
+              :value="deal.forecast_category || 'pipeline'"
+              @change="setForecastCategory"
+            >
+              <option v-for="(label, key) in forecastLabels" :key="key" :value="key">{{ label }}</option>
+            </select>
+            <span v-else class="badge green">Fechado</span>
+          </dd>
           <dt>Proprietário do negócio</dt>
           <dd :class="{ muted: !deal.owner_name }">{{ deal.owner_name || 'Nenhum proprietário' }}</dd>
           <dt>Data de fechamento (previsão)</dt>
@@ -740,6 +772,14 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
 </template>
 
 <style scoped>
+.forecast-select {
+  padding: 4px 8px;
+  border: 1px solid var(--fix-border);
+  border-radius: 6px;
+  background: var(--fix-surface);
+  font-size: 13px;
+}
+
 .record {
   display: grid;
   grid-template-columns: 320px minmax(0, 1fr) 300px;

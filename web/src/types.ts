@@ -101,6 +101,40 @@ export interface Forecast {
   gap: number
 }
 
+export interface CategoryRow {
+  owner_id: number | null
+  owner_name: string
+  pipeline: number
+  best_case: number
+  committed: number
+  closed: number
+  goal: number
+  submitted: number
+  submitted_note?: string
+}
+
+export interface CategoryForecast {
+  period: string
+  rows: CategoryRow[]
+  pipeline: number
+  best_case: number
+  committed: number
+  closed: number
+  submitted: number
+  team_goal: number
+  gap: number
+}
+
+export interface ForecastSubmission {
+  id: number
+  user_id: number
+  user_name?: string
+  period: string
+  amount: number
+  note: string
+  updated_at: string
+}
+
 export interface StageConversion {
   stage_id: number
   stage_name: string
@@ -438,6 +472,7 @@ export interface Deal {
   owner_name?: string
   status: 'aberto' | 'ganho' | 'perdido'
   temperature?: string
+  forecast_category?: string
   close_date: string | null
   position: number
   closed_at: string | null

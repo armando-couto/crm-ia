@@ -57,6 +57,22 @@ const slices = computed(() => {
   })
 })
 
+/** Pontos de uma série do progresso, na mesma grade das demais. */
+function seriesPoints(serie: { points: { value: number }[] }): string {
+  const all = props.result.series ?? []
+  const top = Math.max(1, ...all.flatMap((s) => s.points.map((p) => p.value)))
+  const width = 100
+  const height = 100
+  const step = serie.points.length > 1 ? width / (serie.points.length - 1) : 0
+  return serie.points
+    .map((p, i) => {
+      const x = serie.points.length > 1 ? i * step : width / 2
+      const y = height - (p.value / top) * (height - 10)
+      return `${x.toFixed(2)},${y.toFixed(2)}`
+    })
+    .join(' ')
+}
+
 /** Pontos da linha, normalizados na área do SVG. */
 const linePoints = computed(() => {
   if (rows.value.length === 0) return ''
@@ -74,7 +90,51 @@ const linePoints = computed(() => {
 </script>
 
 <template>
-  <p v-if="!rows.length" class="muted empty">Sem dados no período escolhido.</p>
+  <!-- Progresso: várias séries mensais no mesmo gráfico de linhas. -->
+  <div v-if="result.series?.length" class="line-chart">
+    <svg viewBox="0 0 100 100" preserveAspectRatio="none" class="line-svg">
+      <polyline
+        v-for="(serie, i) in result.series"
+        :key="serie.name"
+        :points="seriesPoints(serie)"
+        fill="none"
+        :stroke="color(i)"
+        stroke-width="1.5"
+        vector-effect="non-scaling-stroke"
+      />
+    </svg>
+    <div class="line-labels">
+      <span v-for="p in result.series[0].points" :key="p.label">{{ p.label.slice(5) }}</span>
+    </div>
+    <ul class="legend horizontal">
+      <li v-for="(serie, i) in result.series" :key="serie.name">
+        <span class="dot" :style="{ background: color(i) }"></span>
+        <span>{{ serie.name }}</span>
+        <span class="muted">{{ serie.points.reduce((s, p) => s + p.value, 0) }}</span>
+      </li>
+    </ul>
+  </div>
+
+  <!-- Conversão de funil: barras com a taxa contra a etapa anterior. -->
+  <div v-else-if="chart === 'conversao'" class="bars">
+    <template v-for="(row, i) in rows" :key="row.label">
+      <div v-if="i > 0" class="conv-arrow">
+        <span class="conv-rate">{{ (row.percent ?? 0).toFixed(0) }}%</span>
+      </div>
+      <div class="bar-row">
+        <span class="bar-label" :title="row.label">{{ row.label }}</span>
+        <div class="bar-track">
+          <div
+            class="bar-fill"
+            :style="{ width: `${(row.value / maxValue) * 100}%`, background: row.label === 'Ganho' ? 'var(--fix-green)' : color(i) }"
+          ></div>
+        </div>
+        <span class="bar-value">{{ fmt(row.value) }}</span>
+      </div>
+    </template>
+  </div>
+
+  <p v-else-if="!rows.length" class="muted empty">Sem dados no período escolhido.</p>
 
   <!-- Barras horizontais: legível mesmo com rótulo longo (nome de pessoa, etapa). -->
   <div v-else-if="chart === 'barras'" class="bars">
@@ -210,6 +270,32 @@ const linePoints = computed(() => {
   width: 160px;
   height: 160px;
   flex-shrink: 0;
+}
+
+.conv-arrow {
+  display: flex;
+  justify-content: center;
+  padding: 1px 0;
+}
+
+.conv-rate {
+  background: var(--fix-purple-tint);
+  color: var(--fix-purple-dark);
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 1px 10px;
+}
+
+.legend.horizontal {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  min-width: 0;
+}
+
+.legend.horizontal li {
+  padding: 0;
 }
 
 .legend {

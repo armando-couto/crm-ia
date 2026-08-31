@@ -19,10 +19,15 @@ func ListReports(ctx iris.Context) {
 		serverError(ctx, err)
 		return
 	}
-	ctx.JSON(iris.Map{"data": reports, "catalog": models.ReportCatalog()})
+	ctx.JSON(iris.Map{
+		"data":    reports,
+		"catalog": models.ReportCatalog(),
+		"kinds":   models.ReportKindLabels,
+	})
 }
 
 type reportRequest struct {
+	Kind        string               `json:"kind"`
 	Name        string               `json:"name"`
 	Description string               `json:"description"`
 	Entity      string               `json:"entity"`
@@ -34,6 +39,7 @@ type reportRequest struct {
 }
 
 func (r *reportRequest) apply(report *models.Report) string {
+	report.Kind = r.Kind
 	report.Name = strings.TrimSpace(r.Name)
 	report.Description = strings.TrimSpace(r.Description)
 	report.Entity = r.Entity

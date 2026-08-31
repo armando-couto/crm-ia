@@ -13,9 +13,9 @@ import (
 func reportRow(id int64, name, entity, metric, dimension, chart string) *sqlmock.Rows {
 	now := time.Now()
 	return sqlmock.NewRows([]string{
-		"id", "name", "description", "entity", "metric", "dimension", "filters",
+		"id", "kind", "name", "description", "entity", "metric", "dimension", "filters",
 		"chart", "shared", "position", "created_by", "created_at", "updated_at",
-	}).AddRow(id, name, "", entity, metric, dimension, []byte(`{"days":90}`),
+	}).AddRow(id, "agregado", name, "", entity, metric, dimension, []byte(`{"days":90}`),
 		chart, true, 0, nil, now, now)
 }
 

@@ -21,6 +21,50 @@ const saving = ref(false)
 const editing = ref<Report | null>(null)
 const preview = ref<ReportResult | null>(null)
 
+// Modal de criação em dois passos: escolher a base e o tipo de relatório.
+const pickerOpen = ref(false)
+const pickerEntity = ref('negocios')
+const kinds = ref<Record<string, string>>({})
+
+// Descrição de cada tipo, como no modal do Insights.
+const kindHints: Record<string, string> = {
+  agregado: 'Quantas/quanto, agrupado como você escolher',
+  conversao: 'Qual é a taxa de conversão entre as etapas do funil?',
+  duracao: 'Quantos dias o negócio passa em cada etapa?',
+  progresso: 'Criados, ganhos e perdidos mês a mês'
+}
+
+/** Os tipos prontos só existem para negócios; o resto usa o agregado. */
+function kindsFor(entity: string): string[] {
+  if (entity === 'negocios') return ['agregado', 'conversao', 'duracao', 'progresso']
+  return ['agregado']
+}
+
+function pickKind(kind: string) {
+  pickerOpen.value = false
+  const first = catalog.value.find((c) => c.key === pickerEntity.value)
+  editing.value = {
+    id: 0,
+    kind,
+    name: '',
+    description: '',
+    entity: pickerEntity.value,
+    metric: Object.keys(first?.metrics ?? { contagem: '' })[0],
+    dimension: Object.keys(first?.dimensions ?? { dono: '' })[0],
+    filters: { days: kind === 'progresso' ? 365 : 90, owner_id: 0, status: '', pipeline_id: 0 },
+    chart: kind === 'conversao' ? 'conversao' : kind === 'progresso' ? 'linha' : 'barras',
+    shared: true,
+    position: 0,
+    created_by: null,
+    created_at: '',
+    updated_at: ''
+  }
+  preview.value = null
+  runPreview()
+}
+
+const isAggregate = computed(() => (editing.value?.kind ?? 'agregado') === 'agregado')
+
 const charts = [
   { value: 'barras', label: 'Barras' },
   { value: 'linha', label: 'Linha' },
@@ -42,11 +86,12 @@ async function load() {
   loading.value = true
   try {
     const [resp, userList] = await Promise.all([
-      api.get<{ data: Report[]; catalog: ReportCatalogEntry[] }>('/reports'),
+      api.get<{ data: Report[]; catalog: ReportCatalogEntry[]; kinds: Record<string, string> }>('/reports'),
       api.get<User[]>('/users')
     ])
     reports.value = resp.data ?? []
     catalog.value = resp.catalog ?? []
+    kinds.value = resp.kinds ?? {}
     users.value = userList
     await Promise.all(reports.value.map(run))
   } catch (e: any) {
@@ -67,24 +112,8 @@ async function run(report: Report) {
 }
 
 function novo() {
-  const first = catalog.value[0]
-  editing.value = {
-    id: 0,
-    name: '',
-    description: '',
-    entity: first?.key ?? 'negocios',
-    metric: Object.keys(first?.metrics ?? { contagem: '' })[0],
-    dimension: Object.keys(first?.dimensions ?? { dono: '' })[0],
-    filters: { days: 90, owner_id: 0, status: '' },
-    chart: 'barras',
-    shared: true,
-    position: 0,
-    created_by: null,
-    created_at: '',
-    updated_at: ''
-  }
-  preview.value = null
-  runPreview()
+  pickerEntity.value = 'negocios'
+  pickerOpen.value = true
 }
 
 function edit(report: Report) {
@@ -200,9 +229,41 @@ onMounted(load)
       </div>
     </div>
 
+    <!-- ===== Escolher base e tipo (dois passos, como no Insights) ===== -->
+    <ModalDialog title="Adicionar novo relatório" :open="pickerOpen" wide @close="pickerOpen = false">
+      <div class="picker">
+        <div class="picker-col">
+          <h3>Escolha a base</h3>
+          <button
+            v-for="c in catalog"
+            :key="c.key"
+            type="button"
+            class="picker-item"
+            :class="{ active: pickerEntity === c.key }"
+            @click="pickerEntity = c.key"
+          >
+            {{ c.label }}
+          </button>
+        </div>
+        <div class="picker-col">
+          <h3>Escolha o tipo de relatório</h3>
+          <button
+            v-for="k in kindsFor(pickerEntity)"
+            :key="k"
+            type="button"
+            class="picker-item kind"
+            @click="pickKind(k)"
+          >
+            <strong>{{ kinds[k] ?? k }}</strong>
+            <span class="muted">{{ kindHints[k] }}</span>
+          </button>
+        </div>
+      </div>
+    </ModalDialog>
+
     <!-- ===== Construtor ===== -->
     <ModalDialog
-      :title="editing?.id ? 'Editar relatório' : 'Novo relatório'"
+      :title="editing?.id ? 'Editar relatório' : `Novo relatório · ${kinds[editing?.kind ?? 'agregado'] ?? ''}`"
       :open="!!editing"
       wide
       @close="editing = null"
@@ -217,39 +278,42 @@ onMounted(load)
           <input v-model="editing.description" placeholder="Para que serve este relatório" />
         </div>
 
-        <div class="form-row">
-          <div class="field">
-            <label>Sobre o quê</label>
-            <select v-model="editing.entity" @change="runPreview">
-              <option v-for="c in catalog" :key="c.key" :value="c.key">{{ c.label }}</option>
-            </select>
+        <template v-if="isAggregate">
+          <div class="form-row">
+            <div class="field">
+              <label>Sobre o quê</label>
+              <select v-model="editing.entity" @change="runPreview">
+                <option v-for="c in catalog" :key="c.key" :value="c.key">{{ c.label }}</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Medir</label>
+              <select v-model="editing.metric" @change="runPreview">
+                <option v-for="(label, key) in currentEntity?.metrics ?? {}" :key="key" :value="key">
+                  {{ label }}
+                </option>
+              </select>
+            </div>
           </div>
-          <div class="field">
-            <label>Medir</label>
-            <select v-model="editing.metric" @change="runPreview">
-              <option v-for="(label, key) in currentEntity?.metrics ?? {}" :key="key" :value="key">
-                {{ label }}
-              </option>
-            </select>
-          </div>
-        </div>
 
-        <div class="form-row">
-          <div class="field">
-            <label>Agrupar por</label>
-            <select v-model="editing.dimension" @change="runPreview">
-              <option v-for="(label, key) in currentEntity?.dimensions ?? {}" :key="key" :value="key">
-                {{ label }}
-              </option>
-            </select>
+          <div class="form-row">
+            <div class="field">
+              <label>Agrupar por</label>
+              <select v-model="editing.dimension" @change="runPreview">
+                <option v-for="(label, key) in currentEntity?.dimensions ?? {}" :key="key" :value="key">
+                  {{ label }}
+                </option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Formato</label>
+              <select v-model="editing.chart">
+                <option v-for="c in charts" :key="c.value" :value="c.value">{{ c.label }}</option>
+              </select>
+            </div>
           </div>
-          <div class="field">
-            <label>Formato</label>
-            <select v-model="editing.chart">
-              <option v-for="c in charts" :key="c.value" :value="c.value">{{ c.label }}</option>
-            </select>
-          </div>
-        </div>
+        </template>
+        <p v-else class="muted kind-hint">{{ kindHints[editing.kind ?? 'agregado'] }}</p>
 
         <h3 class="section">Filtros</h3>
         <div class="form-row">
@@ -263,7 +327,7 @@ onMounted(load)
               <option :value="365">Último ano</option>
             </select>
           </div>
-          <div class="field">
+          <div v-if="isAggregate" class="field">
             <label>Dono</label>
             <select v-model.number="editing.filters.owner_id" @change="runPreview">
               <option :value="0">Todos</option>
@@ -297,6 +361,63 @@ onMounted(load)
 </template>
 
 <style scoped>
+.picker {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  gap: 20px;
+}
+
+.picker h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--fix-text-3);
+  margin-bottom: 10px;
+}
+
+.picker-col {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.picker-item {
+  text-align: left;
+  background: var(--fix-surface);
+  border: 1px solid var(--fix-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--fix-text);
+}
+
+.picker-item:hover {
+  border-color: var(--fix-purple);
+}
+
+.picker-item.active {
+  border-color: var(--fix-purple);
+  background: var(--fix-purple-tint);
+  font-weight: 500;
+}
+
+.picker-item.kind {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.picker-item.kind .muted {
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.kind-hint {
+  margin: 4px 0 12px;
+  font-size: 13px;
+}
+
 .empty {
   text-align: center;
   padding: 36px;

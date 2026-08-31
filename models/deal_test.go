@@ -67,6 +67,9 @@ func TestCreateDealDefaults(t *testing.T) {
 	mock.ExpectQuery("INSERT INTO deals").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "position", "created_at", "updated_at"}).
 			AddRow(3, 0, time.Now(), time.Now()))
+	// A criação também grava a entrada no histórico de etapas.
+	mock.ExpectExec("INSERT INTO deal_stage_history").
+		WillReturnResult(sqlmock.NewResult(1, 1))
 
 	d := &Deal{Name: "Venda POS", PipelineID: 1, StageID: 2}
 	if err := CreateDeal(db, d); err != nil {

@@ -160,10 +160,12 @@ export interface ReportFilters {
   days: number
   owner_id: number
   status: string
+  pipeline_id?: number
 }
 
 export interface Report {
   id: number
+  kind?: string
   name: string
   description: string
   entity: string
@@ -181,10 +183,17 @@ export interface Report {
 export interface ReportRow {
   label: string
   value: number
+  percent?: number
+}
+
+export interface ReportSeries {
+  name: string
+  points: ReportRow[]
 }
 
 export interface ReportResult {
   rows: ReportRow[]
+  series?: ReportSeries[]
   total: number
   metric_label: string
   is_money: boolean

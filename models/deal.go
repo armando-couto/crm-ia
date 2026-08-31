@@ -272,7 +272,7 @@ func CreateDeal(db *sql.DB, d *Deal) error {
 	if d.Status == "" {
 		d.Status = DealAberto
 	}
-	return db.QueryRow(`
+	err := db.QueryRow(`
 		INSERT INTO deals (name, amount, currency, pipeline_id, stage_id, contact_id, company_id, owner_id, status, temperature, close_date, position)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
 		        COALESCE((SELECT MAX(position) + 1 FROM deals WHERE stage_id = $5), 0))
@@ -280,6 +280,13 @@ func CreateDeal(db *sql.DB, d *Deal) error {
 		d.Name, d.Amount, d.Currency, d.PipelineID, d.StageID, d.ContactID, d.CompanyID,
 		d.OwnerID, d.Status, d.Temperature, d.CloseDate,
 	).Scan(&d.ID, &d.Position, &d.CreatedAt, &d.UpdatedAt)
+	if err != nil {
+		return err
+	}
+	// Histórico de etapas: alimenta a conversão de funil e o tempo por etapa.
+	_, err = db.Exec(`INSERT INTO deal_stage_history (deal_id, stage_id) VALUES ($1, $2)`,
+		d.ID, d.StageID)
+	return err
 }
 
 func UpdateDeal(db *sql.DB, d *Deal) error {
@@ -314,10 +321,18 @@ func MoveDealStage(db *sql.DB, dealID, stageID int64, position int) error {
 	default:
 		closedAt = nil
 	}
+	var previousStage int64
+	_ = db.QueryRow(`SELECT stage_id FROM deals WHERE id = $1`, dealID).Scan(&previousStage)
+
 	_, err = db.Exec(`
 		UPDATE deals SET stage_id = $1, position = $2, status = $3, closed_at = $4, updated_at = NOW()
 		WHERE id = $5`,
 		stageID, position, status, closedAt, dealID)
+	if err == nil && previousStage != stageID {
+		// A entrada na etapa nova entra no histórico do funil.
+		_, _ = db.Exec(`INSERT INTO deal_stage_history (deal_id, stage_id) VALUES ($1, $2)`,
+			dealID, stageID)
+	}
 	return err
 }
 

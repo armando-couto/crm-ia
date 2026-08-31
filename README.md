@@ -25,7 +25,7 @@ CRM da Fix Pay — substituto interno do HubSpot. Backend em **Go (Iris, MVC)**,
 - **Rastreio de e-mail**: aberturas e cliques dos envios feitos pelo CRM, com taxa por período
 - **Duplicados**: encontra e mescla contatos e empresas repetidos
 - **Agendamento**: link público com a agenda de cada pessoa; a reunião marcada entra no CRM
-- **Relatórios**: montados pela equipe (entidade + métrica + agrupamento) em barras, linha, pizza ou tabela
+- **Relatórios**: criação em dois passos (base → tipo). Além do agregado (métrica × agrupamento), análises prontas de negócio a partir do histórico de etapas: conversão de funil (taxa entre etapas + taxa de ganho), duração por etapa e progresso mensal (criados/ganhos/perdidos)
 - **Segurança**: webhook do Mandrill com assinatura HMAC, proteção contra força bruta no login, convite que expira em 7 dias com troca obrigatória de senha, perfil lido do banco a cada requisição e trilha de auditoria em Configurações → Auditoria
 
 ## Stack

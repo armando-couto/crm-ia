@@ -214,3 +214,160 @@ func TestRunReportLabelsEmptyValues(t *testing.T) {
 		t.Fatalf("rótulo vazio deveria virar 'Sem dono': %+v", result.Rows)
 	}
 }
+
+// A conversão de funil conta quem passou por cada etapa e a taxa entre elas.
+func TestFunnelConversion(t *testing.T) {
+	db := testDB(t)
+	cleanTables(t, db)
+
+	// Etapas do pipeline padrão, na ordem.
+	stageRows, err := db.Query(`SELECT id, pipeline_id FROM pipeline_stages
+		WHERE NOT is_won AND NOT is_lost ORDER BY position LIMIT 2`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	type st struct{ id, pipe int64 }
+	stages := []st{}
+	for stageRows.Next() {
+		var s st
+		stageRows.Scan(&s.id, &s.pipe)
+		stages = append(stages, s)
+	}
+	stageRows.Close()
+	if len(stages) < 2 {
+		t.Skip("pipeline de teste sem duas etapas")
+	}
+
+	// 4 negócios entram na etapa 1; 2 avançam para a etapa 2; 1 é ganho.
+	ids := []int64{}
+	for i := 0; i < 4; i++ {
+		deal := &models.Deal{Name: "N", Amount: 100, PipelineID: stages[0].pipe, StageID: stages[0].id}
+		if err := models.CreateDeal(db, deal); err != nil {
+			t.Fatal(err)
+		}
+		ids = append(ids, deal.ID)
+	}
+	for _, id := range ids[:2] {
+		if err := models.MoveDealStage(db, id, stages[1].id, 0); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := models.CloseDeal(db, ids[0], true); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := models.LoadFunnelConversion(db, stages[0].pipe, 90)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Primeira etapa: 4 entraram (100%). Segunda: 2 (50% da anterior). Ganho: 1.
+	if result.Rows[0].Value != 4 || result.Rows[0].Percent != 100 {
+		t.Fatalf("topo do funil inesperado: %+v", result.Rows[0])
+	}
+	if result.Rows[1].Value != 2 || result.Rows[1].Percent != 50 {
+		t.Fatalf("conversão da segunda etapa inesperada: %+v", result.Rows[1])
+	}
+	ganho := result.Rows[len(result.Rows)-1]
+	if ganho.Label != "Ganho" || ganho.Value != 1 || ganho.Percent != 100 {
+		t.Fatalf("fechamento do funil inesperado: %+v (1 ganho, 0 perdidos = 100%%)", ganho)
+	}
+}
+
+// A duração mede o tempo médio por etapa a partir do histórico.
+func TestStageDuration(t *testing.T) {
+	db := testDB(t)
+	cleanTables(t, db)
+
+	var stageID, pipelineID int64
+	db.QueryRow(`SELECT id, pipeline_id FROM pipeline_stages WHERE NOT is_won AND NOT is_lost
+		ORDER BY position LIMIT 1`).Scan(&stageID, &pipelineID)
+
+	deal := &models.Deal{Name: "N", Amount: 100, PipelineID: pipelineID, StageID: stageID}
+	if err := models.CreateDeal(db, deal); err != nil {
+		t.Fatal(err)
+	}
+	// Entrou na etapa há 10 dias e fechou há 4: passou 6 dias nela.
+	if _, err := db.Exec(`UPDATE deal_stage_history SET entered_at = NOW() - INTERVAL '10 days'
+		WHERE deal_id = $1`, deal.ID); err != nil {
+		t.Fatal(err)
+	}
+	if err := models.CloseDeal(db, deal.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE deals SET closed_at = NOW() - INTERVAL '4 days'
+		WHERE id = $1`, deal.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := models.LoadStageDuration(db, pipelineID, 90)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A primeira etapa deve marcar ~6 dias.
+	if result.Rows[0].Value < 5.5 || result.Rows[0].Value > 6.5 {
+		t.Fatalf("duração esperada ~6 dias, veio %v", result.Rows[0].Value)
+	}
+}
+
+// O progresso monta a grade mensal com criados, ganhos e perdidos.
+func TestDealProgress(t *testing.T) {
+	db := testDB(t)
+	cleanTables(t, db)
+
+	var stageID, pipelineID int64
+	db.QueryRow(`SELECT id, pipeline_id FROM pipeline_stages ORDER BY position LIMIT 1`).
+		Scan(&stageID, &pipelineID)
+
+	for _, won := range []bool{true, false} {
+		deal := &models.Deal{Name: "N", Amount: 100, PipelineID: pipelineID, StageID: stageID}
+		if err := models.CreateDeal(db, deal); err != nil {
+			t.Fatal(err)
+		}
+		if err := models.CloseDeal(db, deal.ID, won); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	result, err := models.LoadDealProgress(db, 0, 6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Series) != 3 {
+		t.Fatalf("esperava 3 séries (criados/ganhos/perdidos), veio %d", len(result.Series))
+	}
+	// A grade tem exatamente 6 meses em todas as séries.
+	for _, serie := range result.Series {
+		if len(serie.Points) != 6 {
+			t.Fatalf("série %s deveria ter 6 meses, veio %d", serie.Name, len(serie.Points))
+		}
+	}
+	// O mês atual (último ponto) registra os fechamentos.
+	last := len(result.Series[0].Points) - 1
+	if result.Series[0].Points[last].Value != 2 { // criados
+		t.Fatalf("criados no mês atual deveria ser 2: %+v", result.Series[0].Points[last])
+	}
+	if result.Series[1].Points[last].Value != 1 || result.Series[2].Points[last].Value != 1 {
+		t.Fatalf("ganhos/perdidos no mês atual deveriam ser 1/1")
+	}
+}
+
+// Um relatório salvo com tipo especializado roda pela mesma porta de execução.
+func TestRunReportDispatchesByKind(t *testing.T) {
+	db := testDB(t)
+	cleanTables(t, db)
+
+	report := &models.Report{Name: "Funil", Kind: models.ReportKindConversion,
+		Filters: models.ReportFilters{Days: 90}}
+	result, err := models.RunReport(db, report)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Dimension != "Etapa" {
+		t.Fatalf("o dispatch pelo tipo não rodou a conversão: %+v", result)
+	}
+	// A entidade é forçada para negócios na validação.
+	if report.Entity != "negocios" {
+		t.Fatalf("tipo especializado deveria fixar a entidade: %s", report.Entity)
+	}
+}

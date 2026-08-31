@@ -65,7 +65,18 @@ function stubFetch(list = reports) {
     }
     let body: unknown = {}
     if (path.match(/\/reports\/\d+\/run/)) body = { result }
-    else if (path.includes('/reports')) body = { data: list, catalog }
+    else if (path.includes('/reports')) {
+      body = {
+        data: list,
+        catalog,
+        kinds: {
+          agregado: 'Desempenho',
+          conversao: 'Conversão de funil',
+          duracao: 'Duração do negócio',
+          progresso: 'Progresso'
+        }
+      }
+    }
     else if (path.includes('/users')) body = [{ id: 1, name: 'Ana' }]
     return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body)) })
   })
@@ -86,7 +97,7 @@ describe('ReportsView', () => {
 
   it('mostra o relatório com o total formatado em dinheiro', async () => {
     vi.stubGlobal('fetch', stubFetch())
-    const wrapper = mount(ReportsView)
+    const wrapper = mount(ReportsView, { global: { stubs: { teleport: true } } })
     await flushPromises()
 
     expect(wrapper.text()).toContain('Receita por vendedor')
@@ -96,7 +107,7 @@ describe('ReportsView', () => {
 
   it('mostra estado vazio com exemplos', async () => {
     vi.stubGlobal('fetch', stubFetch([]))
-    const wrapper = mount(ReportsView)
+    const wrapper = mount(ReportsView, { global: { stubs: { teleport: true } } })
     await flushPromises()
 
     expect(wrapper.text()).toContain('Nenhum relatório ainda')
@@ -104,11 +115,11 @@ describe('ReportsView', () => {
 
   it('troca de entidade e ajusta métrica e agrupamento inválidos', async () => {
     vi.stubGlobal('fetch', stubFetch())
-    const wrapper = mount(ReportsView)
+    const wrapper = mount(ReportsView, { global: { stubs: { teleport: true } } })
     await flushPromises()
 
     const vm = wrapper.vm as any
-    vm.novo()
+    vm.pickKind('agregado')
     await flushPromises()
     expect(vm.editing.entity).toBe('negocios')
 
@@ -122,24 +133,51 @@ describe('ReportsView', () => {
     expect(vm.editing.dimension).toBe('origem')
   })
 
-  it('pede a prévia ao montar um relatório novo', async () => {
+  it('abre o seletor em dois passos e monta o relatório do tipo escolhido', async () => {
     const fetchMock = stubFetch()
     vi.stubGlobal('fetch', fetchMock)
-    const wrapper = mount(ReportsView)
+    const wrapper = mount(ReportsView, { global: { stubs: { teleport: true } } })
     await flushPromises()
 
     await wrapper.find('.page-head .btn-primary').trigger('click')
     await flushPromises()
 
+    // Passo 1: bases; passo 2: tipos de negócio, com descrição.
+    expect(wrapper.text()).toContain('Escolha a base')
+    expect(wrapper.text()).toContain('Conversão de funil')
+    expect(wrapper.text()).toContain('taxa de conversão entre as etapas')
+
+    // Escolher a conversão abre o construtor sem métrica/agrupamento.
+    const buttons = wrapper.findAll('.picker-item.kind')
+    await buttons[1].trigger('click')
+    await flushPromises()
+
+    const vm = wrapper.vm as any
+    expect(vm.editing.kind).toBe('conversao')
+    expect(vm.editing.chart).toBe('conversao')
+    expect(wrapper.text()).not.toContain('Agrupar por')
+
     const previewCall = fetchMock.mock.calls.find((c: any[]) => String(c[0]).includes('/reports/preview'))
     expect(previewCall).toBeTruthy()
-    expect((wrapper.vm as any).preview.total).toBe(1800)
+  })
+
+  it('outros tipos só existem para negócios', async () => {
+    vi.stubGlobal('fetch', stubFetch())
+    const wrapper = mount(ReportsView, { global: { stubs: { teleport: true } } })
+    await flushPromises()
+
+    await wrapper.find('.page-head .btn-primary').trigger('click')
+    const vm = wrapper.vm as any
+    vm.pickerEntity = 'contatos'
+    await flushPromises()
+
+    expect(wrapper.findAll('.picker-item.kind')).toHaveLength(1)
   })
 
   it('esconde criação e edição de quem só pode ver', async () => {
     loginAs('seller', { 'reports.view': true })
     vi.stubGlobal('fetch', stubFetch())
-    const wrapper = mount(ReportsView)
+    const wrapper = mount(ReportsView, { global: { stubs: { teleport: true } } })
     await flushPromises()
 
     expect(wrapper.text()).not.toContain('Novo relatório')
@@ -178,6 +216,48 @@ describe('ReportChart', () => {
     const points = wrapper.find('polyline').attributes('points') ?? ''
 
     expect(points.split(' ')).toHaveLength(2)
+  })
+
+  it('desenha o funil de conversão com a taxa entre etapas', () => {
+    const conv = {
+      rows: [
+        { label: 'Qualificação', value: 4, percent: 100 },
+        { label: 'Proposta', value: 2, percent: 50 },
+        { label: 'Ganho', value: 1, percent: 100 }
+      ],
+      total: 100,
+      metric_label: 'Negócios que entraram',
+      is_money: false,
+      dimension_label: 'Etapa'
+    }
+    const wrapper = mount(ReportChart, { props: { result: conv, chart: 'conversao' } })
+
+    expect(wrapper.findAll('.bar-row')).toHaveLength(3)
+    // As taxas entre etapas aparecem como selos.
+    const rates = wrapper.findAll('.conv-rate').map((r) => r.text())
+    expect(rates).toEqual(['50%', '100%'])
+  })
+
+  it('desenha o progresso com uma linha por série', () => {
+    const progress = {
+      rows: [],
+      series: [
+        { name: 'Criados', points: [{ label: '2026-07', value: 3 }, { label: '2026-08', value: 5 }] },
+        { name: 'Ganhos', points: [{ label: '2026-07', value: 1 }, { label: '2026-08', value: 2 }] },
+        { name: 'Perdidos', points: [{ label: '2026-07', value: 0 }, { label: '2026-08', value: 1 }] }
+      ],
+      total: 0,
+      metric_label: 'Negócios por mês',
+      is_money: false,
+      dimension_label: 'Mês'
+    }
+    const wrapper = mount(ReportChart, { props: { result: progress, chart: 'linha' } })
+
+    expect(wrapper.findAll('polyline')).toHaveLength(3)
+    expect(wrapper.text()).toContain('Criados')
+    expect(wrapper.text()).toContain('Ganhos')
+    // A legenda soma cada série.
+    expect(wrapper.text()).toContain('8')
   })
 
   it('avisa quando não há dados', () => {

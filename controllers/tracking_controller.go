@@ -17,6 +17,7 @@ func TrackOpen(ctx iris.Context) {
 		if err := models.RecordEmailOpen(utils.DB, id, clientIP(ctx), ctx.GetHeader("User-Agent")); err != nil {
 			ctx.Application().Logger().Errorf("falha ao registrar abertura: %v", err)
 		}
+		markSequenceEngagement(ctx, id)
 	}
 
 	ctx.Header("Content-Type", "image/gif")
@@ -41,8 +42,19 @@ func TrackClick(ctx iris.Context) {
 			ctx.GetHeader("User-Agent")); err != nil {
 			ctx.Application().Logger().Errorf("falha ao registrar clique: %v", err)
 		}
+		markSequenceEngagement(ctx, id)
 	}
 	ctx.Redirect(target, iris.StatusFound)
+}
+
+// markSequenceEngagement avisa a sequência dinâmica que o contato interagiu:
+// é isso que faz a cadência trocar as etapas automáticas pelas manuais.
+func markSequenceEngagement(ctx iris.Context, messageID int64) {
+	msg, err := models.EmailMessageByID(utils.DB, messageID)
+	if err != nil || msg.ContactID == nil {
+		return
+	}
+	services.SequenceMarkEngaged(utils.DB, *msg.ContactID)
 }
 
 // ListEmailMessages lista os e-mails enviados (com filtro por contato/negócio).

@@ -164,6 +164,53 @@ export interface ReportCatalogEntry {
   dimensions: Record<string, string>
 }
 
+export interface SequenceStep {
+  kind: string
+  delay_days: number
+  subject?: string
+  body?: string
+  template_id?: number
+  title?: string
+  note?: string
+}
+
+export interface Sequence {
+  id: number
+  name: string
+  description: string
+  steps: SequenceStep[]
+  active: boolean
+  dynamic: boolean
+  exit_on_reply: boolean
+  exit_on_meeting: boolean
+  owner_id: number | null
+  owner_name?: string
+  created_by: number | null
+  created_at: string
+  updated_at: string
+  enrolled: number
+  active_members: number
+  open_rate: number
+  reply_rate: number
+}
+
+export interface SequenceMember {
+  id: number
+  sequence_id: number
+  contact_id: number
+  contact_name?: string
+  contact_email?: string
+  step: number
+  step_label?: string
+  next_run_at: string
+  status: string
+  exit_reason: string
+  task_id: number | null
+  engaged: boolean
+  enrolled_at: string
+  finished_at: string | null
+}
+
 export interface AutomationAction {
   kind: string
   config?: Record<string, unknown>

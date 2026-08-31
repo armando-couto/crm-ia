@@ -189,6 +189,17 @@ func Register(app *iris.Application) {
 	auth.Put("/reports/{id:int64}", can(models.PermReportsManage), controllers.UpdateReportByID)
 	auth.Delete("/reports/{id:int64}", can(models.PermReportsManage), controllers.DeleteReportByID)
 
+	// Sequências de prospecção: cadência de e-mails automáticos e tarefas manuais.
+	auth.Get("/sequences", can(models.PermAutomationsView), controllers.ListSequences)
+	auth.Post("/sequences", can(models.PermAutomationsManage), controllers.CreateSequence)
+	auth.Get("/sequences/enrollments", can(models.PermAutomationsView), controllers.ContactSequences)
+	auth.Get("/sequences/{id:int64}", can(models.PermAutomationsView), controllers.GetSequence)
+	auth.Put("/sequences/{id:int64}", can(models.PermAutomationsManage), controllers.UpdateSequenceByID)
+	auth.Delete("/sequences/{id:int64}", can(models.PermAutomationsManage), controllers.DeleteSequenceByID)
+	auth.Get("/sequences/{id:int64}/members", can(models.PermAutomationsView), controllers.ListSequenceMembers)
+	auth.Post("/sequences/{id:int64}/enroll", can(models.PermAutomationsManage), controllers.EnrollInSequence)
+	auth.Delete("/sequences/{id:int64}/members/{memberId:int64}", can(models.PermAutomationsManage), controllers.UnenrollFromSequence)
+
 	// Automações e sequências.
 	auth.Get("/automations", can(models.PermAutomationsView), controllers.ListAutomations)
 	auth.Post("/automations", can(models.PermAutomationsManage), controllers.CreateAutomationHandler)

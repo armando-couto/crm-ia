@@ -69,6 +69,9 @@ function logout() {
         <router-link v-if="auth.can('reports.view')" to="/relatorios" active-class="active">
           <span class="icon">📊</span><span class="label">Relatórios</span>
         </router-link>
+        <router-link v-if="auth.can('automations.view')" to="/sequencias" active-class="active">
+          <span class="icon">➤</span><span class="label">Sequências</span>
+        </router-link>
         <router-link v-if="auth.can('automations.view')" to="/automacoes" active-class="active">
           <span class="icon">⚙</span><span class="label">Automações</span>
         </router-link>

@@ -19,7 +19,8 @@ CRM da Fix Pay — substituto interno do HubSpot. Backend em **Go (Iris, MVC)**,
 - **Análise de vendas**: taxa de ganho, ticket médio, ciclo de fechamento, funil por etapa e volume de interações
 - **Atividades**: feed de tudo que a equipe registrou, com filtro por tipo, pessoa e período
 - **Anexos**: arquivos em contatos, empresas, negócios e tickets (arrastar-e-soltar, até 10 MB)
-- **Automações e sequências**: gatilho + ações encadeadas, com espera entre passos para virar sequência de e-mail
+- **Automações**: gatilho + ações encadeadas, com espera entre passos
+- **Sequências de prospecção**: cadência de e-mails automáticos e tarefas manuais que pausam a cadência até serem concluídas; sai sozinha quando o contato responde ou agenda reunião, e o modo dinâmico troca os e-mails restantes pela ligação assim que o contato engaja
 - **Formulários públicos**: construtor com endereço próprio e código de iframe; cada envio vira contato
 - **Rastreio de e-mail**: aberturas e cliques dos envios feitos pelo CRM, com taxa por período
 - **Duplicados**: encontra e mescla contatos e empresas repetidos
@@ -121,7 +122,7 @@ Ver [.env.example](.env.example). No Linux o binário lê `.env.production`; nos
 Base: `/api/v1`. Autenticação via `Authorization: Bearer <token>` (obtido em `POST /auth/login`).
 
 Principais rotas: `auth/login`, `auth/forgot`, `auth/reset`, `me`, `users`, `contacts` (+ `import`/`export`), `companies`, `pipelines`, `stages`, `deals` (+ `board`, `stage`, `close`), `tasks` (+ `toggle`), `activities`, `emails` (+ `sent`, `stats`), `attachments`, `duplicates` (+ `merge`), `forms`, `booking`, `automations`, `reports`,
-`workspace`, `target-accounts`, `forecast`, `goals`, `sales-analytics`, `permissions`, `audit`, `dashboard`, `search`. Healthcheck em `GET /health`.
+`workspace`, `target-accounts`, `forecast`, `goals`, `sales-analytics`, `sequences` (+ `enroll`, `members`), `permissions`, `audit`, `dashboard`, `search`. Healthcheck em `GET /health`.
 
 Rotas públicas (sem sessão, consumidas fora do CRM):
 

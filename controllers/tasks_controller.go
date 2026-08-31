@@ -177,6 +177,10 @@ func ToggleTask(ctx iris.Context) {
 		handleDBError(ctx, err)
 		return
 	}
+	// Tarefa de sequência concluída solta a cadência para a próxima etapa.
+	if task.CompletedAt != nil {
+		go services.CompleteSequenceTask(utils.DB, id)
+	}
 	ctx.JSON(task)
 }
 

@@ -434,6 +434,7 @@ func StartAutomationWorker(db *sql.DB) {
 		lastTimeSweep := time.Time{}
 		for range ticker.C {
 			ProcessDueEnrollments(db)
+			ProcessDueSequences(db)
 
 			if time.Since(lastTimeSweep) >= timeTriggerEvery {
 				lastTimeSweep = time.Now()

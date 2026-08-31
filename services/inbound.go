@@ -78,6 +78,10 @@ func ProcessInboundEvents(db *sql.DB, events []InboundEvent) (int, error) {
 				Metadata:  meta,
 				ContactID: conv.ContactID,
 			})
+
+			// Responder é a saída natural da cadência: tira o contato das
+			// sequências que têm a regra ligada e alimenta a taxa de resposta.
+			SequenceExitOnReply(db, *conv.ContactID)
 		}
 		created++
 	}

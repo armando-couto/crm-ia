@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"fixpay/fix-crm/models"
+	"fixpay/fix-crm/services"
 	"fixpay/fix-crm/utils"
 
 	"github.com/kataras/iris/v12"
@@ -120,6 +121,7 @@ func CreateMeeting(ctx iris.Context) {
 			CompanyID: meeting.CompanyID,
 			DealID:    meeting.DealID,
 		})
+		go services.SequenceExitOnMeeting(utils.DB, *meeting.ContactID)
 	}
 	ctx.StatusCode(iris.StatusCreated)
 	ctx.JSON(meeting)

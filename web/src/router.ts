@@ -174,6 +174,12 @@ const routes = [
     meta: { permission: 'reports.view' }
   },
   {
+    path: '/sequencias',
+    name: 'sequences',
+    component: () => import('./views/SequencesPage.vue'),
+    meta: { permission: 'automations.view' }
+  },
+  {
     path: '/automacoes',
     name: 'automations',
     component: () => import('./views/AutomationsView.vue'),

@@ -155,6 +155,9 @@ func Register(app *iris.Application) {
 	auth.Get("/permissions", can(models.PermSettingsPermissions), controllers.GetPermissions)
 	auth.Put("/permissions", can(models.PermSettingsPermissions), controllers.UpdatePermissions)
 
+	// Trilha de auditoria (quem fez o quê).
+	auth.Get("/audit", can(models.PermSettingsAudit), controllers.ListAuditLog)
+
 	auth.Get("/views", controllers.ListViews)
 	auth.Post("/views", can(models.PermViewsManage), controllers.CreateView)
 	auth.Put("/views/{id:int64}", can(models.PermViewsManage), controllers.RenameView)

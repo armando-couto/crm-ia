@@ -27,6 +27,9 @@ const auth = useAuthStore()
         <router-link v-if="auth.can('settings.pipelines')" to="/configuracoes/pipelines" active-class="active">
           Pipelines
         </router-link>
+        <router-link v-if="auth.can('settings.audit')" to="/configuracoes/auditoria" active-class="active">
+          Auditoria
+        </router-link>
         <router-link to="/visualizacoes" active-class="active">Visualizações</router-link>
         <router-link v-if="auth.can('lists.view')" to="/listas" active-class="active">Listas</router-link>
       </template>

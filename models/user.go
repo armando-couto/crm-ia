@@ -18,6 +18,11 @@ type User struct {
 	TeamName  string    `json:"team_name,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`
+
+	// Segurança: convite com validade, troca obrigatória e corte de sessões.
+	MustChangePassword bool       `json:"must_change_password"`
+	InviteExpiresAt    *time.Time `json:"invite_expires_at,omitempty"`
+	PasswordChangedAt  time.Time  `json:"-"`
 	// PasswordHash nunca é serializado para o front.
 	PasswordHash string `json:"-"`
 }
@@ -28,14 +33,16 @@ func NormalizeEmail(email string) string {
 
 const userSelect = `
 	SELECT u.id, u.name, u.email, u.role, u.active, u.team_id, COALESCE(t.name,''),
-	       u.created_at, u.updated_at, u.password_hash
+	       u.created_at, u.updated_at, u.must_change_password, u.invite_expires_at,
+	       u.password_changed_at, u.password_hash
 	FROM users u
 	LEFT JOIN teams t ON t.id = u.team_id`
 
 func scanUser(row interface{ Scan(...any) error }) (*User, error) {
 	var u User
 	err := row.Scan(&u.ID, &u.Name, &u.Email, &u.Role, &u.Active, &u.TeamID, &u.TeamName,
-		&u.CreatedAt, &u.UpdatedAt, &u.PasswordHash)
+		&u.CreatedAt, &u.UpdatedAt, &u.MustChangePassword, &u.InviteExpiresAt,
+		&u.PasswordChangedAt, &u.PasswordHash)
 	if err != nil {
 		return nil, err
 	}
@@ -78,10 +85,12 @@ func CountUsers(db *sql.DB) (int, error) {
 
 func CreateUser(db *sql.DB, u *User) error {
 	return db.QueryRow(`
-		INSERT INTO users (name, email, password_hash, role, active, team_id)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO users (name, email, password_hash, role, active, team_id,
+		                   must_change_password, invite_expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id, created_at, updated_at`,
 		u.Name, NormalizeEmail(u.Email), u.PasswordHash, u.Role, u.Active, u.TeamID,
+		u.MustChangePassword, u.InviteExpiresAt,
 	).Scan(&u.ID, &u.CreatedAt, &u.UpdatedAt)
 }
 
@@ -93,8 +102,13 @@ func UpdateUser(db *sql.DB, u *User) error {
 	return err
 }
 
+// UpdateUserPassword troca a senha, limpa a pendência de troca obrigatória e
+// marca o corte que invalida tokens emitidos antes.
 func UpdateUserPassword(db *sql.DB, userID int64, passwordHash string) error {
-	_, err := db.Exec(`UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`, passwordHash, userID)
+	_, err := db.Exec(`
+		UPDATE users SET password_hash = $1, must_change_password = FALSE, invite_expires_at = NULL,
+		       password_changed_at = NOW(), updated_at = NOW()
+		WHERE id = $2`, passwordHash, userID)
 	return err
 }
 

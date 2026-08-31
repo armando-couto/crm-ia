@@ -5,8 +5,6 @@ import (
 	"time"
 
 	"fixpay/fix-crm/models"
-	"fixpay/fix-crm/services"
-	"fixpay/fix-crm/utils"
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/kataras/iris/v12"
@@ -43,8 +41,7 @@ func TestUpdateContactFormRejectsInvalid(t *testing.T) {
 func TestUpdateContactFormForbiddenForSeller(t *testing.T) {
 	e, _, _ := newTestApp(t)
 
-	seller := &models.User{ID: 3, Email: "v@fixpay.com.br", Role: models.RoleSeller}
-	token, _ := services.GenerateToken(seller, utils.JWTSecret)
+	token := tokenFor(t, &models.User{ID: 3, Email: "v@fixpay.com.br", Role: models.RoleSeller})
 
 	e.PUT("/api/v1/settings/contact-form").
 		WithHeader("Authorization", "Bearer "+token).
@@ -94,8 +91,7 @@ func TestCreateSavedViewValidation(t *testing.T) {
 // O Seller não pode acessar rotas protegidas por permissão de configuração.
 func TestSellerBlockedByPermission(t *testing.T) {
 	e, _, _ := newTestApp(t)
-	seller := &models.User{ID: 4, Email: "s@fixpay.com.br", Role: models.RoleSeller}
-	token, _ := services.GenerateToken(seller, utils.JWTSecret)
+	token := tokenFor(t, &models.User{ID: 4, Email: "s@fixpay.com.br", Role: models.RoleSeller})
 
 	e.GET("/api/v1/permissions").
 		WithHeader("Authorization", "Bearer "+token).
@@ -110,8 +106,7 @@ func TestSellerBlockedByPermission(t *testing.T) {
 // O Manager pode gerenciar pipelines, mas não usuários (padrão da matriz).
 func TestManagerPermissionBoundaries(t *testing.T) {
 	e, _, _ := newTestApp(t)
-	manager := &models.User{ID: 5, Email: "m@fixpay.com.br", Role: models.RoleManager}
-	token, _ := services.GenerateToken(manager, utils.JWTSecret)
+	token := tokenFor(t, &models.User{ID: 5, Email: "m@fixpay.com.br", Role: models.RoleManager})
 
 	e.POST("/api/v1/users").
 		WithHeader("Authorization", "Bearer "+token).
@@ -128,8 +123,7 @@ func TestManagerPermissionBoundaries(t *testing.T) {
 // O usuário logado consulta as próprias permissões.
 func TestMyPermissions(t *testing.T) {
 	e, _, _ := newTestApp(t)
-	seller := &models.User{ID: 6, Email: "s2@fixpay.com.br", Role: models.RoleSeller}
-	token, _ := services.GenerateToken(seller, utils.JWTSecret)
+	token := tokenFor(t, &models.User{ID: 6, Email: "s2@fixpay.com.br", Role: models.RoleSeller})
 
 	resp := e.GET("/api/v1/me/permissions").
 		WithHeader("Authorization", "Bearer "+token).

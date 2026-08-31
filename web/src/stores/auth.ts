@@ -6,13 +6,16 @@ interface AuthState {
   user: User | null
   permissions: Record<string, boolean>
   loading: boolean
+  /** Convite com senha temporária: o acesso fica travado até a troca. */
+  mustChangePassword: boolean
 }
 
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({
     user: null,
     permissions: {},
-    loading: false
+    loading: false,
+    mustChangePassword: false
   }),
 
   getters: {
@@ -32,7 +35,8 @@ export const useAuthStore = defineStore('auth', {
         this.can('settings.pipelines') ||
         this.can('settings.properties') ||
         this.can('settings.permissions') ||
-        this.can('settings.forms')
+        this.can('settings.forms') ||
+        this.can('settings.audit')
       )
     }
   },
@@ -41,10 +45,14 @@ export const useAuthStore = defineStore('auth', {
     async login(email: string, password: string): Promise<void> {
       this.loading = true
       try {
-        const resp = await api.post<{ token: string; user: User }>('/auth/login', { email, password })
+        const resp = await api.post<{ token: string; user: User; must_change_password?: boolean }>(
+          '/auth/login',
+          { email, password }
+        )
         setToken(resp.token)
         this.user = resp.user
-        await this.fetchPermissions()
+        this.mustChangePassword = resp.must_change_password === true
+        if (!this.mustChangePassword) await this.fetchPermissions()
       } finally {
         this.loading = false
       }
@@ -54,7 +62,8 @@ export const useAuthStore = defineStore('auth', {
       if (!getToken()) return
       try {
         this.user = await api.get<User>('/me')
-        await this.fetchPermissions()
+        this.mustChangePassword = this.user.must_change_password === true
+        if (!this.mustChangePassword) await this.fetchPermissions()
       } catch {
         this.user = null
         this.permissions = {}
@@ -70,10 +79,28 @@ export const useAuthStore = defineStore('auth', {
       }
     },
 
+    /**
+     * changePassword troca a senha do usuário logado. O backend invalida os
+     * tokens emitidos antes da troca, então guardamos o token novo que vem
+     * na resposta para a sessão continuar de pé.
+     */
+    async changePassword(currentPassword: string, newPassword: string, name?: string): Promise<void> {
+      const resp = await api.put<{ user: User; token?: string }>('/me', {
+        name: name ?? '',
+        current_password: currentPassword,
+        new_password: newPassword
+      })
+      if (resp.token) setToken(resp.token)
+      this.user = resp.user
+      this.mustChangePassword = false
+      await this.fetchPermissions()
+    },
+
     logout(): void {
       setToken(null)
       this.user = null
       this.permissions = {}
+      this.mustChangePassword = false
     }
   }
 })

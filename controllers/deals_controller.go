@@ -115,6 +115,12 @@ func ExportDeals(ctx iris.Context) {
 	defer w.Flush()
 	w.Write([]string{"nome", "valor", "etapa", "status", "temperatura", "contato", "empresa", "dono", "previsao", "criado"})
 
+	exported := 0
+	defer func() {
+		audit(ctx, models.AuditExport, "negocio", 0,
+			fmt.Sprintf("exportou %d negócios em CSV", exported))
+	}()
+
 	for {
 		list, total, err := models.ListDeals(utils.DB, f)
 		if err != nil {
@@ -128,6 +134,7 @@ func ExportDeals(ctx iris.Context) {
 			w.Write([]string{d.Name, fmt.Sprintf("%.2f", d.Amount), d.StageName, d.Status, d.Temperature,
 				d.ContactName, d.CompanyName, d.OwnerName, closeDate, d.CreatedAt.Format("2006-01-02")})
 		}
+		exported += len(list)
 		if f.Page*f.PerPage >= total || len(list) == 0 {
 			return
 		}
@@ -371,9 +378,15 @@ func CloseDealHandler(ctx iris.Context) {
 }
 
 func DeleteDeal(ctx iris.Context) {
-	if err := models.DeleteDeal(utils.DB, paramID(ctx)); err != nil {
+	id := paramID(ctx)
+	label := ""
+	if deal, err := models.DealByID(utils.DB, id); err == nil {
+		label = deal.Name
+	}
+	if err := models.DeleteDeal(utils.DB, id); err != nil {
 		serverError(ctx, err)
 		return
 	}
+	audit(ctx, models.AuditDelete, "negocio", id, "excluiu o negócio "+label)
 	ctx.JSON(iris.Map{"message": "negócio removido"})
 }

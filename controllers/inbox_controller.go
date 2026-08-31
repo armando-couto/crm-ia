@@ -114,11 +114,18 @@ func SetConversationStatus(ctx iris.Context) {
 // MandrillInboundWebhook recebe os e-mails de entrada do Mandrill
 // (rota pública: o Mandrill posta form-encoded com o campo mandrill_events).
 // Configure a rota de inbound no painel do Mandrill apontando para
-// POST {app_url}/api/webhooks/mandrill/inbound.
+// POST {app_url}/api/webhooks/mandrill/inbound e copie a webhook key para
+// mandrill_webhook_key no .env — sem ela o endpoint recusa tudo.
 func MandrillInboundWebhook(ctx iris.Context) {
+	if err := verifyMandrillRequest(ctx); err != nil {
+		ctx.Application().Logger().Warnf("webhook do Mandrill recusado (%v) vindo de %s", err, clientIP(ctx))
+		ctx.StopWithJSON(iris.StatusUnauthorized, iris.Map{"error": "assinatura inválida"})
+		return
+	}
+
 	payload := ctx.FormValue("mandrill_events")
 	if payload == "" {
-		// O Mandrill envia um HEAD/POST vazio ao validar a URL do webhook.
+		// O Mandrill envia um POST vazio ao validar a URL do webhook.
 		ctx.JSON(iris.Map{"message": "ok"})
 		return
 	}
@@ -133,4 +140,22 @@ func MandrillInboundWebhook(ctx iris.Context) {
 		return
 	}
 	ctx.JSON(iris.Map{"created": created})
+}
+
+// verifyMandrillRequest confere o X-Mandrill-Signature sobre todos os campos do
+// POST. A URL usada no cálculo é a cadastrada no painel (mandrill_webhook_url);
+// sem ela, reconstruímos a partir do app_url.
+func verifyMandrillRequest(ctx iris.Context) error {
+	if err := ctx.Request().ParseForm(); err != nil {
+		return err
+	}
+	params := map[string]string{}
+	for key, values := range ctx.Request().PostForm {
+		if len(values) > 0 {
+			params[key] = values[0]
+		}
+	}
+
+	return services.VerifyMandrillSignature(
+		ctx.GetHeader("X-Mandrill-Signature"), utils.MandrillWebhookURL, params)
 }

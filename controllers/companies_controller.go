@@ -186,9 +186,15 @@ func UpdateCompany(ctx iris.Context) {
 }
 
 func DeleteCompany(ctx iris.Context) {
-	if err := models.DeleteCompany(utils.DB, paramID(ctx)); err != nil {
+	id := paramID(ctx)
+	label := ""
+	if company, err := models.CompanyByID(utils.DB, id); err == nil {
+		label = company.Name
+	}
+	if err := models.DeleteCompany(utils.DB, id); err != nil {
 		serverError(ctx, err)
 		return
 	}
+	audit(ctx, models.AuditDelete, "empresa", id, "excluiu a empresa "+label)
 	ctx.JSON(iris.Map{"message": "empresa removida"})
 }

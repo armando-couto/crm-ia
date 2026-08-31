@@ -2,13 +2,18 @@ package controllers
 
 import (
 	"strings"
+	"time"
 
+	"fixpay/fix-crm/middleware"
 	"fixpay/fix-crm/models"
 	"fixpay/fix-crm/services"
 	"fixpay/fix-crm/utils"
 
 	"github.com/kataras/iris/v12"
 )
+
+// InviteTTL é a validade da senha temporária enviada no convite.
+const InviteTTL = 7 * 24 * time.Hour
 
 // ListUsers lista todos os usuários (qualquer autenticado pode ver, para atribuir donos).
 func ListUsers(ctx iris.Context) {
@@ -71,13 +76,16 @@ func CreateUser(ctx iris.Context) {
 		return
 	}
 
+	expiresAt := time.Now().Add(InviteTTL)
 	user := &models.User{
-		Name:         req.Name,
-		Email:        req.Email,
-		Role:         req.Role,
-		Active:       true,
-		TeamID:       req.TeamID,
-		PasswordHash: hash,
+		Name:               req.Name,
+		Email:              req.Email,
+		Role:               req.Role,
+		Active:             true,
+		TeamID:             req.TeamID,
+		PasswordHash:       hash,
+		MustChangePassword: true,
+		InviteExpiresAt:    &expiresAt,
 	}
 	if err := models.CreateUser(utils.DB, user); err != nil {
 		if strings.Contains(err.Error(), "users_email_key") {
@@ -94,6 +102,8 @@ func CreateUser(ctx iris.Context) {
 			ctx.Application().Logger().Errorf("falha ao enviar boas-vindas: %v", err)
 		}
 	}
+	audit(ctx, models.AuditCreate, "usuario", user.ID,
+		"criou o usuário "+user.Email+" com perfil "+models.RoleLabel(user.Role))
 	ctx.StatusCode(iris.StatusCreated)
 	ctx.JSON(user)
 }
@@ -117,6 +127,21 @@ func UpdateUserByID(ctx iris.Context) {
 		return
 	}
 
+	changes := []string{}
+	if user.Role != req.Role {
+		changes = append(changes, "perfil "+models.RoleLabel(user.Role)+" → "+models.RoleLabel(req.Role))
+	}
+	if req.Active != nil && user.Active != *req.Active {
+		if *req.Active {
+			changes = append(changes, "acesso reativado")
+		} else {
+			changes = append(changes, "acesso desativado")
+		}
+	}
+	if user.Email != req.Email {
+		changes = append(changes, "e-mail "+user.Email+" → "+req.Email)
+	}
+
 	user.Name = req.Name
 	user.Email = req.Email
 	user.Role = req.Role
@@ -128,6 +153,16 @@ func UpdateUserByID(ctx iris.Context) {
 		serverError(ctx, err)
 		return
 	}
+	// Papel e status são lidos do banco a cada requisição com cache curto:
+	// limpar a entrada faz a mudança valer na requisição seguinte.
+	middleware.InvalidateUser(user.ID)
+
+	summary := "editou o usuário " + user.Email
+	if len(changes) > 0 {
+		summary += " (" + strings.Join(changes, "; ") + ")"
+	}
+	audit(ctx, models.AuditUpdate, "usuario", user.ID, summary)
+
 	updated, err := models.UserByID(utils.DB, user.ID)
 	if err != nil {
 		handleDBError(ctx, err)
@@ -154,5 +189,7 @@ func DeactivateUser(ctx iris.Context) {
 		serverError(ctx, err)
 		return
 	}
+	middleware.InvalidateUser(user.ID)
+	audit(ctx, models.AuditUpdate, "usuario", user.ID, "desativou o acesso de "+user.Email)
 	ctx.JSON(user)
 }

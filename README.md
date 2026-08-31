@@ -12,7 +12,8 @@ CRM da Fix Pay — substituto interno do HubSpot. Backend em **Go (Iris, MVC)**,
 - **E-mail**: envio ao contato direto do CRM via Mandrill, registrado na timeline
 - **Dashboard**: funil de vendas, receita ganha por mês, ranking de vendedores, previsão ponderada
 - **Busca global**: contatos, empresas e negócios em uma única busca
-- **Usuários e permissões**: papéis `admin`, `gestor` e `vendedor`; convite com senha temporária por e-mail; redefinição de senha por link
+- **Usuários e permissões**: perfis `admin`, `manager` e `seller` com matriz de permissões configurável; convite com senha temporária por e-mail; redefinição de senha por link
+- **Segurança**: webhook do Mandrill com assinatura HMAC, proteção contra força bruta no login, convite que expira em 7 dias com troca obrigatória de senha, perfil lido do banco a cada requisição e trilha de auditoria em Configurações → Auditoria
 
 ## Stack
 
@@ -99,10 +100,20 @@ Ver [.env.example](.env.example). No Linux o binário lê `.env.production`; nos
 | `jwt_secret` | Segredo do JWT (obrigatório) |
 | `admin_email`, `admin_password` | Admin inicial (criado só com o banco vazio) |
 | `mandrill`, `from` | Chave e remetente do Mandrill |
+| `mandrill_webhook_key` | Webhook key do Mandrill (Settings → Webhooks). **Sem ela o endpoint de inbound recusa toda requisição** |
+| `mandrill_webhook_url` | URL do webhook exatamente como cadastrada no painel (entra no cálculo da assinatura) |
 | `env`, `email_dev` | Fora de `production`, e-mails vão para `email_dev` |
 
 ## API
 
 Base: `/api/v1`. Autenticação via `Authorization: Bearer <token>` (obtido em `POST /auth/login`).
 
-Principais rotas: `auth/login`, `auth/forgot`, `auth/reset`, `me`, `users`, `contacts` (+ `import`/`export`), `companies`, `pipelines`, `stages`, `deals` (+ `board`, `stage`, `close`), `tasks` (+ `toggle`), `activities`, `emails`, `dashboard`, `search`. Healthcheck em `GET /health`.
+Principais rotas: `auth/login`, `auth/forgot`, `auth/reset`, `me`, `users`, `contacts` (+ `import`/`export`), `companies`, `pipelines`, `stages`, `deals` (+ `board`, `stage`, `close`), `tasks` (+ `toggle`), `activities`, `emails`, `permissions`, `audit`, `dashboard`, `search`. Healthcheck em `GET /health`.
+
+### Segurança
+
+- **Login**: 5 tentativas erradas por IP+e-mail bloqueiam o par por 15 minutos (`429`). Um acesso bem-sucedido zera o contador.
+- **Convite**: o usuário criado recebe senha temporária válida por 7 dias e entra com `must_change_password`. Enquanto não trocar, só `GET /me` e `GET /me/permissions` respondem — o resto devolve `403` com `must_change_password: true`. Depois do prazo o login devolve `403` e o caminho é o "Esqueci minha senha".
+- **Perfil e status**: o middleware lê o usuário do banco (cache de 30s) em vez de confiar no papel gravado no token, então rebaixar, desativar ou trocar a senha de alguém vale na requisição seguinte, sem esperar as 12h do JWT. Trocar a senha invalida os tokens emitidos antes; a própria troca devolve um token novo.
+- **Webhook do Mandrill**: `POST /api/webhooks/mandrill/inbound` exige `X-Mandrill-Signature` (HMAC-SHA1 da URL + campos ordenados, em base64) conferido com `mandrill_webhook_key`. Sem a chave configurada o endpoint recusa tudo.
+- **Auditoria**: acessos, falhas de acesso, exclusões, exportações, importações, ações em massa e mudanças de permissão vão para `audit_log`, visíveis em Configurações → Auditoria (permissão `settings.audit`, só do Admin por padrão).

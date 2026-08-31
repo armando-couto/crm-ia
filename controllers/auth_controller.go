@@ -2,6 +2,8 @@ package controllers
 
 import (
 	"database/sql"
+	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,7 +20,8 @@ type loginRequest struct {
 	Password string `json:"password"`
 }
 
-// Login autentica por e-mail e senha e devolve o JWT.
+// Login autentica por e-mail e senha e devolve o JWT. Tentativas erradas são
+// contadas por IP+e-mail e o acesso é bloqueado temporariamente após o limite.
 func Login(ctx iris.Context) {
 	var req loginRequest
 	if err := ctx.ReadJSON(&req); err != nil {
@@ -31,34 +34,91 @@ func Login(ctx iris.Context) {
 		return
 	}
 
+	rateKey := clientIP(ctx) + "|" + req.Email
+	if blocked, wait := services.LoginBlocked(rateKey); blocked {
+		minutes := int(wait.Minutes()) + 1
+		ctx.StopWithJSON(iris.StatusTooManyRequests, iris.Map{
+			"error": fmt.Sprintf("muitas tentativas de acesso: tente novamente em %d minuto(s)", minutes),
+		})
+		return
+	}
+
+	fail := func(reason string) {
+		if services.RegisterLoginFailure(rateKey) {
+			auditLogin(ctx, nil, req.Email, models.AuditLoginFail,
+				"bloqueado após "+strconv.Itoa(services.LoginMaxAttempts)+" tentativas inválidas")
+		} else {
+			auditLogin(ctx, nil, req.Email, models.AuditLoginFail, reason)
+		}
+		ctx.StopWithJSON(iris.StatusUnauthorized, iris.Map{"error": "e-mail ou senha inválidos"})
+	}
+
 	user, err := models.UserByEmail(utils.DB, req.Email)
 	if err == sql.ErrNoRows {
-		ctx.StopWithJSON(iris.StatusUnauthorized, iris.Map{"error": "e-mail ou senha inválidos"})
+		fail("e-mail não cadastrado")
 		return
 	}
 	if err != nil {
 		serverError(ctx, err)
 		return
 	}
-	if !user.Active || !services.CheckPassword(user.PasswordHash, req.Password) {
-		ctx.StopWithJSON(iris.StatusUnauthorized, iris.Map{"error": "e-mail ou senha inválidos"})
+	if !user.Active {
+		fail("usuário desativado")
 		return
 	}
+	if !services.CheckPassword(user.PasswordHash, req.Password) {
+		fail("senha incorreta")
+		return
+	}
+
+	// Convite com senha temporária vencida: só volta com um novo link de acesso.
+	if user.MustChangePassword && user.InviteExpiresAt != nil && time.Now().After(*user.InviteExpiresAt) {
+		auditLogin(ctx, &user.ID, user.Email, models.AuditLoginFail, "convite expirado")
+		ctx.StopWithJSON(iris.StatusForbidden, iris.Map{
+			"error": "sua senha temporária expirou: use \"Esqueci minha senha\" para definir uma nova",
+		})
+		return
+	}
+
+	services.ClearLoginFailures(rateKey)
 
 	token, err := services.GenerateToken(user, utils.JWTSecret)
 	if err != nil {
 		serverError(ctx, err)
 		return
 	}
-	ctx.JSON(iris.Map{"token": token, "user": user})
+	// O usuário acabou de vir do banco: aproveita no cache do middleware.
+	middleware.CacheUser(user)
+	auditLogin(ctx, &user.ID, user.Email, models.AuditLogin, "acesso realizado")
+	ctx.JSON(iris.Map{
+		"token":                token,
+		"user":                 user,
+		"must_change_password": user.MustChangePassword,
+	})
 }
 
-// Me retorna o usuário autenticado.
+// auditLogin registra tentativas de acesso (o usuário ainda não está autenticado,
+// por isso a identificação vem do próprio e-mail informado).
+func auditLogin(ctx iris.Context, userID *int64, email, action, summary string) {
+	entry := models.AuditEntry{
+		UserID:   userID,
+		UserName: email,
+		Action:   action,
+		Entity:   "usuario",
+		EntityID: userID,
+		Summary:  summary,
+		IP:       clientIP(ctx),
+	}
+	if err := models.RecordAudit(utils.DB, &entry); err != nil {
+		ctx.Application().Logger().Errorf("falha ao registrar auditoria de login: %v", err)
+	}
+}
+
+// Me retorna o usuário autenticado (já carregado pelo middleware).
 func Me(ctx iris.Context) {
-	claims := middleware.CurrentClaims(ctx)
-	user, err := models.UserByID(utils.DB, claims.UserID)
-	if err != nil {
-		handleDBError(ctx, err)
+	user := middleware.CurrentUser(ctx)
+	if user == nil {
+		notFound(ctx)
 		return
 	}
 	ctx.JSON(user)
@@ -72,16 +132,15 @@ type updateMeRequest struct {
 
 // UpdateMe permite ao usuário alterar o próprio nome e senha.
 func UpdateMe(ctx iris.Context) {
-	claims := middleware.CurrentClaims(ctx)
 	var req updateMeRequest
 	if err := ctx.ReadJSON(&req); err != nil {
 		badRequest(ctx, "dados inválidos")
 		return
 	}
 
-	user, err := models.UserByID(utils.DB, claims.UserID)
-	if err != nil {
-		handleDBError(ctx, err)
+	user := middleware.CurrentUser(ctx)
+	if user == nil {
+		notFound(ctx)
 		return
 	}
 
@@ -91,28 +150,46 @@ func UpdateMe(ctx iris.Context) {
 			serverError(ctx, err)
 			return
 		}
+		middleware.InvalidateUser(user.ID)
 	}
 
-	if req.NewPassword != "" {
-		if len(req.NewPassword) < 8 {
-			badRequest(ctx, "a nova senha deve ter pelo menos 8 caracteres")
-			return
-		}
-		if !services.CheckPassword(user.PasswordHash, req.CurrentPassword) {
-			badRequest(ctx, "senha atual incorreta")
-			return
-		}
-		hash, err := services.HashPassword(req.NewPassword)
-		if err != nil {
-			serverError(ctx, err)
-			return
-		}
-		if err := models.UpdateUserPassword(utils.DB, user.ID, hash); err != nil {
-			serverError(ctx, err)
-			return
-		}
+	if req.NewPassword == "" {
+		ctx.JSON(iris.Map{"user": user})
+		return
 	}
-	ctx.JSON(user)
+
+	if len(req.NewPassword) < 8 {
+		badRequest(ctx, "a nova senha deve ter pelo menos 8 caracteres")
+		return
+	}
+	if !services.CheckPassword(user.PasswordHash, req.CurrentPassword) {
+		badRequest(ctx, "senha atual incorreta")
+		return
+	}
+	hash, err := services.HashPassword(req.NewPassword)
+	if err != nil {
+		serverError(ctx, err)
+		return
+	}
+	if err := models.UpdateUserPassword(utils.DB, user.ID, hash); err != nil {
+		serverError(ctx, err)
+		return
+	}
+	user.PasswordHash = hash
+	user.MustChangePassword = false
+	user.InviteExpiresAt = nil
+	user.PasswordChangedAt = time.Now()
+	middleware.CacheUser(user)
+
+	// A troca de senha invalida os tokens emitidos antes, então devolvemos um
+	// novo para o usuário continuar na sessão atual.
+	token, err := services.GenerateToken(user, utils.JWTSecret)
+	if err != nil {
+		serverError(ctx, err)
+		return
+	}
+	audit(ctx, models.AuditUpdate, "usuario", user.ID, "alterou a própria senha")
+	ctx.JSON(iris.Map{"user": user, "token": token})
 }
 
 // ForgotPassword gera o token de redefinição e envia por e-mail (Mandrill).

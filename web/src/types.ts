@@ -8,6 +8,21 @@ export interface User {
   team_name?: string
   created_at: string
   updated_at: string
+  /** Convite ainda com a senha temporária: precisa trocar antes de usar o CRM. */
+  must_change_password?: boolean
+  invite_expires_at?: string | null
+}
+
+export interface AuditEntry {
+  id: number
+  user_id: number | null
+  user_name: string
+  action: string
+  entity: string
+  entity_id: number | null
+  summary: string
+  ip: string
+  created_at: string
 }
 
 export interface Team {

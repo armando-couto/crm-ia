@@ -7,6 +7,12 @@ const routes = [
   { path: '/esqueci-senha', name: 'forgot', component: () => import('./views/ForgotPasswordView.vue'), meta: { public: true } },
   { path: '/redefinir-senha', name: 'reset', component: () => import('./views/ResetPasswordView.vue'), meta: { public: true } },
   {
+    path: '/trocar-senha',
+    name: 'change-password',
+    component: () => import('./views/ChangePasswordView.vue'),
+    meta: { forcePassword: true }
+  },
+  {
     path: '/',
     name: 'dashboard',
     component: () => import('./views/DashboardView.vue'),
@@ -157,6 +163,12 @@ const routes = [
         name: 'settings-pipelines',
         component: () => import('./views/SettingsPipelinesView.vue'),
         meta: { permission: 'settings.pipelines' }
+      },
+      {
+        path: 'auditoria',
+        name: 'settings-audit',
+        component: () => import('./views/SettingsAuditView.vue'),
+        meta: { permission: 'settings.audit' }
       }
     ]
   },
@@ -176,14 +188,22 @@ router.beforeEach(async (to) => {
   if (to.name === 'login' && getToken()) {
     return { name: 'dashboard' }
   }
+  if (to.meta.public) return
+
+  const auth = useAuthStore()
+  if (getToken() && !auth.user) await auth.fetchMe()
+
+  // Senha temporária pendente: só a tela de troca fica acessível.
+  if (auth.mustChangePassword) {
+    return to.meta.forcePassword ? undefined : { name: 'change-password' }
+  }
+  if (to.meta.forcePassword) {
+    return { name: 'dashboard' }
+  }
 
   // Bloqueia rotas sem permissão no perfil do usuário.
   const permission = to.meta.permission as string | undefined
-  if (permission && getToken()) {
-    const auth = useAuthStore()
-    if (!auth.user) await auth.fetchMe()
-    if (!auth.can(permission)) {
-      return { name: 'profile' }
-    }
+  if (permission && !auth.can(permission)) {
+    return { name: 'profile' }
   }
 })

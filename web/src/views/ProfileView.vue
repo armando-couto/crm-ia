@@ -24,12 +24,13 @@ async function save() {
   }
   saving.value = true
   try {
-    await api.put('/me', {
-      name: name.value,
-      current_password: currentPassword.value,
-      new_password: newPassword.value
-    })
-    await auth.fetchMe()
+    if (newPassword.value) {
+      // changePassword guarda o token novo: trocar a senha invalida o anterior.
+      await auth.changePassword(currentPassword.value, newPassword.value, name.value)
+    } else {
+      await api.put('/me', { name: name.value })
+      await auth.fetchMe()
+    }
     toast.push('Dados atualizados')
     currentPassword.value = ''
     newPassword.value = ''

@@ -35,6 +35,13 @@ export function setUnauthorizedHandler(fn: () => void): void {
   onUnauthorized = fn
 }
 
+let onPasswordChangeRequired: (() => void) | null = null
+
+/** Registra o que fazer quando a API exigir a troca da senha temporária. */
+export function setPasswordChangeHandler(fn: () => void): void {
+  onPasswordChangeRequired = fn
+}
+
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   const headers: Record<string, string> = {}
   const token = getToken()
@@ -64,6 +71,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     } catch {
       data = null
     }
+  }
+
+  if (resp.status === 403 && data?.must_change_password) {
+    onPasswordChangeRequired?.()
   }
 
   if (!resp.ok) {

@@ -15,6 +15,10 @@ async function submit() {
   error.value = ''
   try {
     await auth.login(email.value, password.value)
+    if (auth.mustChangePassword) {
+      router.push('/trocar-senha')
+      return
+    }
     router.push(typeof route.query.r === 'string' ? route.query.r : '/')
   } catch (e: any) {
     error.value = e.message || 'não foi possível entrar'

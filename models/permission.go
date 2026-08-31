@@ -55,6 +55,7 @@ const (
 	PermSettingsProperties  = "settings.properties"
 	PermSettingsForms       = "settings.forms"
 	PermSettingsPermissions = "settings.permissions"
+	PermSettingsAudit       = "settings.audit"
 )
 
 // Perfis de acesso.
@@ -75,6 +76,14 @@ var RoleLabels = map[string]string{
 	RoleSeller:  "Seller",
 	RoleManager: "Manager",
 	RoleAdmin:   "Admin",
+}
+
+// RoleLabel devolve o nome exibido do perfil (ou o próprio código, se novo).
+func RoleLabel(role string) string {
+	if label, ok := RoleLabels[role]; ok {
+		return label
+	}
+	return role
 }
 
 // PermissionDef descreve uma permissão para a tela de configuração.
@@ -133,6 +142,7 @@ var PermissionCatalog = []PermissionDef{
 	{PermSettingsProperties, "Gerenciar propriedades", "Configurações"},
 	{PermSettingsForms, "Personalizar formulários", "Configurações"},
 	{PermSettingsPermissions, "Gerenciar permissões", "Configurações"},
+	{PermSettingsAudit, "Ver trilha de auditoria", "Configurações"},
 }
 
 func ValidPermission(key string) bool {

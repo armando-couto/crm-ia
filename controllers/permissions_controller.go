@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"fmt"
+
 	"fixpay/fix-crm/models"
 	"fixpay/fix-crm/utils"
 
@@ -46,6 +48,16 @@ func UpdatePermissions(ctx iris.Context) {
 		badRequest(ctx, err.Error())
 		return
 	}
+
+	granted := 0
+	for _, allowed := range req.Permissions {
+		if allowed {
+			granted++
+		}
+	}
+	audit(ctx, models.AuditPermissions, "perfil", 0, fmt.Sprintf(
+		"alterou as permissões do perfil %s (%d de %d liberadas)",
+		models.RoleLabel(req.Role), granted, len(models.PermissionCatalog)))
 
 	matrix, err := models.PermissionMatrix(utils.DB)
 	if err != nil {

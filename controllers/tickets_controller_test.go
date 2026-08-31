@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"fixpay/fix-crm/middleware"
 	"fixpay/fix-crm/models"
 	"fixpay/fix-crm/services"
 	"fixpay/fix-crm/utils"
@@ -19,11 +20,19 @@ func sqlNoRowsErr() error {
 
 func adminToken(t *testing.T) string {
 	t.Helper()
-	admin := &models.User{ID: 1, Email: "admin@fixpay.com.br", Role: models.RoleAdmin}
-	token, err := services.GenerateToken(admin, utils.JWTSecret)
+	return tokenFor(t, &models.User{ID: 1, Name: "Admin", Email: "admin@fixpay.com.br", Role: models.RoleAdmin})
+}
+
+// tokenFor emite o JWT e deixa o usuário no cache do middleware, que hoje lê
+// papel e status do banco a cada requisição.
+func tokenFor(t *testing.T, user *models.User) string {
+	t.Helper()
+	user.Active = true
+	token, err := services.GenerateToken(user, utils.JWTSecret)
 	if err != nil {
 		t.Fatal(err)
 	}
+	middleware.CacheUser(user)
 	return token
 }
 
@@ -74,11 +83,27 @@ func TestTicketsRequireAuth(t *testing.T) {
 	e.GET("/api/v1/tickets").Expect().Status(iris.StatusUnauthorized)
 }
 
-// O webhook do Mandrill é público (sem token) e responde ok ao ping de validação.
+// withWebhookKey configura a chave do webhook e devolve a assinatura esperada
+// para os campos informados.
+func withWebhookKey(t *testing.T, params map[string]string) string {
+	t.Helper()
+	originalKey, originalURL := utils.MandrillWebhookKey, utils.MandrillWebhookURL
+	utils.MandrillWebhookKey = "chave-do-webhook"
+	utils.MandrillWebhookURL = "http://localhost:9000/api/webhooks/mandrill/inbound"
+	t.Cleanup(func() {
+		utils.MandrillWebhookKey, utils.MandrillWebhookURL = originalKey, originalURL
+	})
+	return services.MandrillSignature(utils.MandrillWebhookKey, utils.MandrillWebhookURL, params)
+}
+
+// O webhook do Mandrill é público (sem token), mas exige assinatura válida:
+// o ping de validação vem sem campos.
 func TestMandrillWebhookValidationPing(t *testing.T) {
 	e, _, _ := newTestApp(t)
+	signature := withWebhookKey(t, map[string]string{})
 
 	e.POST("/api/webhooks/mandrill/inbound").
+		WithHeader("X-Mandrill-Signature", signature).
 		Expect().Status(iris.StatusOK)
 }
 
@@ -99,8 +124,10 @@ func TestMandrillWebhookInbound(t *testing.T) {
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	payload := `[{"event":"inbound","msg":{"from_email":"novo@cliente.com","email":"vendas@fixpay.com.br","subject":"Quero contratar","text":"Olá, quero saber mais."}}]`
+	signature := withWebhookKey(t, map[string]string{"mandrill_events": payload})
 
 	e.POST("/api/webhooks/mandrill/inbound").
+		WithHeader("X-Mandrill-Signature", signature).
 		WithFormField("mandrill_events", payload).
 		Expect().Status(iris.StatusOK).
 		JSON().Object().Value("created").IsEqual(1)

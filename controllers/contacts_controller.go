@@ -82,6 +82,8 @@ func BulkContacts(ctx iris.Context) {
 		serverError(ctx, err)
 		return
 	}
+	audit(ctx, models.AuditBulk, "contato", 0,
+		fmt.Sprintf("ação em massa \"%s\" em %d contatos", req.Action, affected))
 	ctx.JSON(iris.Map{"affected": affected})
 }
 
@@ -213,10 +215,16 @@ func UpdateContact(ctx iris.Context) {
 }
 
 func DeleteContact(ctx iris.Context) {
-	if err := models.DeleteContact(utils.DB, paramID(ctx)); err != nil {
+	id := paramID(ctx)
+	label := ""
+	if contact, err := models.ContactByID(utils.DB, id); err == nil {
+		label = strings.TrimSpace(contact.FirstName + " " + contact.LastName)
+	}
+	if err := models.DeleteContact(utils.DB, id); err != nil {
 		serverError(ctx, err)
 		return
 	}
+	audit(ctx, models.AuditDelete, "contato", id, "excluiu o contato "+label)
 	ctx.JSON(iris.Map{"message": "contato removido"})
 }
 
@@ -236,6 +244,13 @@ func ExportContacts(ctx iris.Context) {
 	defer w.Flush()
 	w.Write([]string{"nome", "sobrenome", "email", "telefone", "cargo", "estagio", "origem", "empresa", "dono"})
 
+	exported := 0
+	// Exportar leva a base inteira embora: fica registrado na auditoria.
+	defer func() {
+		audit(ctx, models.AuditExport, "contato", 0,
+			fmt.Sprintf("exportou %d contatos em CSV", exported))
+	}()
+
 	for {
 		list, total, err := models.ListContacts(utils.DB, f)
 		if err != nil {
@@ -245,6 +260,7 @@ func ExportContacts(ctx iris.Context) {
 			w.Write([]string{c.FirstName, c.LastName, c.Email, c.Phone, c.JobTitle,
 				c.LifecycleStage, c.Source, c.CompanyName, c.OwnerName})
 		}
+		exported += len(list)
 		if f.Page*f.PerPage >= total || len(list) == 0 {
 			return
 		}
@@ -311,5 +327,7 @@ func ImportContacts(ctx iris.Context) {
 		}
 		created++
 	}
+	audit(ctx, models.AuditImport, "contato", 0,
+		fmt.Sprintf("importou %d contatos por CSV (%d linhas ignoradas)", created, skipped))
 	ctx.JSON(iris.Map{"created": created, "skipped": skipped})
 }

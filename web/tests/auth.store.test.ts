@@ -74,4 +74,56 @@ describe('auth store', () => {
     expect(store.canManage).toBe(false)
     expect(store.isAdmin).toBe(false)
   })
+
+  it('sinaliza troca obrigatória quando o login vem de um convite', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () =>
+          Promise.resolve(
+            JSON.stringify({
+              token: 'jwt-temp',
+              user: { ...user, must_change_password: true },
+              must_change_password: true
+            })
+          )
+      })
+    )
+
+    const store = useAuthStore()
+    await store.login('novo@fixpay.com.br', 'temporaria')
+
+    expect(store.mustChangePassword).toBe(true)
+  })
+
+  it('troca de senha guarda o token novo e libera o acesso', async () => {
+    setToken('token-antigo')
+    const fetchMock = vi.fn().mockImplementation((_url: string, options?: any) => {
+      if (options?.method === 'PUT') {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          text: () =>
+            Promise.resolve(
+              JSON.stringify({ user: { ...user, must_change_password: false }, token: 'token-novo' })
+            )
+        })
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify({ role: 'admin', permissions: {} }))
+      })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    const store = useAuthStore()
+    store.mustChangePassword = true
+    await store.changePassword('temporaria', 'senha-nova-forte')
+
+    expect(getToken()).toBe('token-novo')
+    expect(store.mustChangePassword).toBe(false)
+  })
 })

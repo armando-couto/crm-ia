@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"database/sql"
+	"strings"
 
 	"fixpay/fix-crm/middleware"
 	"fixpay/fix-crm/models"
@@ -24,6 +25,39 @@ func logActivity(ctx iris.Context, a models.Activity) {
 	if err := models.CreateActivity(utils.DB, &a); err != nil {
 		ctx.Application().Logger().Errorf("falha ao registrar atividade: %v", err)
 	}
+}
+
+// audit grava a ação na trilha de auditoria. Uma falha aqui nunca interrompe a
+// requisição: apenas vai para o log da aplicação.
+func audit(ctx iris.Context, action, entity string, entityID int64, summary string) {
+	entry := models.AuditEntry{
+		Action:  action,
+		Entity:  entity,
+		Summary: summary,
+		IP:      clientIP(ctx),
+	}
+	if entityID > 0 {
+		entry.EntityID = &entityID
+	}
+	if claims := middlewareClaims(ctx); claims != nil {
+		userID := claims.UserID
+		entry.UserID = &userID
+		entry.UserName = claims.Name
+	}
+	if err := models.RecordAudit(utils.DB, &entry); err != nil {
+		ctx.Application().Logger().Errorf("falha ao registrar auditoria: %v", err)
+	}
+}
+
+// clientIP prioriza o cabeçalho do proxy (produção fica atrás de um reverse proxy).
+func clientIP(ctx iris.Context) string {
+	if fwd := ctx.GetHeader("X-Forwarded-For"); fwd != "" {
+		if i := strings.IndexByte(fwd, ','); i > 0 {
+			return strings.TrimSpace(fwd[:i])
+		}
+		return strings.TrimSpace(fwd)
+	}
+	return ctx.RemoteAddr()
 }
 
 func badRequest(ctx iris.Context, msg string) {

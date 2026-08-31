@@ -13,6 +13,12 @@ const routes = [
     meta: { forcePassword: true }
   },
   {
+    path: '/agendar/:slug',
+    name: 'public-booking',
+    component: () => import('./views/PublicBookingView.vue'),
+    meta: { public: true }
+  },
+  {
     path: '/f/:slug',
     name: 'public-form',
     component: () => import('./views/PublicFormView.vue'),
@@ -181,6 +187,12 @@ const routes = [
         name: 'settings-pipelines',
         component: () => import('./views/SettingsPipelinesView.vue'),
         meta: { permission: 'settings.pipelines' }
+      },
+      {
+        path: 'agendamento',
+        name: 'settings-booking',
+        component: () => import('./views/SettingsBookingView.vue'),
+        meta: { permission: 'meetings.manage' }
       },
       {
         path: 'formularios',

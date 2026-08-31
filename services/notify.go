@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"time"
 
 	"fixpay/fix-crm/models"
 	"fixpay/fix-crm/utils"
@@ -99,5 +100,49 @@ func NotifyNewLead(db *sql.DB, ownerID int64, formName, contactName, contactEmai
 
 	if err := Mail.Send(owner.Email, owner.Name, subject, emailLayout(subject, body)); err != nil {
 		log.Printf("falha ao avisar sobre o lead do formulário %s: %v", formName, err)
+	}
+}
+
+// NotifyBooking confirma o agendamento para quem marcou e avisa quem vai
+// atender. Roda em goroutine a partir da rota pública.
+func NotifyBooking(db *sql.DB, page *models.BookingPage, contact *models.Contact, start time.Time) {
+	if Mail == nil {
+		return
+	}
+	quando := start.Format("02/01/2006 às 15:04")
+	local := page.Location
+	if local == "" {
+		local = "a combinar"
+	}
+
+	// Confirmação para o cliente.
+	if contact.Email != "" {
+		subject := "Reunião confirmada: " + quando
+		body := fmt.Sprintf(`
+			<p>Olá, <strong>%s</strong>!</p>
+			<p>Sua conversa com <strong>%s</strong> está marcada para <strong>%s</strong>.</p>
+			<p>Local: %s</p>
+			<p>Se precisar remarcar, é só responder este e-mail.</p>`,
+			contact.FirstName, page.UserName, quando, local)
+		if err := Mail.Send(contact.Email, contact.FirstName, subject, emailLayout(subject, body)); err != nil {
+			log.Printf("falha ao confirmar agendamento para %s: %v", contact.Email, err)
+		}
+	}
+
+	// Aviso para quem atende.
+	host, err := models.UserByID(db, page.UserID)
+	if err != nil || !host.Active || host.Email == "" {
+		return
+	}
+	subject := "Fix CRM: nova reunião agendada"
+	link := fmt.Sprintf("%s/contatos/%d", utils.AppURL, contact.ID)
+	body := fmt.Sprintf(`
+		<p>Olá, <strong>%s</strong>!</p>
+		<p><strong>%s %s</strong> (%s) agendou uma conversa com você para <strong>%s</strong>.</p>
+		<p>Local: %s</p>
+		<p><a href="%s" style="display:inline-block;background:#9B52DF;color:#FFFFFF;padding:10px 24px;border-radius:8px;text-decoration:none;">Abrir o contato</a></p>`,
+		host.Name, contact.FirstName, contact.LastName, contact.Email, quando, local, link)
+	if err := Mail.Send(host.Email, host.Name, subject, emailLayout(subject, body)); err != nil {
+		log.Printf("falha ao avisar %s sobre o agendamento: %v", host.Email, err)
 	}
 }

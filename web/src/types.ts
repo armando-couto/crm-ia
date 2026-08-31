@@ -25,6 +25,31 @@ export interface Attachment {
   created_at: string
 }
 
+export interface TimeWindow {
+  start: string
+  end: string
+}
+
+export interface BookingPage {
+  id: number
+  user_id: number
+  user_name?: string
+  user_email?: string
+  slug: string
+  title: string
+  description: string
+  location: string
+  duration_min: number
+  buffer_min: number
+  days_ahead: number
+  notice_hours: number
+  weekly_hours: Record<string, TimeWindow[]>
+  active: boolean
+  bookings: number
+  created_at: string
+  updated_at: string
+}
+
 export interface PublicFormField {
   key: string
   label: string

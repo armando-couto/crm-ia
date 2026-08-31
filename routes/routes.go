@@ -158,6 +158,11 @@ func Register(app *iris.Application) {
 	// Trilha de auditoria (quem fez o quê).
 	auth.Get("/audit", can(models.PermSettingsAudit), controllers.ListAuditLog)
 
+	// Página de agendamento: cada pessoa configura a própria.
+	auth.Get("/booking/me", can(models.PermMeetingsManage), controllers.GetMyBookingPage)
+	auth.Put("/booking/me", can(models.PermMeetingsManage), controllers.SaveMyBookingPage)
+	auth.Get("/booking", can(models.PermMeetingsView), controllers.ListBookingPages)
+
 	// Formulários públicos de captura (administração).
 	auth.Get("/forms", can(models.PermSettingsForms), controllers.ListPublicForms)
 	auth.Post("/forms", can(models.PermSettingsForms), controllers.CreatePublicForm)
@@ -191,6 +196,10 @@ func Register(app *iris.Application) {
 	// Formulários públicos: consumidos pelo site do cliente (sem sessão).
 	app.Get("/api/public/forms/{slug:string}", controllers.GetPublicForm)
 	app.Post("/api/public/forms/{slug:string}", controllers.SubmitPublicFormHandler)
+
+	// Agendamento público: o cliente escolhe o horário sem entrar no CRM.
+	app.Get("/api/public/booking/{slug:string}", controllers.GetPublicBooking)
+	app.Post("/api/public/booking/{slug:string}", controllers.BookPublicSlot)
 
 	// Pixel de abertura e redirecionador de clique: chamados pelo cliente de
 	// e-mail do destinatário, portanto públicos e sem token de sessão.

@@ -12,6 +12,9 @@ const auth = useAuthStore()
       <div class="menu-section">Suas preferências</div>
       <router-link to="/configuracoes/perfil" active-class="active">Perfil e segurança</router-link>
       <router-link to="/configuracoes/notificacoes" active-class="active">Notificações</router-link>
+      <router-link v-if="auth.can('meetings.manage')" to="/configuracoes/agendamento" active-class="active">
+        Agendamento
+      </router-link>
 
       <template v-if="auth.canManage">
         <div class="menu-section">Administração</div>

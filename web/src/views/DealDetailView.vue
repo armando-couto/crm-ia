@@ -5,6 +5,7 @@ import { api } from '../api'
 import { formatDate, formatDateTime, formatMoney, initials, relativeDate } from '../format'
 import { useToastStore } from '../stores/toast'
 import CustomProperties from '../components/CustomProperties.vue'
+import AttachmentsPanel from '../components/AttachmentsPanel.vue'
 import ModalDialog from '../components/ModalDialog.vue'
 import type { Activity, Company, Contact, Deal, Meeting, Paginated, Pipeline, Task, User } from '../types'
 
@@ -569,6 +570,7 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
           </li>
         </ul>
       </div>
+      <AttachmentsPanel entity="negocio" :entity-id="id" />
     </aside>
 
     <!-- ===== Modais ===== -->

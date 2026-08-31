@@ -158,6 +158,12 @@ func Register(app *iris.Application) {
 	// Trilha de auditoria (quem fez o quê).
 	auth.Get("/audit", can(models.PermSettingsAudit), controllers.ListAuditLog)
 
+	// Anexos de contatos, empresas, negócios e tickets.
+	auth.Get("/attachments", can(models.PermFilesView), controllers.ListAttachments)
+	auth.Post("/attachments", can(models.PermFilesManage), controllers.UploadAttachment)
+	auth.Get("/attachments/{id:int64}/download", can(models.PermFilesView), controllers.DownloadAttachment)
+	auth.Delete("/attachments/{id:int64}", can(models.PermFilesManage), controllers.DeleteAttachment)
+
 	auth.Get("/views", controllers.ListViews)
 	auth.Post("/views", can(models.PermViewsManage), controllers.CreateView)
 	auth.Put("/views/{id:int64}", can(models.PermViewsManage), controllers.RenameView)

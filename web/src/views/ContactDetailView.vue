@@ -6,6 +6,7 @@ import { formatDate, formatDateTime, formatMoney, initials, lifecycleLabels, rel
 import { useToastStore } from '../stores/toast'
 import CustomProperties from '../components/CustomProperties.vue'
 import TimelinePanel from '../components/TimelinePanel.vue'
+import AttachmentsPanel from '../components/AttachmentsPanel.vue'
 import ModalDialog from '../components/ModalDialog.vue'
 import type { Activity, Company, Contact, Deal, Paginated, Pipeline, Task, Ticket, User } from '../types'
 
@@ -445,6 +446,7 @@ const ticketBadge: Record<string, string> = { aberto: 'blue', pendente: 'amber',
           </li>
         </ul>
       </div>
+      <AttachmentsPanel entity="contato" :entity-id="id" />
     </aside>
 
     <!-- ===== Modais ===== -->

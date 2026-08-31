@@ -13,6 +13,18 @@ export interface User {
   invite_expires_at?: string | null
 }
 
+export interface Attachment {
+  id: number
+  entity: 'contato' | 'empresa' | 'negocio' | 'ticket'
+  entity_id: number
+  filename: string
+  content_type: string
+  size_bytes: number
+  uploaded_by: number | null
+  uploader_name?: string
+  created_at: string
+}
+
 export interface AuditEntry {
   id: number
   user_id: number | null

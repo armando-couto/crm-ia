@@ -5,6 +5,7 @@ import { api } from '../api'
 import { formatDate } from '../format'
 import { useToastStore } from '../stores/toast'
 import TimelinePanel from '../components/TimelinePanel.vue'
+import AttachmentsPanel from '../components/AttachmentsPanel.vue'
 import ModalDialog from '../components/ModalDialog.vue'
 import type { Contact, Paginated, Ticket, User } from '../types'
 
@@ -136,6 +137,8 @@ onMounted(async () => {
           </dl>
           <p class="description" v-if="ticket.description">{{ ticket.description }}</p>
         </div>
+
+        <AttachmentsPanel entity="ticket" :entity-id="id" />
       </div>
 
       <div class="main-col">

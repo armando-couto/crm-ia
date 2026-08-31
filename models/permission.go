@@ -47,6 +47,9 @@ const (
 	PermLibraryView   = "library.view"
 	PermLibraryManage = "library.manage"
 
+	PermFilesView   = "files.view"
+	PermFilesManage = "files.manage"
+
 	PermDashboardView = "dashboard.view"
 	PermViewsManage   = "views.manage"
 
@@ -135,6 +138,9 @@ var PermissionCatalog = []PermissionDef{
 	{PermLibraryView, "Ver manuais, modelos e snippets", "Biblioteca"},
 	{PermLibraryManage, "Criar e editar a biblioteca", "Biblioteca"},
 
+	{PermFilesView, "Ver e baixar anexos", "Arquivos"},
+	{PermFilesManage, "Anexar e remover arquivos", "Arquivos"},
+
 	{PermDashboardView, "Ver dashboard e métricas", "Relatórios"},
 
 	{PermSettingsUsers, "Gerenciar usuários e equipes", "Configurações"},
@@ -168,6 +174,7 @@ var sellerDefaults = []string{
 	PermCallsView, PermCallsLog,
 	PermMeetingsView, PermMeetingsManage,
 	PermLibraryView,
+	PermFilesView, PermFilesManage,
 	PermDashboardView,
 }
 

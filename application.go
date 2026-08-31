@@ -80,5 +80,6 @@ func main() {
 			port = "6998"
 		}
 	}
-	app.Listen(":" + port)
+	// PostMaxMemory cobre o upload de anexos (limite por arquivo em models).
+	app.Listen(":"+port, iris.WithPostMaxMemory(models.MaxAttachmentBytes+(1<<20)))
 }

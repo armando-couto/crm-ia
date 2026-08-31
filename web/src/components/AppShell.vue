@@ -50,6 +50,10 @@ function logout() {
           <span class="icon">⊞</span><span class="label">Visualizações</span>
         </router-link>
 
+        <router-link v-if="auth.can('automations.view')" to="/automacoes" active-class="active">
+          <span class="icon">⚙</span><span class="label">Automações</span>
+        </router-link>
+
         <div class="nav-section">Comunicação</div>
         <router-link v-if="auth.can('inbox.view')" to="/caixa-de-entrada" active-class="active">
           <span class="icon">✉</span><span class="label">Caixa de entrada</span>

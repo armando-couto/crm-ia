@@ -18,6 +18,11 @@ import (
 //	docker run -d --name fixcrm-merge-test -e POSTGRES_PASSWORD=postgres \
 //	  -e POSTGRES_DB=fixcrm_test -p 55433:5432 postgres:16-alpine
 //	FIXCRM_TEST_DSN="postgres://postgres:postgres@localhost:55433/fixcrm_test?sslmode=disable" go test ./models/
+
+// integrationLockID identifica o lock consultivo compartilhado pelos testes de
+// integração dos dois pacotes, que dividem o mesmo banco.
+const integrationLockID = 918273
+
 func testDB(t *testing.T) *sql.DB {
 	t.Helper()
 	dsn := os.Getenv("FIXCRM_TEST_DSN")
@@ -31,10 +36,20 @@ func testDB(t *testing.T) *sql.DB {
 	if err := db.Ping(); err != nil {
 		t.Fatalf("banco de teste inacessível: %v", err)
 	}
+	// Os pacotes de teste rodam em paralelo e compartilham este banco: o lock
+	// consultivo garante que só um teste de integração mexa nas tabelas por vez.
+	db.SetMaxOpenConns(1)
+	if _, err := db.Exec(`SELECT pg_advisory_lock($1)`, integrationLockID); err != nil {
+		t.Fatalf("lock do banco de teste: %v", err)
+	}
+	t.Cleanup(func() {
+		db.Exec(`SELECT pg_advisory_unlock($1)`, integrationLockID)
+		db.Close()
+	})
+
 	if err := migrations.Run(db); err != nil {
 		t.Fatalf("migrations: %v", err)
 	}
-	t.Cleanup(func() { db.Close() })
 	return db
 }
 

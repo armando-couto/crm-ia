@@ -52,6 +52,9 @@ const (
 
 	PermRecordsMerge = "records.merge"
 
+	PermAutomationsView   = "automations.view"
+	PermAutomationsManage = "automations.manage"
+
 	PermDashboardView = "dashboard.view"
 	PermViewsManage   = "views.manage"
 
@@ -143,6 +146,9 @@ var PermissionCatalog = []PermissionDef{
 	{PermFilesView, "Ver e baixar anexos", "Arquivos"},
 	{PermFilesManage, "Anexar e remover arquivos", "Arquivos"},
 
+	{PermAutomationsView, "Ver automações", "Automações"},
+	{PermAutomationsManage, "Criar e editar automações", "Automações"},
+
 	{PermRecordsMerge, "Mesclar registros duplicados", "Manutenção"},
 
 	{PermDashboardView, "Ver dashboard e métricas", "Relatórios"},
@@ -194,6 +200,7 @@ var managerDefaults = append(append([]string{}, sellerDefaults...),
 	PermLibraryManage,
 	PermSettingsPipelines, PermSettingsProperties, PermSettingsForms,
 	PermRecordsMerge,
+	PermAutomationsView, PermAutomationsManage,
 )
 
 // DefaultPermissions devolve a matriz padrão (Admin tem tudo).

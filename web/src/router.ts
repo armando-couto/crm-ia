@@ -140,6 +140,12 @@ const routes = [
     meta: { permission: 'meetings.view' }
   },
   {
+    path: '/automacoes',
+    name: 'automations',
+    component: () => import('./views/AutomationsView.vue'),
+    meta: { permission: 'automations.view' }
+  },
+  {
     path: '/manuais',
     name: 'playbooks',
     component: () => import('./views/PlaybooksView.vue'),

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"fixpay/fix-crm/models"
+	"fixpay/fix-crm/services"
 	"fixpay/fix-crm/utils"
 
 	"github.com/kataras/iris/v12"
@@ -185,6 +186,9 @@ func CreateContact(ctx iris.Context) {
 		Content:   "Contato criado",
 		ContactID: &contact.ID,
 	})
+	// As automações rodam em segundo plano: nunca seguram a resposta.
+	go services.FireContactCreated(utils.DB, contact)
+
 	ctx.StatusCode(iris.StatusCreated)
 	ctx.JSON(contact)
 }
@@ -206,10 +210,14 @@ func UpdateContact(ctx iris.Context) {
 		return
 	}
 
+	stageBefore := contact.LifecycleStage
 	req.apply(contact)
 	if err := models.UpdateContact(utils.DB, contact); err != nil {
 		serverError(ctx, err)
 		return
+	}
+	if stageBefore != contact.LifecycleStage {
+		go services.FireContactStage(utils.DB, contact)
 	}
 	ctx.JSON(contact)
 }

@@ -67,6 +67,9 @@ func main() {
 	}
 	////////////////////////////////////////////////////////////////////////
 
+	// Automações: retoma as sequências em espera e varre os gatilhos por tempo.
+	services.StartAutomationWorker(utils.DB)
+
 	//-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_ Rotas -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
 	routes.Register(app)
 

@@ -103,6 +103,20 @@ func ListMessageTemplates(db *sql.DB) ([]MessageTemplate, error) {
 	return list, rows.Err()
 }
 
+// MessageTemplateByID busca um modelo específico (usado no envio manual e nas
+// automações, que não precisam carregar a biblioteca inteira).
+func MessageTemplateByID(db *sql.DB, id int64) (*MessageTemplate, error) {
+	var t MessageTemplate
+	err := db.QueryRow(`
+		SELECT id, name, subject, body, created_by, created_at, updated_at
+		FROM message_templates WHERE id = $1`, id,
+	).Scan(&t.ID, &t.Name, &t.Subject, &t.Body, &t.CreatedBy, &t.CreatedAt, &t.UpdatedAt)
+	if err != nil {
+		return nil, err
+	}
+	return &t, nil
+}
+
 func CreateMessageTemplate(db *sql.DB, t *MessageTemplate) error {
 	return db.QueryRow(`
 		INSERT INTO message_templates (name, subject, body, created_by)

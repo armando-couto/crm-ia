@@ -105,6 +105,8 @@ func CreateTicket(ctx iris.Context) {
 		go services.NotifyAssignment(utils.DB, ticket.OwnerID, claims.UserID,
 			services.NotifyTicket, ticket.Subject, fmt.Sprintf("/tickets/%d", ticket.ID))
 	}
+	go services.FireTicketCreated(utils.DB, ticket)
+
 	ctx.StatusCode(iris.StatusCreated)
 	ctx.JSON(ticket)
 }

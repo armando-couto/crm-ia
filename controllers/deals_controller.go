@@ -250,6 +250,8 @@ func CreateDeal(ctx iris.Context) {
 		go services.NotifyAssignment(utils.DB, deal.OwnerID, claims.UserID,
 			services.NotifyDeal, deal.Name, fmt.Sprintf("/negocios/%d", deal.ID))
 	}
+	go services.FireDealCreated(utils.DB, deal)
+
 	ctx.StatusCode(iris.StatusCreated)
 	ctx.JSON(deal)
 }
@@ -339,6 +341,9 @@ func MoveDeal(ctx iris.Context) {
 		handleDBError(ctx, err)
 		return
 	}
+	if deal.StageID != req.StageID {
+		go services.FireDealStage(utils.DB, updated)
+	}
 	ctx.JSON(updated)
 }
 
@@ -374,6 +379,8 @@ func CloseDealHandler(ctx iris.Context) {
 		ContactID: deal.ContactID,
 		CompanyID: deal.CompanyID,
 	})
+	go services.FireDealClosed(utils.DB, deal)
+
 	ctx.JSON(deal)
 }
 

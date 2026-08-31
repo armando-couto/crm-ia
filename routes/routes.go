@@ -158,6 +158,14 @@ func Register(app *iris.Application) {
 	// Trilha de auditoria (quem fez o quê).
 	auth.Get("/audit", can(models.PermSettingsAudit), controllers.ListAuditLog)
 
+	// Automações e sequências.
+	auth.Get("/automations", can(models.PermAutomationsView), controllers.ListAutomations)
+	auth.Post("/automations", can(models.PermAutomationsManage), controllers.CreateAutomationHandler)
+	auth.Put("/automations/{id:int64}", can(models.PermAutomationsManage), controllers.UpdateAutomationHandler)
+	auth.Delete("/automations/{id:int64}", can(models.PermAutomationsManage), controllers.DeleteAutomationHandler)
+	auth.Get("/automations/{id:int64}/runs", can(models.PermAutomationsView), controllers.ListAutomationRunsHandler)
+	auth.Post("/automations/{id:int64}/run", can(models.PermAutomationsManage), controllers.RunAutomationNow)
+
 	// Página de agendamento: cada pessoa configura a própria.
 	auth.Get("/booking/me", can(models.PermMeetingsManage), controllers.GetMyBookingPage)
 	auth.Put("/booking/me", can(models.PermMeetingsManage), controllers.SaveMyBookingPage)

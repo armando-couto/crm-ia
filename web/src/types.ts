@@ -25,6 +25,26 @@ export interface Attachment {
   created_at: string
 }
 
+export interface AutomationAction {
+  kind: string
+  config?: Record<string, unknown>
+}
+
+export interface Automation {
+  id: number
+  name: string
+  description: string
+  trigger_kind: string
+  trigger_config: Record<string, unknown>
+  actions: AutomationAction[]
+  active: boolean
+  runs: number
+  last_run_at: string | null
+  created_by: number | null
+  created_at: string
+  updated_at: string
+}
+
 export interface TimeWindow {
   start: string
   end: string

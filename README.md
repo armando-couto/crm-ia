@@ -17,6 +17,7 @@ CRM da Fix Pay — substituto interno do HubSpot. Backend em **Go (Iris, MVC)**,
 - **Contas-alvo**: empresas priorizadas por tier, com o papel de cada contato na decisão (decisor, campeão, bloqueador…)
 - **Previsão e metas**: duas visões — por etapa (ganho, comprometido, ponderado, projeção) e por categoria de previsão (Excluído/Pipeline/Melhor caso/Comprometido/Fechado por negócio), metas por vendedor e da equipe, e o envio de previsão que cada vendedor submete com observação
 - **Análise de vendas**: taxa de ganho, ticket médio, ciclo de fechamento, funil por etapa e volume de interações
+- **Metas acompanhadas**: negócios ganhos/adicionados/em progresso ou atividades, em valor ou quantidade, por pessoa ou equipe, com duração e o gráfico mês a mês do realizado contra o alvo
 - **Atividades**: feed de tudo que a equipe registrou, com filtro por tipo, pessoa e período
 - **Anexos**: arquivos em contatos, empresas, negócios e tickets (arrastar-e-soltar, até 10 MB)
 - **Automações**: gatilho + ações encadeadas, com espera entre passos

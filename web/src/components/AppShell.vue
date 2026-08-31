@@ -66,6 +66,9 @@ function logout() {
         <router-link v-if="auth.can('forecast.view')" to="/analise-de-vendas" active-class="active">
           <span class="icon">◔</span><span class="label">Análise de vendas</span>
         </router-link>
+        <router-link v-if="auth.can('forecast.view')" to="/metas" active-class="active">
+          <span class="icon">◎</span><span class="label">Metas</span>
+        </router-link>
         <router-link v-if="auth.can('reports.view')" to="/relatorios" active-class="active">
           <span class="icon">📊</span><span class="label">Relatórios</span>
         </router-link>

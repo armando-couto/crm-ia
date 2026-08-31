@@ -72,6 +72,35 @@ export interface Workspace {
   target_accounts: number
 }
 
+export interface TrackedGoal {
+  id: number
+  kind: string
+  metric: string
+  user_id: number | null
+  user_name?: string
+  pipeline_id: number | null
+  pipeline_name?: string
+  stage_id: number | null
+  stage_name?: string
+  activity_kind: string
+  amount: number
+  start_period: string
+  end_period: string
+  created_by: number | null
+  created_at: string
+  updated_at: string
+  finished: boolean
+  current_value: number
+  attainment: number
+}
+
+export interface GoalPoint {
+  month: string
+  actual: number
+  target: number
+  attainment: number
+}
+
 export interface SalesGoal {
   id: number
   user_id: number | null

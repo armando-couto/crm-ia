@@ -181,6 +181,13 @@ func Register(app *iris.Application) {
 	auth.Get("/goals", can(models.PermForecastView), controllers.ListGoals)
 	auth.Put("/goals", can(models.PermGoalsManage), controllers.SaveGoal)
 
+	// Metas acompanhadas (Insights): tipo, métrica, funil e duração.
+	auth.Get("/tracked-goals", can(models.PermForecastView), controllers.ListTrackedGoals)
+	auth.Post("/tracked-goals", can(models.PermGoalsManage), controllers.CreateTrackedGoal)
+	auth.Get("/tracked-goals/{id:int64}", can(models.PermForecastView), controllers.TrackedGoalProgressHandler)
+	auth.Put("/tracked-goals/{id:int64}", can(models.PermGoalsManage), controllers.UpdateTrackedGoalByID)
+	auth.Delete("/tracked-goals/{id:int64}", can(models.PermGoalsManage), controllers.DeleteTrackedGoalByID)
+
 	// Contas-alvo: empresas que a equipe escolheu perseguir.
 	auth.Get("/target-accounts", can(models.PermCompaniesView), controllers.ListTargetAccounts)
 	auth.Put("/companies/{id:int64}/target", can(models.PermCompaniesEdit), controllers.SetTargetAccount)

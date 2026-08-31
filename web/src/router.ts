@@ -168,6 +168,12 @@ const routes = [
     meta: { permission: 'forecast.view' }
   },
   {
+    path: '/metas',
+    name: 'goals',
+    component: () => import('./views/GoalsView.vue'),
+    meta: { permission: 'forecast.view' }
+  },
+  {
     path: '/relatorios',
     name: 'reports',
     component: () => import('./views/ReportsView.vue'),

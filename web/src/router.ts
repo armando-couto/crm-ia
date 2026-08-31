@@ -110,6 +110,12 @@ const routes = [
     meta: { permission: 'inbox.view' }
   },
   {
+    path: '/emails',
+    name: 'emails',
+    component: () => import('./views/EmailsView.vue'),
+    meta: { permission: 'email.send' }
+  },
+  {
     path: '/chamadas',
     name: 'calls',
     component: () => import('./views/CallsView.vue'),

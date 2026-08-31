@@ -176,6 +176,16 @@ func Register(app *iris.Application) {
 	auth.Get("/dashboard", can(models.PermDashboardView), controllers.Dashboard)
 	auth.Get("/search", controllers.Search)
 
+	// Rastreio dos e-mails enviados (aberturas e cliques).
+	auth.Get("/emails/sent", can(models.PermEmailSend), controllers.ListEmailMessages)
+	auth.Get("/emails/stats", can(models.PermEmailSend), controllers.EmailStatsHandler)
+	auth.Get("/emails/sent/{id:int64}", can(models.PermEmailSend), controllers.GetEmailMessage)
+
+	// Pixel de abertura e redirecionador de clique: chamados pelo cliente de
+	// e-mail do destinatário, portanto públicos e sem token de sessão.
+	app.Get("/api/track/o/{token:string}/pixel.gif", controllers.TrackOpen)
+	app.Get("/api/track/c/{token:string}", controllers.TrackClick)
+
 	// Webhook público do Mandrill (e-mails de entrada da caixa de entrada).
 	app.Post("/api/webhooks/mandrill/inbound", controllers.MandrillInboundWebhook)
 	app.Head("/api/webhooks/mandrill/inbound", func(ctx iris.Context) { ctx.StatusCode(iris.StatusOK) })

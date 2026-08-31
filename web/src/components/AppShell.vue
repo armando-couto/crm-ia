@@ -54,6 +54,9 @@ function logout() {
         <router-link v-if="auth.can('inbox.view')" to="/caixa-de-entrada" active-class="active">
           <span class="icon">✉</span><span class="label">Caixa de entrada</span>
         </router-link>
+        <router-link v-if="auth.can('email.send')" to="/emails" active-class="active">
+          <span class="icon">📨</span><span class="label">E-mails enviados</span>
+        </router-link>
         <router-link v-if="auth.can('calls.view')" to="/chamadas" active-class="active">
           <span class="icon">☎</span><span class="label">Chamadas</span>
         </router-link>

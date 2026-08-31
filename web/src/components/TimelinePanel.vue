@@ -25,6 +25,9 @@ const emailSubject = ref('')
 const emailBody = ref('')
 const sending = ref(false)
 
+// Contadores de abertura e clique por e-mail enviado (chave: email_message_id).
+const tracking = ref<Record<number, { opens: number; clicks: number }>>({})
+
 const templates = ref<MessageTemplate[]>([])
 const snippets = ref<Snippet[]>([])
 const templateId = ref(0)
@@ -58,6 +61,13 @@ function applySnippet() {
   }
 }
 
+/** trackingFor devolve o rastreio do e-mail ligado à atividade, se houver. */
+function trackingFor(activity: Activity): { opens: number; clicks: number } | null {
+  const id = (activity.metadata as any)?.email_message_id
+  if (!id) return null
+  return tracking.value[id] ?? null
+}
+
 const kindIcons: Record<string, string> = {
   nota: '✎',
   email: '✉',
@@ -88,10 +98,31 @@ async function load() {
   try {
     const resp = await api.get<{ data: Activity[] }>(`/activities?${query()}`)
     activities.value = resp.data
+    await loadTracking()
   } catch (e: any) {
     toast.error(e.message)
   } finally {
     loading.value = false
+  }
+}
+
+/**
+ * loadTracking busca aberturas e cliques dos e-mails deste contato para
+ * mostrar o resultado ao lado de cada envio na timeline.
+ */
+async function loadTracking() {
+  const contactId = props.contactId || props.emailContactId
+  if (!contactId) return
+  try {
+    const resp = await api.get<{ data: { id: number; opens: number; clicks: number }[] }>(
+      `/emails/sent?contact_id=${contactId}&limit=100`
+    )
+    const map: Record<number, { opens: number; clicks: number }> = {}
+    for (const m of resp.data ?? []) map[m.id] = { opens: m.opens, clicks: m.clicks }
+    tracking.value = map
+  } catch {
+    // Sem permissão de e-mail: a timeline segue sem os contadores.
+    tracking.value = {}
   }
 }
 
@@ -214,6 +245,14 @@ defineExpose({ reload: load })
             <span class="muted when">{{ relativeDate(a.created_at) }}</span>
           </div>
           <p>{{ a.content }}</p>
+          <p v-if="trackingFor(a)" class="tracking">
+            <span :class="{ opened: trackingFor(a)!.opens > 0 }">
+              {{ trackingFor(a)!.opens > 0 ? `Aberto ${trackingFor(a)!.opens}×` : 'Ainda não aberto' }}
+            </span>
+            <span v-if="trackingFor(a)!.clicks > 0" class="opened">
+              · {{ trackingFor(a)!.clicks }} clique(s)
+            </span>
+          </p>
         </div>
       </li>
     </ul>
@@ -225,6 +264,17 @@ defineExpose({ reload: load })
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+.tracking {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--fix-text-3);
+}
+
+.tracking .opened {
+  color: var(--fix-green);
+  font-weight: 500;
 }
 
 .composer {

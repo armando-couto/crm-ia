@@ -124,12 +124,34 @@ func SendEmail(ctx iris.Context) {
 
 	name := strings.TrimSpace(contact.FirstName + " " + contact.LastName)
 	html := strings.ReplaceAll(req.Body, "\n", "<br>")
-	if err := services.Mail.Send(contact.Email, name, req.Subject, html); err != nil {
+
+	// Registra o envio e instrumenta o HTML (pixel de abertura + links rastreados).
+	msg := &models.EmailMessage{
+		Subject:   req.Subject,
+		ToEmail:   contact.Email,
+		Body:      html,
+		ContactID: &contact.ID,
+		DealID:    req.DealID,
+		Source:    models.EmailSourceManual,
+	}
+	if claims := middlewareClaims(ctx); claims != nil {
+		msg.UserID = &claims.UserID
+	}
+	tracked, err := services.TrackOutgoingEmail(utils.DB, msg)
+	if err != nil {
+		// Falha no rastreio não impede o envio: segue com o HTML original.
+		ctx.Application().Logger().Errorf("falha ao preparar o rastreio do e-mail: %v", err)
+		tracked = html
+	}
+
+	if err := services.Mail.Send(contact.Email, name, req.Subject, tracked); err != nil {
 		serverError(ctx, fmt.Errorf("falha no envio via Mandrill: %w", err))
 		return
 	}
 
-	meta, _ := json.Marshal(iris.Map{"to": contact.Email, "subject": req.Subject})
+	meta, _ := json.Marshal(iris.Map{
+		"to": contact.Email, "subject": req.Subject, "email_message_id": msg.ID,
+	})
 	a := models.Activity{
 		Kind:      models.ActivityEmail,
 		Content:   fmt.Sprintf("E-mail enviado: %s", req.Subject),
@@ -138,5 +160,5 @@ func SendEmail(ctx iris.Context) {
 		DealID:    req.DealID,
 	}
 	logActivity(ctx, a)
-	ctx.JSON(iris.Map{"message": "e-mail enviado com sucesso"})
+	ctx.JSON(iris.Map{"message": "e-mail enviado com sucesso", "email_message_id": msg.ID})
 }

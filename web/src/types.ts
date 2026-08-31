@@ -25,6 +25,34 @@ export interface Attachment {
   created_at: string
 }
 
+export interface EmailMessage {
+  id: number
+  subject: string
+  to_email: string
+  contact_id: number | null
+  contact_name?: string
+  deal_id: number | null
+  user_id: number | null
+  user_name?: string
+  source: 'manual' | 'automacao'
+  opens: number
+  clicks: number
+  first_open_at: string | null
+  last_open_at: string | null
+  first_click_at: string | null
+  sent_at: string
+}
+
+export interface EmailEvent {
+  id: number
+  message_id: number
+  kind: 'abertura' | 'clique'
+  url?: string
+  ip?: string
+  user_agent?: string
+  created_at: string
+}
+
 export interface AuditEntry {
   id: number
   user_id: number | null

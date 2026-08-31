@@ -25,6 +25,25 @@ export interface Attachment {
   created_at: string
 }
 
+export interface PanelItem {
+  id: number
+  report_id: number
+  name: string
+  position: number
+  width: string
+  result?: ReportResult
+}
+
+export interface Panel {
+  id: number
+  name: string
+  shared: boolean
+  created_by: number | null
+  items: PanelItem[]
+  created_at: string
+  updated_at: string
+}
+
 export interface WorkspaceItem {
   id: number
   title: string

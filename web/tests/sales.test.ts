@@ -55,6 +55,22 @@ describe('SalesWorkspaceView', () => {
     loginAs('seller', { 'tasks.edit': true })
   })
 
+  it('monta as seis abas do espaço de trabalho', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        text: () => Promise.resolve(JSON.stringify(workspace))
+      })
+    )
+    const wrapper = mount(SalesWorkspaceView, { global: { stubs: routerStubs } })
+    await flushPromises()
+
+    const abas = wrapper.findAll('.ws-tabs button').map((b) => b.text())
+    expect(abas).toEqual(['Resumo', 'Empresas', 'Negócios', 'Tarefas', 'Programação', 'Painel'])
+  })
+
   it('monta as filas do dia e conta os pendentes', async () => {
     vi.stubGlobal(
       'fetch',
@@ -68,11 +84,24 @@ describe('SalesWorkspaceView', () => {
     await flushPromises()
 
     expect(wrapper.text()).toContain('Tarefas atrasadas')
-    expect(wrapper.text()).toContain('Para hoje')
+    expect(wrapper.text()).toContain('Tarefas de hoje')
     expect(wrapper.text()).toContain('Negócios parados')
-    // Filas vazias não aparecem.
-    expect(wrapper.text()).not.toContain('Reuniões de hoje')
+    // Fila vazia continua na tela, dizendo que está em dia.
+    expect(wrapper.text()).toContain('Nenhuma reunião marcada para hoje')
     expect(wrapper.text()).toContain('3 item(ns) na sua fila')
+  })
+
+  it('recolhe e reabre uma fila', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(workspace)) })
+    )
+    const wrapper = mount(SalesWorkspaceView, { global: { stubs: routerStubs } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Ligar para o cliente')
+    await wrapper.findAll('.queue-head')[0].trigger('click')
+    expect(wrapper.text()).not.toContain('Ligar para o cliente')
   })
 
   it('mostra por que o negócio está na fila', async () => {
@@ -86,7 +115,7 @@ describe('SalesWorkspaceView', () => {
     expect(wrapper.text()).toContain('sem interação há 21 dias')
   })
 
-  it('mostra o progresso da meta pessoal', async () => {
+  it('mostra o quanto da meta pessoal já foi feito', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(workspace)) })
@@ -95,10 +124,10 @@ describe('SalesWorkspaceView', () => {
     await flushPromises()
 
     // 12000 de 20000 = 60%
-    expect(wrapper.find('.goal-fill').attributes('style')).toContain('width: 60%')
+    expect(wrapper.text()).toContain('60%')
   })
 
-  it('comemora o dia limpo quando não há pendência', async () => {
+  it('avisa quando não há nada pendente', async () => {
     const vazio = {
       ...workspace,
       overdue_tasks: [],
@@ -112,7 +141,9 @@ describe('SalesWorkspaceView', () => {
     const wrapper = mount(SalesWorkspaceView, { global: { stubs: routerStubs } })
     await flushPromises()
 
-    expect(wrapper.text()).toContain('Dia limpo')
+    expect(wrapper.text()).toContain('Nada pendente: seu dia está em dia.')
+    // Cada fila zerada explica que está em dia.
+    expect(wrapper.text()).toContain('Você está em dia com as tarefas de hoje')
   })
 
   it('conclui a tarefa direto da fila', async () => {
@@ -131,6 +162,112 @@ describe('SalesWorkspaceView', () => {
 
     const patch = fetchMock.mock.calls.find((c: any[]) => c[1]?.method === 'PATCH')
     expect(String(patch![0])).toContain('/tasks/1/toggle')
+  })
+
+  it('carrega a carteira ao abrir a aba Empresas', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      const body = String(url).includes('/companies')
+        ? {
+            data: [
+              {
+                id: 3,
+                name: 'Mercado Central',
+                ec_number: '12345',
+                city: 'São Paulo',
+                is_client: true,
+                is_target: true,
+                target_tier: 1,
+                created_at: '2026-01-10T10:00:00Z'
+              }
+            ]
+          }
+        : workspace
+      return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body)) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(SalesWorkspaceView, { global: { stubs: routerStubs } })
+    await flushPromises()
+
+    await wrapper.findAll('.ws-tabs button')[1].trigger('click')
+    await flushPromises()
+
+    // A aba pede só a carteira de quem está logado.
+    const urls = fetchMock.mock.calls.map((c: any[]) => String(c[0]))
+    expect(urls.some((u: string) => u.includes('/companies?owner_id=1'))).toBe(true)
+    expect(wrapper.text()).toContain('Mercado Central')
+    expect(wrapper.text()).toContain('alvo T1')
+  })
+
+  it('filtra as tarefas por visão', async () => {
+    const fetchMock = vi.fn().mockImplementation((url: string) => {
+      const body = String(url).includes('/tasks') ? { data: [] } : workspace
+      return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body)) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(SalesWorkspaceView, { global: { stubs: routerStubs } })
+    await flushPromises()
+
+    await wrapper.findAll('.ws-tabs button')[3].trigger('click')
+    await flushPromises()
+
+    // Abre em pendentes; trocar para atrasadas refaz a busca.
+    await wrapper.findAll('.task-views .btn')[1].trigger('click')
+    await flushPromises()
+
+    const urls = fetchMock.mock.calls.map((c: any[]) => String(c[0]))
+    expect(urls.some((u: string) => u.includes('status=pendente'))).toBe(true)
+    expect(urls.some((u: string) => u.includes('status=atrasada'))).toBe(true)
+  })
+
+  it('escolhe o painel da aba Painel e guarda a escolha', async () => {
+    const panel = {
+      id: 2,
+      name: 'Índice geral',
+      shared: true,
+      created_by: 1,
+      items: [
+        {
+          id: 1,
+          report_id: 5,
+          name: 'Receita por dono',
+          position: 0,
+          width: 'meio',
+          result: {
+            rows: [{ label: 'Ana', value: 1000 }],
+            total: 1000,
+            metric_label: 'Valor total',
+            is_money: true,
+            dimension_label: 'Dono'
+          }
+        }
+      ],
+      created_at: '',
+      updated_at: ''
+    }
+    const fetchMock = vi.fn().mockImplementation((url: string, options?: any) => {
+      const path = String(url)
+      if (options?.method === 'PUT') {
+        return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve('{}') })
+      }
+      let body: unknown = workspace
+      if (path.match(/\/panels\/\d+/)) body = panel
+      else if (path.includes('/panels')) body = { data: [panel], workspace_dashboard_id: null }
+      return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body)) })
+    })
+    vi.stubGlobal('fetch', fetchMock)
+    const wrapper = mount(SalesWorkspaceView, { global: { stubs: routerStubs } })
+    await flushPromises()
+
+    await wrapper.findAll('.ws-tabs button')[5].trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('Escolha um painel')
+
+    await wrapper.find('.panel-head select').setValue('2')
+    await flushPromises()
+
+    const put = fetchMock.mock.calls.find((c: any[]) => c[1]?.method === 'PUT')
+    expect(JSON.parse(put![1].body)).toMatchObject({ dashboard_id: 2 })
+    expect(wrapper.text()).toContain('Receita por dono')
   })
 })
 

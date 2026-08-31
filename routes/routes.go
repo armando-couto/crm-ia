@@ -160,6 +160,16 @@ func Register(app *iris.Application) {
 
 	// Espaço de trabalho de vendas: o dia da pessoa que vende.
 	auth.Get("/workspace", controllers.WorkspaceHandler)
+	auth.Put("/workspace/dashboard", controllers.SetWorkspaceDashboard)
+
+	// Painéis: conjuntos de relatórios montados pela equipe.
+	auth.Get("/panels", can(models.PermReportsView), controllers.ListPanels)
+	auth.Post("/panels", can(models.PermReportsManage), controllers.CreatePanel)
+	auth.Get("/panels/{id:int64}", can(models.PermReportsView), controllers.GetPanel)
+	auth.Put("/panels/{id:int64}", can(models.PermReportsManage), controllers.UpdatePanelByID)
+	auth.Delete("/panels/{id:int64}", can(models.PermReportsManage), controllers.DeletePanelByID)
+	auth.Post("/panels/{id:int64}/items", can(models.PermReportsManage), controllers.AddPanelItem)
+	auth.Delete("/panels/{id:int64}/items/{itemId:int64}", can(models.PermReportsManage), controllers.RemovePanelItem)
 
 	// Previsão, metas e análise de vendas.
 	auth.Get("/forecast", can(models.PermForecastView), controllers.ForecastHandler)

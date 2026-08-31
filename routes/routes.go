@@ -48,6 +48,10 @@ func Register(app *iris.Application) {
 	auth.Post("/contacts/bulk", can(models.PermContactsEdit), controllers.BulkContacts)
 	auth.Get("/contacts/export", can(models.PermContactsExport), controllers.ExportContacts)
 	auth.Post("/contacts/import", can(models.PermContactsImport), controllers.ImportContacts)
+
+	// Centro de importações: cargas de CSV/XLSX com histórico.
+	auth.Get("/imports", can(models.PermContactsImport), controllers.ListImports)
+	auth.Post("/imports", can(models.PermContactsImport), controllers.RunImportHandler)
 	auth.Get("/contacts/{id:int64}", can(models.PermContactsView), controllers.GetContact)
 	auth.Put("/contacts/{id:int64}", can(models.PermContactsEdit), controllers.UpdateContact)
 	auth.Delete("/contacts/{id:int64}", can(models.PermContactsDelete), controllers.DeleteContact)

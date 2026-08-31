@@ -672,6 +672,22 @@ export interface Conversation {
   created_at: string
 }
 
+export interface ImportRecord {
+  id: number
+  file_name: string
+  entity: 'contatos' | 'empresas'
+  status: 'concluida' | 'falhou'
+  total_rows: number
+  new_records: number
+  updated_records: number
+  new_associations: number
+  error_count: number
+  errors: string[]
+  created_by: number | null
+  created_by_name?: string
+  created_at: string
+}
+
 export interface InboxCounters {
   unassigned: number
   mine: number

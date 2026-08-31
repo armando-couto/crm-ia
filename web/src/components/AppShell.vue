@@ -58,6 +58,9 @@ function logout() {
         <router-link to="/visualizacoes" active-class="active">
           <span class="icon">⊞</span><span class="label">Visualizações</span>
         </router-link>
+        <router-link v-if="auth.can('contacts.import')" to="/importacoes" active-class="active">
+          <span class="icon">⇪</span><span class="label">Importações</span>
+        </router-link>
 
         <div class="nav-section">Análise</div>
         <router-link v-if="auth.can('forecast.view')" to="/previsao" active-class="active">

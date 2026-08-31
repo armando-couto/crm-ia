@@ -132,6 +132,12 @@ const routes = [
     meta: { permission: 'projects.view' }
   },
   {
+    path: '/importacoes',
+    name: 'imports',
+    component: () => import('./views/ImportsView.vue'),
+    meta: { permission: 'contacts.import' }
+  },
+  {
     path: '/caixa-de-entrada',
     name: 'inbox',
     component: () => import('./views/InboxView.vue'),

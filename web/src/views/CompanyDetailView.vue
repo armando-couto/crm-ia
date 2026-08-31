@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api } from '../api'
 import { formatDate, formatDateTime, formatMoney, initials, lifecycleLabels, relativeDate } from '../format'
+import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import CustomProperties from '../components/CustomProperties.vue'
 import AttachmentsPanel from '../components/AttachmentsPanel.vue'
@@ -11,10 +12,45 @@ import type { Activity, Company, Contact, Deal, Meeting, Paginated, Pipeline, Ta
 
 const route = useRoute()
 const router = useRouter()
+const auth = useAuthStore()
 const toast = useToastStore()
 
 const id = Number(route.params.id)
 const company = ref<Company | null>(null)
+
+// Conta-alvo: prioridade da empresa na estratégia de vendas.
+const targetTier = ref(2)
+const targetNotes = ref('')
+
+async function saveTarget() {
+  if (!company.value) return
+  try {
+    company.value = await api.put<Company>(`/companies/${id}/target`, {
+      is_target: company.value.is_target,
+      target_tier: targetTier.value,
+      target_notes: targetNotes.value
+    })
+  } catch (e: any) {
+    toast.error(e.message)
+  }
+}
+
+async function toggleTarget(event: Event) {
+  if (!company.value) return
+  const marcar = (event.target as HTMLInputElement).checked
+  try {
+    company.value = await api.put<Company>(`/companies/${id}/target`, {
+      is_target: marcar,
+      target_tier: targetTier.value,
+      target_notes: targetNotes.value
+    })
+    targetTier.value = company.value.target_tier || 2
+    targetNotes.value = company.value.target_notes
+    toast.push(marcar ? 'Marcada como conta-alvo' : 'Removida das contas-alvo')
+  } catch (e: any) {
+    toast.error(e.message)
+  }
+}
 const contacts = ref<Contact[]>([])
 const deals = ref<Deal[]>([])
 const tickets = ref<Ticket[]>([])
@@ -104,6 +140,8 @@ async function addNote() {
 async function load() {
   try {
     company.value = await api.get<Company>(`/companies/${id}`)
+    targetTier.value = company.value.target_tier || 2
+    targetNotes.value = company.value.target_notes ?? ''
     const [contactsResp, dealsResp, ticketsResp, tasksResp, meetingsResp] = await Promise.all([
       api.get<Paginated<Contact>>(`/contacts?company_id=${id}&per_page=100`),
       api.get<Paginated<Deal>>(`/deals?company_id=${id}&per_page=50`),
@@ -296,6 +334,30 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
         </p>
         <span v-if="company.is_client" class="badge green" style="margin-top: 6px">Cliente</span>
         <span v-if="company.do_not_disturb" class="badge red" style="margin-top: 6px">Não perturbe</span>
+        <span v-if="company.is_target" class="badge" style="margin-top: 6px">
+          Conta-alvo · tier {{ company.target_tier }}
+        </span>
+      </div>
+
+      <!-- Conta-alvo: prioridade da empresa na estratégia de vendas. -->
+      <div v-if="auth.can('companies.edit')" class="target-box">
+        <label class="target-toggle">
+          <input type="checkbox" :checked="company.is_target" @change="toggleTarget" />
+          <span>Conta-alvo</span>
+        </label>
+        <template v-if="company.is_target">
+          <select v-model.number="targetTier" @change="saveTarget">
+            <option :value="1">Tier 1 — prioridade máxima</option>
+            <option :value="2">Tier 2</option>
+            <option :value="3">Tier 3</option>
+          </select>
+          <textarea
+            v-model="targetNotes"
+            rows="2"
+            placeholder="Por que esta conta importa?"
+            @blur="saveTarget"
+          ></textarea>
+        </template>
       </div>
 
       <div class="quick-actions">
@@ -826,6 +888,32 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
 </template>
 
 <style scoped>
+.target-box {
+  background: var(--fix-purple-tint);
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.target-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--fix-purple-dark);
+  cursor: pointer;
+}
+
+.target-box select,
+.target-box textarea {
+  width: 100%;
+  font-size: 13px;
+}
+
 .record {
   display: grid;
   grid-template-columns: 340px minmax(0, 1fr) 300px;

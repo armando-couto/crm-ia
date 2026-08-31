@@ -49,6 +49,22 @@ const routes = [
     meta: { permission: 'contacts.view' }
   },
   {
+    path: '/vendas',
+    name: 'sales-workspace',
+    component: () => import('./views/SalesWorkspaceView.vue')
+  },
+  {
+    path: '/atividades',
+    name: 'activities',
+    component: () => import('./views/ActivitiesView.vue')
+  },
+  {
+    path: '/contas-alvo',
+    name: 'target-accounts',
+    component: () => import('./views/TargetAccountsView.vue'),
+    meta: { permission: 'companies.view' }
+  },
+  {
     path: '/empresas',
     name: 'companies',
     component: () => import('./views/CompaniesView.vue'),
@@ -138,6 +154,18 @@ const routes = [
     name: 'meetings',
     component: () => import('./views/MeetingsView.vue'),
     meta: { permission: 'meetings.view' }
+  },
+  {
+    path: '/previsao',
+    name: 'forecast',
+    component: () => import('./views/ForecastView.vue'),
+    meta: { permission: 'forecast.view' }
+  },
+  {
+    path: '/analise-de-vendas',
+    name: 'sales-analytics',
+    component: () => import('./views/SalesAnalyticsView.vue'),
+    meta: { permission: 'forecast.view' }
   },
   {
     path: '/relatorios',

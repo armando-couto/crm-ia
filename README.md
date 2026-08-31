@@ -13,6 +13,11 @@ CRM da Fix Pay — substituto interno do HubSpot. Backend em **Go (Iris, MVC)**,
 - **Dashboard**: funil de vendas, receita ganha por mês, ranking de vendedores, previsão ponderada
 - **Busca global**: contatos, empresas e negócios em uma única busca
 - **Usuários e permissões**: perfis `admin`, `manager` e `seller` com matriz de permissões configurável; convite com senha temporária por e-mail; redefinição de senha por link
+- **Espaço de trabalho de vendas**: o dia do vendedor em filas — tarefas atrasadas, reuniões de hoje, negócios parados, fechando na semana e leads sem contato
+- **Contas-alvo**: empresas priorizadas por tier, com o papel de cada contato na decisão (decisor, campeão, bloqueador…)
+- **Previsão e metas**: ganho, comprometido e projeção ponderada do mês contra a meta da equipe e de cada vendedor
+- **Análise de vendas**: taxa de ganho, ticket médio, ciclo de fechamento, funil por etapa e volume de interações
+- **Atividades**: feed de tudo que a equipe registrou, com filtro por tipo, pessoa e período
 - **Anexos**: arquivos em contatos, empresas, negócios e tickets (arrastar-e-soltar, até 10 MB)
 - **Automações e sequências**: gatilho + ações encadeadas, com espera entre passos para virar sequência de e-mail
 - **Formulários públicos**: construtor com endereço próprio e código de iframe; cada envio vira contato
@@ -115,7 +120,8 @@ Ver [.env.example](.env.example). No Linux o binário lê `.env.production`; nos
 
 Base: `/api/v1`. Autenticação via `Authorization: Bearer <token>` (obtido em `POST /auth/login`).
 
-Principais rotas: `auth/login`, `auth/forgot`, `auth/reset`, `me`, `users`, `contacts` (+ `import`/`export`), `companies`, `pipelines`, `stages`, `deals` (+ `board`, `stage`, `close`), `tasks` (+ `toggle`), `activities`, `emails` (+ `sent`, `stats`), `attachments`, `duplicates` (+ `merge`), `forms`, `booking`, `automations`, `reports`, `permissions`, `audit`, `dashboard`, `search`. Healthcheck em `GET /health`.
+Principais rotas: `auth/login`, `auth/forgot`, `auth/reset`, `me`, `users`, `contacts` (+ `import`/`export`), `companies`, `pipelines`, `stages`, `deals` (+ `board`, `stage`, `close`), `tasks` (+ `toggle`), `activities`, `emails` (+ `sent`, `stats`), `attachments`, `duplicates` (+ `merge`), `forms`, `booking`, `automations`, `reports`,
+`workspace`, `target-accounts`, `forecast`, `goals`, `sales-analytics`, `permissions`, `audit`, `dashboard`, `search`. Healthcheck em `GET /health`.
 
 Rotas públicas (sem sessão, consumidas fora do CRM):
 

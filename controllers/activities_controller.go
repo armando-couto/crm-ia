@@ -19,11 +19,15 @@ func ListActivities(ctx iris.Context) {
 		CompanyID: ctx.URLParamInt64Default("company_id", 0),
 		DealID:    ctx.URLParamInt64Default("deal_id", 0),
 		TicketID:  ctx.URLParamInt64Default("ticket_id", 0),
+		UserID:    ctx.URLParamInt64Default("user_id", 0),
 		Kind:      ctx.URLParam("kind"),
 		Search:    ctx.URLParam("q"),
+		Days:      ctx.URLParamIntDefault("days", 0),
 		Limit:     ctx.URLParamIntDefault("limit", 50),
+		Feed:      ctx.URLParamBoolDefault("feed", false),
 	}
-	if f.ContactID == 0 && f.CompanyID == 0 && f.DealID == 0 && f.TicketID == 0 {
+	// Sem registro específico só passa quando é o feed geral de atividades.
+	if !f.Feed && f.ContactID == 0 && f.CompanyID == 0 && f.DealID == 0 && f.TicketID == 0 {
 		badRequest(ctx, "informe contact_id, company_id, deal_id ou ticket_id")
 		return
 	}

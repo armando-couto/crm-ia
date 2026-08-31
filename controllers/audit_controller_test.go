@@ -58,7 +58,7 @@ func TestExportContactsIsAudited(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "first_name", "last_name", "email", "phone", "job_title",
 			"lifecycle_stage", "source", "company_id", "company_name", "owner_id",
-			"owner_name", "last_activity_at", "created_at", "updated_at",
+			"owner_name", "buying_role", "last_activity_at", "created_at", "updated_at",
 		}))
 	mock.ExpectExec("INSERT INTO audit_log").
 		WillReturnResult(sqlmock.NewResult(1, 1))

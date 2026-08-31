@@ -158,6 +158,19 @@ func Register(app *iris.Application) {
 	// Trilha de auditoria (quem fez o quê).
 	auth.Get("/audit", can(models.PermSettingsAudit), controllers.ListAuditLog)
 
+	// Espaço de trabalho de vendas: o dia da pessoa que vende.
+	auth.Get("/workspace", controllers.WorkspaceHandler)
+
+	// Previsão, metas e análise de vendas.
+	auth.Get("/forecast", can(models.PermForecastView), controllers.ForecastHandler)
+	auth.Get("/sales-analytics", can(models.PermForecastView), controllers.SalesAnalyticsHandler)
+	auth.Get("/goals", can(models.PermForecastView), controllers.ListGoals)
+	auth.Put("/goals", can(models.PermGoalsManage), controllers.SaveGoal)
+
+	// Contas-alvo: empresas que a equipe escolheu perseguir.
+	auth.Get("/target-accounts", can(models.PermCompaniesView), controllers.ListTargetAccounts)
+	auth.Put("/companies/{id:int64}/target", can(models.PermCompaniesEdit), controllers.SetTargetAccount)
+
 	// Relatórios montados pela equipe.
 	auth.Get("/reports", can(models.PermReportsView), controllers.ListReports)
 	auth.Post("/reports", can(models.PermReportsManage), controllers.CreateReport)

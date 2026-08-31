@@ -25,6 +25,84 @@ export interface Attachment {
   created_at: string
 }
 
+export interface WorkspaceItem {
+  id: number
+  title: string
+  subtitle: string
+  due: string | null
+  amount?: number
+  contact_id?: number | null
+  company_id?: number | null
+  deal_id?: number | null
+  reason?: string
+}
+
+export interface Workspace {
+  overdue_tasks: WorkspaceItem[]
+  today_tasks: WorkspaceItem[]
+  today_meetings: WorkspaceItem[]
+  stale_deals: WorkspaceItem[]
+  closing_soon: WorkspaceItem[]
+  untouched_leads: WorkspaceItem[]
+  open_deals: number
+  open_amount: number
+  won_month: number
+  goal_month: number
+  tasks_pending: number
+  meetings_week: number
+  target_accounts: number
+}
+
+export interface SalesGoal {
+  id: number
+  user_id: number | null
+  period: string
+  amount: number
+}
+
+export interface ForecastRow {
+  owner_id: number | null
+  owner_name: string
+  won: number
+  committed: number
+  weighted: number
+  open_deals: number
+  goal: number
+  attainment: number
+}
+
+export interface Forecast {
+  period: string
+  rows: ForecastRow[]
+  team_goal: number
+  won: number
+  committed: number
+  weighted: number
+  projected: number
+  gap: number
+}
+
+export interface StageConversion {
+  stage_id: number
+  stage_name: string
+  count: number
+  amount: number
+  rate: number
+}
+
+export interface SalesAnalytics {
+  days: number
+  created: number
+  won: number
+  lost: number
+  win_rate: number
+  avg_ticket: number
+  avg_cycle_days: number
+  won_amount: number
+  funnel: StageConversion[]
+  activity_by_kind: ReportRow[]
+}
+
 export interface ReportFilters {
   days: number
   owner_id: number
@@ -203,6 +281,10 @@ export interface Company {
   contacts_count?: number
   created_at: string
   updated_at: string
+  is_target: boolean
+  target_tier: number
+  target_notes: string
+  target_since: string | null
   ec_number: string
   economic_group: string
   cnpj: string
@@ -230,9 +312,29 @@ export interface Contact {
   company_name?: string
   owner_id: number | null
   owner_name?: string
+  buying_role: string
   last_activity_at?: string | null
   created_at: string
   updated_at: string
+}
+
+export interface TargetAccount extends Company {
+  contacts_count_total: number
+  decision_makers: number
+  open_deals: number
+  open_amount: number
+  won_amount: number
+  last_activity_at: string | null
+  open_tasks: number
+}
+
+export interface TargetSummary {
+  total: number
+  tier1: number
+  with_deals: number
+  open_amount: number
+  no_activity_30d: number
+  without_decision_maker: number
 }
 
 export interface PipelineStage {
@@ -306,6 +408,10 @@ export interface Activity {
   contact_id: number | null
   company_id: number | null
   deal_id: number | null
+  ticket_id?: number | null
+  contact_name?: string
+  company_name?: string
+  deal_name?: string
   created_at: string
 }
 

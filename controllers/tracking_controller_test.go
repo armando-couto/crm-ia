@@ -121,9 +121,9 @@ func TestSendEmailIsTracked(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{
 			"id", "first_name", "last_name", "email", "phone", "job_title",
 			"lifecycle_stage", "source", "company_id", "company_name", "owner_id",
-			"owner_name", "last_activity_at", "created_at", "updated_at",
+			"owner_name", "buying_role", "last_activity_at", "created_at", "updated_at",
 		}).AddRow(3, "Ana", "Silva", "ana@cliente.com", "", "", "lead", "",
-			nil, "", nil, "", nil, now, now))
+			nil, "", nil, "", "", nil, now, now))
 	mock.ExpectQuery("INSERT INTO email_messages").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "sent_at"}).AddRow(7, now))
 	mock.ExpectQuery("INSERT INTO activities").

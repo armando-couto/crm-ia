@@ -36,6 +36,12 @@ type Company struct {
 	AnticipationMode string     `json:"anticipation_mode"`
 	Validator        bool       `json:"validator"`
 	DoNotDisturb     bool       `json:"do_not_disturb"`
+
+	// Conta-alvo: empresa que a equipe escolheu perseguir (tier 1 = prioridade).
+	IsTarget    bool       `json:"is_target"`
+	TargetTier  int        `json:"target_tier"`
+	TargetNotes string     `json:"target_notes"`
+	TargetSince *time.Time `json:"target_since"`
 }
 
 // companyBusinessColumns são as colunas extras lidas em todas as consultas.
@@ -43,7 +49,8 @@ const companyBusinessColumns = `
 	COALESCE(c.ec_number,''), COALESCE(c.economic_group,''), COALESCE(c.cnpj,''),
 	c.accredited_at, COALESCE(c.representative,''), COALESCE(c.instagram,''),
 	c.products, c.machines_count, c.is_client, COALESCE(c.anticipation_mode,''),
-	c.validator, c.do_not_disturb`
+	c.validator, c.do_not_disturb,
+	c.is_target, c.target_tier, COALESCE(c.target_notes,''), c.target_since`
 
 // businessScanTargets devolve os destinos de scan das colunas de negócio.
 func (c *Company) businessScanTargets(products *pq.StringArray) []any {
@@ -51,6 +58,7 @@ func (c *Company) businessScanTargets(products *pq.StringArray) []any {
 		&c.ECNumber, &c.EconomicGroup, &c.CNPJ, &c.AccreditedAt, &c.Representative,
 		&c.Instagram, products, &c.MachinesCount, &c.IsClient, &c.AnticipationMode,
 		&c.Validator, &c.DoNotDisturb,
+		&c.IsTarget, &c.TargetTier, &c.TargetNotes, &c.TargetSince,
 	}
 }
 

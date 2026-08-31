@@ -50,6 +50,10 @@ func testDB(t *testing.T) *sql.DB {
 		t.Fatalf("migrations: %v", err)
 	}
 
+	// Estes testes exercitam o motor: ligam explicitamente.
+	services.AutomationsEnabled = true
+	t.Cleanup(func() { services.AutomationsEnabled = false })
+
 	if _, err := db.Exec(`TRUNCATE automations, automation_runs, sequence_enrollments,
 		activities, tasks, email_messages, list_members, lists, contacts RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatal(err)

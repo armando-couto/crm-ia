@@ -37,6 +37,16 @@ const ticketOpen = ref(false)
 const saving = ref(false)
 
 const form = ref<any>({})
+
+// Rótulos do papel do contato na decisão de compra (contas-alvo).
+const buyingRoleLabels: Record<string, string> = {
+  decisor: 'Decisor',
+  influenciador: 'Influenciador',
+  usuario: 'Usuário',
+  financeiro: 'Financeiro',
+  bloqueador: 'Bloqueador',
+  campeao: 'Campeão'
+}
 const callForm = ref({ direction: 'saida', outcome: 'conectada', duration_seconds: 0, notes: '' })
 const taskForm = ref({ title: '', type: 'tarefa', priority: 'media', due_date: '' })
 const meetingForm = ref({ title: '', starts_at: '', location: '' })
@@ -306,6 +316,13 @@ const ticketBadge: Record<string, string> = { aberto: 'blue', pendente: 'amber',
           <dd><span class="badge">{{ lifecycleLabels[contact.lifecycle_stage] || contact.lifecycle_stage }}</span></dd>
           <dt>Fonte do registro</dt>
           <dd>{{ contact.source || '—' }}</dd>
+          <dt>Papel na decisão</dt>
+          <dd>
+            <span v-if="contact.buying_role" class="badge" :class="contact.buying_role === 'decisor' ? 'green' : ''">
+              {{ buyingRoleLabels[contact.buying_role] || contact.buying_role }}
+            </span>
+            <span v-else class="muted">—</span>
+          </dd>
           <dt>Criado em</dt>
           <dd>{{ formatDate(contact.created_at) }}</dd>
         </dl>
@@ -497,12 +514,21 @@ const ticketBadge: Record<string, string> = { aberto: 'blue', pendente: 'amber',
             </select>
           </div>
         </div>
-        <div class="field">
-          <label>Proprietário</label>
-          <select v-model="form.owner_id">
-            <option :value="null">Sem proprietário</option>
-            <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
-          </select>
+        <div class="form-row">
+          <div class="field">
+            <label>Proprietário</label>
+            <select v-model="form.owner_id">
+              <option :value="null">Sem proprietário</option>
+              <option v-for="u in users" :key="u.id" :value="u.id">{{ u.name }}</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Papel na decisão</label>
+            <select v-model="form.buying_role">
+              <option value="">Não definido</option>
+              <option v-for="(label, key) in buyingRoleLabels" :key="key" :value="key">{{ label }}</option>
+            </select>
+          </div>
         </div>
         <button class="btn btn-primary" type="submit" :disabled="saving" style="width: 100%; justify-content: center">
           {{ saving ? 'Salvando…' : 'Salvar alterações' }}

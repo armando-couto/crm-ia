@@ -17,18 +17,20 @@ func ValidLifecycleStage(s string) bool {
 }
 
 type Contact struct {
-	ID             int64      `json:"id"`
-	FirstName      string     `json:"first_name"`
-	LastName       string     `json:"last_name"`
-	Email          string     `json:"email"`
-	Phone          string     `json:"phone"`
-	JobTitle       string     `json:"job_title"`
-	LifecycleStage string     `json:"lifecycle_stage"`
-	Source         string     `json:"source"`
-	CompanyID      *int64     `json:"company_id"`
-	CompanyName    string     `json:"company_name,omitempty"`
-	OwnerID        *int64     `json:"owner_id"`
-	OwnerName      string     `json:"owner_name,omitempty"`
+	ID             int64  `json:"id"`
+	FirstName      string `json:"first_name"`
+	LastName       string `json:"last_name"`
+	Email          string `json:"email"`
+	Phone          string `json:"phone"`
+	JobTitle       string `json:"job_title"`
+	LifecycleStage string `json:"lifecycle_stage"`
+	Source         string `json:"source"`
+	CompanyID      *int64 `json:"company_id"`
+	CompanyName    string `json:"company_name,omitempty"`
+	OwnerID        *int64 `json:"owner_id"`
+	OwnerName      string `json:"owner_name,omitempty"`
+	// Papel na decisão de compra (decisor, influenciador, campeão…).
+	BuyingRole     string     `json:"buying_role"`
 	LastActivityAt *time.Time `json:"last_activity_at"`
 	CreatedAt      time.Time  `json:"created_at"`
 	UpdatedAt      time.Time  `json:"updated_at"`
@@ -72,6 +74,7 @@ const contactSelect = `
 	SELECT c.id, c.first_name, COALESCE(c.last_name,''), COALESCE(c.email,''), COALESCE(c.phone,''),
 	       COALESCE(c.job_title,''), c.lifecycle_stage, COALESCE(c.source,''),
 	       c.company_id, COALESCE(co.name,''), c.owner_id, COALESCE(u.name,''),
+	       COALESCE(c.buying_role,''),
 	       (SELECT MAX(a.created_at) FROM activities a WHERE a.contact_id = c.id) AS last_activity_at,
 	       c.created_at, c.updated_at
 	FROM contacts c
@@ -82,7 +85,7 @@ func scanContact(row interface{ Scan(...any) error }) (*Contact, error) {
 	var c Contact
 	err := row.Scan(&c.ID, &c.FirstName, &c.LastName, &c.Email, &c.Phone, &c.JobTitle,
 		&c.LifecycleStage, &c.Source, &c.CompanyID, &c.CompanyName, &c.OwnerID, &c.OwnerName,
-		&c.LastActivityAt, &c.CreatedAt, &c.UpdatedAt)
+		&c.BuyingRole, &c.LastActivityAt, &c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -178,21 +181,23 @@ func CreateContact(db *sql.DB, c *Contact) error {
 		c.LifecycleStage = "lead"
 	}
 	return db.QueryRow(`
-		INSERT INTO contacts (first_name, last_name, email, phone, job_title, lifecycle_stage, source, company_id, owner_id)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		INSERT INTO contacts (first_name, last_name, email, phone, job_title, lifecycle_stage,
+		    source, company_id, owner_id, buying_role)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 		RETURNING id, created_at, updated_at`,
 		c.FirstName, c.LastName, NormalizeEmail(c.Email), c.Phone, c.JobTitle,
-		c.LifecycleStage, c.Source, c.CompanyID, c.OwnerID,
+		c.LifecycleStage, c.Source, c.CompanyID, c.OwnerID, c.BuyingRole,
 	).Scan(&c.ID, &c.CreatedAt, &c.UpdatedAt)
 }
 
 func UpdateContact(db *sql.DB, c *Contact) error {
 	_, err := db.Exec(`
 		UPDATE contacts SET first_name = $1, last_name = $2, email = $3, phone = $4, job_title = $5,
-		       lifecycle_stage = $6, source = $7, company_id = $8, owner_id = $9, updated_at = NOW()
-		WHERE id = $10`,
+		       lifecycle_stage = $6, source = $7, company_id = $8, owner_id = $9,
+		       buying_role = $10, updated_at = NOW()
+		WHERE id = $11`,
 		c.FirstName, c.LastName, NormalizeEmail(c.Email), c.Phone, c.JobTitle,
-		c.LifecycleStage, c.Source, c.CompanyID, c.OwnerID, c.ID)
+		c.LifecycleStage, c.Source, c.CompanyID, c.OwnerID, c.BuyingRole, c.ID)
 	return err
 }
 

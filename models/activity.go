@@ -28,6 +28,11 @@ type Activity struct {
 	DealID    *int64          `json:"deal_id"`
 	TicketID  *int64          `json:"ticket_id"`
 	CreatedAt time.Time       `json:"created_at"`
+
+	// Preenchidos no feed geral, para mostrar a que registro a atividade pertence.
+	ContactName string `json:"contact_name,omitempty"`
+	CompanyName string `json:"company_name,omitempty"`
+	DealName    string `json:"deal_name,omitempty"`
 }
 
 type ActivityFilter struct {
@@ -35,9 +40,13 @@ type ActivityFilter struct {
 	CompanyID int64
 	DealID    int64
 	TicketID  int64
+	UserID    int64  // quem registrou
 	Kind      string // filtra por tipo (nota, email, ligacao, reuniao, sistema)
 	Search    string // busca no conteúdo
+	Days      int    // últimos N dias
 	Limit     int
+	// Feed geral: sem registro específico, lista a equipe inteira.
+	Feed bool
 }
 
 func ListActivities(db *sql.DB, f ActivityFilter) ([]Activity, error) {
@@ -67,6 +76,14 @@ func ListActivities(db *sql.DB, f ActivityFilter) ([]Activity, error) {
 	if len(where) > 0 {
 		cond = "(" + strings.Join(where, " OR ") + ")"
 	}
+	if f.UserID > 0 {
+		args = append(args, f.UserID)
+		cond += fmt.Sprintf(" AND a.user_id = $%d", len(args))
+	}
+	if f.Days > 0 {
+		args = append(args, f.Days)
+		cond += fmt.Sprintf(" AND a.created_at >= NOW() - make_interval(days => $%d)", len(args))
+	}
 	if f.Kind != "" {
 		args = append(args, f.Kind)
 		cond += fmt.Sprintf(" AND a.kind = $%d", len(args))
@@ -79,9 +96,14 @@ func ListActivities(db *sql.DB, f ActivityFilter) ([]Activity, error) {
 	args = append(args, f.Limit)
 	rows, err := db.Query(fmt.Sprintf(`
 		SELECT a.id, a.kind, a.content, a.metadata, a.user_id, COALESCE(u.name,''),
-		       a.contact_id, a.company_id, a.deal_id, a.ticket_id, a.created_at
+		       a.contact_id, a.company_id, a.deal_id, a.ticket_id, a.created_at,
+		       COALESCE(TRIM(ct.first_name || ' ' || ct.last_name), ''),
+		       COALESCE(co.name, ''), COALESCE(d.name, '')
 		FROM activities a
 		LEFT JOIN users u ON u.id = a.user_id
+		LEFT JOIN contacts ct ON ct.id = a.contact_id
+		LEFT JOIN companies co ON co.id = a.company_id
+		LEFT JOIN deals d ON d.id = a.deal_id
 		WHERE %s
 		ORDER BY a.created_at DESC
 		LIMIT $%d`, cond, len(args)), args...)
@@ -95,7 +117,8 @@ func ListActivities(db *sql.DB, f ActivityFilter) ([]Activity, error) {
 		var a Activity
 		var metadata sql.NullString
 		if err := rows.Scan(&a.ID, &a.Kind, &a.Content, &metadata, &a.UserID, &a.UserName,
-			&a.ContactID, &a.CompanyID, &a.DealID, &a.TicketID, &a.CreatedAt); err != nil {
+			&a.ContactID, &a.CompanyID, &a.DealID, &a.TicketID, &a.CreatedAt,
+			&a.ContactName, &a.CompanyName, &a.DealName); err != nil {
 			return nil, err
 		}
 		if metadata.Valid {

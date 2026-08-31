@@ -63,10 +63,19 @@ func parseTriggerConfig(raw json.RawMessage) triggerConfig {
 	return cfg
 }
 
+// AutomationsEnabled liga o motor. A aplicação liga na subida, junto com o
+// worker; nos testes de controller ele fica desligado para os gatilhos em
+// goroutine não caírem no mock de banco de outro teste.
+var AutomationsEnabled bool
+
 // FireTrigger roda todas as automações ativas do gatilho. É chamada em
 // goroutine pelos controllers: falha de automação nunca derruba a requisição
 // que a disparou.
 func FireTrigger(db *sql.DB, kind string, subject Subject, match triggerConfig) {
+	if !AutomationsEnabled {
+		return
+	}
+
 	automations, err := models.ActiveAutomationsByTrigger(db, kind)
 	if err != nil {
 		log.Printf("automações: falha ao carregar gatilho %s: %v", kind, err)
@@ -416,6 +425,8 @@ const timeTriggerEvery = time.Hour
 // StartAutomationWorker sobe a rotina de fundo que retoma sequências e roda os
 // gatilhos por tempo. Deve ser chamada uma vez na subida da aplicação.
 func StartAutomationWorker(db *sql.DB) {
+	AutomationsEnabled = true
+
 	go func() {
 		ticker := time.NewTicker(automationTick)
 		defer ticker.Stop()

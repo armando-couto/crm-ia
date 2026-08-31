@@ -132,6 +132,7 @@ type contactRequest struct {
 	Source         string `json:"source"`
 	CompanyID      *int64 `json:"company_id"`
 	OwnerID        *int64 `json:"owner_id"`
+	BuyingRole     string `json:"buying_role"`
 }
 
 func (r *contactRequest) validate() string {
@@ -141,6 +142,9 @@ func (r *contactRequest) validate() string {
 	}
 	if r.LifecycleStage != "" && !models.ValidLifecycleStage(r.LifecycleStage) {
 		return "estágio do ciclo de vida inválido"
+	}
+	if !models.ValidBuyingRole(r.BuyingRole) {
+		return "papel de compra inválido"
 	}
 	return ""
 }
@@ -157,6 +161,7 @@ func (r *contactRequest) apply(c *models.Contact) {
 	c.Source = r.Source
 	c.CompanyID = r.CompanyID
 	c.OwnerID = r.OwnerID
+	c.BuyingRole = r.BuyingRole
 }
 
 func CreateContact(ctx iris.Context) {

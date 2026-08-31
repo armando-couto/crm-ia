@@ -25,11 +25,17 @@ function logout() {
         <router-link v-if="auth.can('dashboard.view')" to="/" exact-active-class="active">
           <span class="icon">◧</span><span class="label">Dashboard</span>
         </router-link>
+        <router-link to="/vendas" active-class="active">
+          <span class="icon">◱</span><span class="label">Espaço de trabalho</span>
+        </router-link>
         <router-link v-if="auth.can('contacts.view')" to="/contatos" active-class="active">
           <span class="icon">☺</span><span class="label">Contatos</span>
         </router-link>
         <router-link v-if="auth.can('companies.view')" to="/empresas" active-class="active">
           <span class="icon">▣</span><span class="label">Empresas</span>
+        </router-link>
+        <router-link v-if="auth.can('companies.view')" to="/contas-alvo" active-class="active">
+          <span class="icon">◎</span><span class="label">Contas-alvo</span>
         </router-link>
         <router-link v-if="auth.can('deals.view')" to="/negocios" active-class="active">
           <span class="icon">◈</span><span class="label">Negócios</span>
@@ -46,10 +52,20 @@ function logout() {
         <router-link v-if="auth.can('lists.view')" to="/listas" active-class="active">
           <span class="icon">☰</span><span class="label">Listas</span>
         </router-link>
+        <router-link to="/atividades" active-class="active">
+          <span class="icon">≡</span><span class="label">Atividades</span>
+        </router-link>
         <router-link to="/visualizacoes" active-class="active">
           <span class="icon">⊞</span><span class="label">Visualizações</span>
         </router-link>
 
+        <div class="nav-section">Análise</div>
+        <router-link v-if="auth.can('forecast.view')" to="/previsao" active-class="active">
+          <span class="icon">◭</span><span class="label">Previsão</span>
+        </router-link>
+        <router-link v-if="auth.can('forecast.view')" to="/analise-de-vendas" active-class="active">
+          <span class="icon">◔</span><span class="label">Análise de vendas</span>
+        </router-link>
         <router-link v-if="auth.can('reports.view')" to="/relatorios" active-class="active">
           <span class="icon">📊</span><span class="label">Relatórios</span>
         </router-link>

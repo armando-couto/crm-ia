@@ -70,8 +70,8 @@ func TestProcessInboundEvents(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(7))
 	mock.ExpectQuery("SELECT (.+) FROM conversations c").
 		WithArgs(int64(7)).
-		WillReturnRows(sqlmock.NewRows([]string{"id", "subject", "contact_id", "name", "peer_email", "status", "unread", "last_message_at", "created_at"}).
-			AddRow(7, "Proposta de adquirência", 1, "Carlos Lima", "carlos@bompreco.com.br", "aberta", false, nowValue(), nowValue()))
+		WillReturnRows(sqlmock.NewRows([]string{"id", "subject", "contact_id", "name", "peer_email", "status", "owner_id", "owner_name", "unread", "last_message_at", "created_at"}).
+			AddRow(7, "Proposta de adquirência", 1, "Carlos Lima", "carlos@bompreco.com.br", "aberta", nil, "", false, nowValue(), nowValue()))
 	mock.ExpectQuery("INSERT INTO conversation_messages").
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at"}).AddRow(99, nowValue()))
 	mock.ExpectExec("UPDATE conversations").

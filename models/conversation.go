@@ -2,6 +2,7 @@ package models
 
 import (
 	"database/sql"
+	"fmt"
 	"strings"
 	"time"
 )
@@ -13,6 +14,8 @@ type Conversation struct {
 	ContactName   string    `json:"contact_name,omitempty"`
 	PeerEmail     string    `json:"peer_email"`
 	Status        string    `json:"status"` // aberta | fechada
+	OwnerID       *int64    `json:"owner_id"`
+	OwnerName     string    `json:"owner_name,omitempty"`
 	Unread        bool      `json:"unread"`
 	LastMessageAt time.Time `json:"last_message_at"`
 	LastPreview   string    `json:"last_preview,omitempty"`
@@ -32,20 +35,41 @@ type ConversationMessage struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
-func ListConversations(db *sql.DB, status string) ([]Conversation, error) {
+// ConversationFilter escolhe a fila da caixa de entrada.
+type ConversationFilter struct {
+	Status string
+	// Queue: nao_atribuido | minhas | todas ("" = todas)
+	Queue  string
+	UserID int64
+}
+
+func ListConversations(db *sql.DB, f ConversationFilter) ([]Conversation, error) {
 	query := `
 		SELECT c.id, c.subject, c.contact_id,
 		       COALESCE(ct.first_name || ' ' || COALESCE(ct.last_name,''), ''),
-		       c.peer_email, c.status, c.unread, c.last_message_at,
+		       c.peer_email, c.status, c.owner_id, COALESCE(u.name,''), c.unread, c.last_message_at,
 		       COALESCE((SELECT LEFT(m.body, 120) FROM conversation_messages m
-		                 WHERE m.conversation_id = c.id ORDER BY m.created_at DESC LIMIT 1), ''),
+		                 WHERE m.conversation_id = c.id AND m.direction <> 'comentario'
+		                 ORDER BY m.created_at DESC LIMIT 1), ''),
 		       c.created_at
 		FROM conversations c
-		LEFT JOIN contacts ct ON ct.id = c.contact_id`
+		LEFT JOIN contacts ct ON ct.id = c.contact_id
+		LEFT JOIN users u ON u.id = c.owner_id`
+	where := []string{}
 	args := []any{}
-	if status != "" {
-		query += ` WHERE c.status = $1`
-		args = append(args, status)
+	if f.Status != "" {
+		args = append(args, f.Status)
+		where = append(where, fmt.Sprintf("c.status = $%d", len(args)))
+	}
+	switch f.Queue {
+	case "nao_atribuido":
+		where = append(where, "c.owner_id IS NULL")
+	case "minhas":
+		args = append(args, f.UserID)
+		where = append(where, fmt.Sprintf("c.owner_id = $%d", len(args)))
+	}
+	if len(where) > 0 {
+		query += " WHERE " + strings.Join(where, " AND ")
 	}
 	query += ` ORDER BY c.last_message_at DESC LIMIT 200`
 
@@ -59,7 +83,8 @@ func ListConversations(db *sql.DB, status string) ([]Conversation, error) {
 	for rows.Next() {
 		var c Conversation
 		if err := rows.Scan(&c.ID, &c.Subject, &c.ContactID, &c.ContactName, &c.PeerEmail,
-			&c.Status, &c.Unread, &c.LastMessageAt, &c.LastPreview, &c.CreatedAt); err != nil {
+			&c.Status, &c.OwnerID, &c.OwnerName, &c.Unread, &c.LastMessageAt,
+			&c.LastPreview, &c.CreatedAt); err != nil {
 			return nil, err
 		}
 		c.ContactName = strings.TrimSpace(c.ContactName)
@@ -73,12 +98,14 @@ func ConversationByID(db *sql.DB, id int64) (*Conversation, error) {
 	err := db.QueryRow(`
 		SELECT c.id, c.subject, c.contact_id,
 		       COALESCE(ct.first_name || ' ' || COALESCE(ct.last_name,''), ''),
-		       c.peer_email, c.status, c.unread, c.last_message_at, c.created_at
+		       c.peer_email, c.status, c.owner_id, COALESCE(u.name,''),
+		       c.unread, c.last_message_at, c.created_at
 		FROM conversations c
 		LEFT JOIN contacts ct ON ct.id = c.contact_id
+		LEFT JOIN users u ON u.id = c.owner_id
 		WHERE c.id = $1`, id,
 	).Scan(&c.ID, &c.Subject, &c.ContactID, &c.ContactName, &c.PeerEmail,
-		&c.Status, &c.Unread, &c.LastMessageAt, &c.CreatedAt)
+		&c.Status, &c.OwnerID, &c.OwnerName, &c.Unread, &c.LastMessageAt, &c.CreatedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -209,4 +236,30 @@ func CountUnreadConversations(db *sql.DB) (int, error) {
 	var total int
 	err := db.QueryRow(`SELECT COUNT(*) FROM conversations WHERE unread = TRUE AND status = 'aberta'`).Scan(&total)
 	return total, err
+}
+
+// InboxCounters são os números das filas da caixa de entrada.
+type InboxCounters struct {
+	Unassigned int `json:"unassigned"`
+	Mine       int `json:"mine"`
+	Open       int `json:"open"`
+	Closed     int `json:"closed"`
+}
+
+func LoadInboxCounters(db *sql.DB, userID int64) (*InboxCounters, error) {
+	var c InboxCounters
+	err := db.QueryRow(`
+		SELECT COUNT(*) FILTER (WHERE status = 'aberta' AND owner_id IS NULL),
+		       COUNT(*) FILTER (WHERE status = 'aberta' AND owner_id = $1),
+		       COUNT(*) FILTER (WHERE status = 'aberta'),
+		       COUNT(*) FILTER (WHERE status = 'fechada')
+		FROM conversations`, userID,
+	).Scan(&c.Unassigned, &c.Mine, &c.Open, &c.Closed)
+	return &c, err
+}
+
+// AssignConversation define (ou tira) o dono da conversa.
+func AssignConversation(db *sql.DB, id int64, ownerID *int64) error {
+	_, err := db.Exec(`UPDATE conversations SET owner_id = $1 WHERE id = $2`, ownerID, id)
+	return err
 }

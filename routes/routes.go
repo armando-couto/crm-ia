@@ -114,6 +114,8 @@ func Register(app *iris.Application) {
 	auth.Get("/conversations/{id:int64}", can(models.PermInboxView), controllers.GetConversation)
 	auth.Post("/conversations/{id:int64}/reply", can(models.PermInboxReply), controllers.ReplyConversation)
 	auth.Patch("/conversations/{id:int64}/status", can(models.PermInboxReply), controllers.SetConversationStatus)
+	auth.Patch("/conversations/{id:int64}/owner", can(models.PermInboxReply), controllers.AssignConversation)
+	auth.Post("/conversations/{id:int64}/comments", can(models.PermInboxView), controllers.AddConversationComment)
 
 	auth.Get("/calls", can(models.PermCallsView), controllers.ListCalls)
 	auth.Post("/calls", can(models.PermCallsLog), controllers.CreateCall)

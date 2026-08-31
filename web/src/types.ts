@@ -665,15 +665,24 @@ export interface Conversation {
   peer_email: string
   status: 'aberta' | 'fechada'
   unread: boolean
+  owner_id: number | null
+  owner_name?: string
   last_message_at: string
   last_preview?: string
   created_at: string
 }
 
+export interface InboxCounters {
+  unassigned: number
+  mine: number
+  open: number
+  closed: number
+}
+
 export interface ConversationMessage {
   id: number
   conversation_id: number
-  direction: 'recebida' | 'enviada'
+  direction: 'recebida' | 'enviada' | 'comentario'
   from_email: string
   to_email: string
   subject: string

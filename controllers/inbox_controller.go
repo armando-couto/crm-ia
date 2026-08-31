@@ -11,15 +11,84 @@ import (
 	"github.com/kataras/iris/v12"
 )
 
-// ListConversations lista as conversas da caixa de entrada.
+// ListConversations lista as conversas da caixa de entrada, filtradas pela
+// fila (nao_atribuido | minhas | todas) e pelo status.
 func ListConversations(ctx iris.Context) {
-	list, err := models.ListConversations(utils.DB, ctx.URLParam("status"))
+	claims := middlewareClaims(ctx)
+	filter := models.ConversationFilter{
+		Status: ctx.URLParam("status"),
+		Queue:  ctx.URLParam("queue"),
+		UserID: claims.UserID,
+	}
+	list, err := models.ListConversations(utils.DB, filter)
 	if err != nil {
 		serverError(ctx, err)
 		return
 	}
 	unread, _ := models.CountUnreadConversations(utils.DB)
-	ctx.JSON(iris.Map{"data": list, "unread": unread})
+	counters, err := models.LoadInboxCounters(utils.DB, claims.UserID)
+	if err != nil {
+		serverError(ctx, err)
+		return
+	}
+	ctx.JSON(iris.Map{"data": list, "unread": unread, "counters": counters})
+}
+
+// AssignConversation define o dono da conversa (nulo devolve para a fila).
+func AssignConversation(ctx iris.Context) {
+	var req struct {
+		OwnerID *int64 `json:"owner_id"`
+	}
+	if err := ctx.ReadJSON(&req); err != nil {
+		badRequest(ctx, "dados inválidos")
+		return
+	}
+	id := paramID(ctx)
+	if err := models.AssignConversation(utils.DB, id, req.OwnerID); err != nil {
+		serverError(ctx, err)
+		return
+	}
+	conv, err := models.ConversationByID(utils.DB, id)
+	if err != nil {
+		handleDBError(ctx, err)
+		return
+	}
+	ctx.JSON(conv)
+}
+
+// AddConversationComment registra um comentário interno na conversa: aparece
+// na thread para a equipe, mas nenhum e-mail é enviado ao contato.
+func AddConversationComment(ctx iris.Context) {
+	var req struct {
+		Body string `json:"body"`
+	}
+	if err := ctx.ReadJSON(&req); err != nil || strings.TrimSpace(req.Body) == "" {
+		badRequest(ctx, "escreva o comentário")
+		return
+	}
+
+	conv, err := models.ConversationByID(utils.DB, paramID(ctx))
+	if err != nil {
+		handleDBError(ctx, err)
+		return
+	}
+
+	msg := &models.ConversationMessage{
+		ConversationID: conv.ID,
+		Direction:      "comentario",
+		Subject:        conv.Subject,
+		Body:           strings.TrimSpace(req.Body),
+	}
+	if claims := middlewareClaims(ctx); claims != nil {
+		msg.UserID = &claims.UserID
+		msg.UserName = claims.Name
+	}
+	if err := models.AddConversationMessage(utils.DB, msg); err != nil {
+		serverError(ctx, err)
+		return
+	}
+	ctx.StatusCode(iris.StatusCreated)
+	ctx.JSON(msg)
 }
 
 // GetConversation abre a conversa (marcando como lida) com suas mensagens.
@@ -81,6 +150,7 @@ func ReplyConversation(ctx iris.Context) {
 	}
 	if claims := middlewareClaims(ctx); claims != nil {
 		msg.UserID = &claims.UserID
+		msg.UserName = claims.Name
 	}
 	if err := models.AddConversationMessage(utils.DB, msg); err != nil {
 		serverError(ctx, err)

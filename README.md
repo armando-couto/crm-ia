@@ -13,6 +13,13 @@ CRM da Fix Pay — substituto interno do HubSpot. Backend em **Go (Iris, MVC)**,
 - **Dashboard**: funil de vendas, receita ganha por mês, ranking de vendedores, previsão ponderada
 - **Busca global**: contatos, empresas e negócios em uma única busca
 - **Usuários e permissões**: perfis `admin`, `manager` e `seller` com matriz de permissões configurável; convite com senha temporária por e-mail; redefinição de senha por link
+- **Anexos**: arquivos em contatos, empresas, negócios e tickets (arrastar-e-soltar, até 10 MB)
+- **Automações e sequências**: gatilho + ações encadeadas, com espera entre passos para virar sequência de e-mail
+- **Formulários públicos**: construtor com endereço próprio e código de iframe; cada envio vira contato
+- **Rastreio de e-mail**: aberturas e cliques dos envios feitos pelo CRM, com taxa por período
+- **Duplicados**: encontra e mescla contatos e empresas repetidos
+- **Agendamento**: link público com a agenda de cada pessoa; a reunião marcada entra no CRM
+- **Relatórios**: montados pela equipe (entidade + métrica + agrupamento) em barras, linha, pizza ou tabela
 - **Segurança**: webhook do Mandrill com assinatura HMAC, proteção contra força bruta no login, convite que expira em 7 dias com troca obrigatória de senha, perfil lido do banco a cada requisição e trilha de auditoria em Configurações → Auditoria
 
 ## Stack
@@ -108,7 +115,27 @@ Ver [.env.example](.env.example). No Linux o binário lê `.env.production`; nos
 
 Base: `/api/v1`. Autenticação via `Authorization: Bearer <token>` (obtido em `POST /auth/login`).
 
-Principais rotas: `auth/login`, `auth/forgot`, `auth/reset`, `me`, `users`, `contacts` (+ `import`/`export`), `companies`, `pipelines`, `stages`, `deals` (+ `board`, `stage`, `close`), `tasks` (+ `toggle`), `activities`, `emails`, `permissions`, `audit`, `dashboard`, `search`. Healthcheck em `GET /health`.
+Principais rotas: `auth/login`, `auth/forgot`, `auth/reset`, `me`, `users`, `contacts` (+ `import`/`export`), `companies`, `pipelines`, `stages`, `deals` (+ `board`, `stage`, `close`), `tasks` (+ `toggle`), `activities`, `emails` (+ `sent`, `stats`), `attachments`, `duplicates` (+ `merge`), `forms`, `booking`, `automations`, `reports`, `permissions`, `audit`, `dashboard`, `search`. Healthcheck em `GET /health`.
+
+Rotas públicas (sem sessão, consumidas fora do CRM):
+
+| Rota | Para quê |
+| ---- | -------- |
+| `GET/POST /api/public/forms/{slug}` | Formulário de captura embutido no site |
+| `GET/POST /api/public/booking/{slug}` | Página de agendamento de reuniões |
+| `GET /api/track/o/{token}/pixel.gif` | Pixel de abertura de e-mail |
+| `GET /api/track/c/{token}?u=...` | Redirecionador que conta o clique |
+| `POST /api/webhooks/mandrill/inbound` | E-mails de entrada (exige assinatura) |
+
+### Automações
+
+Um gatilho dispara uma lista ordenada de ações. Gatilhos por evento (contato criado, contato mudou de estágio, negócio criado/movido/ganho/perdido, ticket aberto, formulário enviado) rodam na hora, em goroutine. Gatilhos por tempo (negócio parado, tarefa atrasada, contato sem interação há X dias) são varridos de hora em hora pelo worker, no máximo uma vez por registro por dia.
+
+Ações: enviar e-mail (modelo da biblioteca ou texto com `{{nome}}`, `{{empresa}}`…), criar tarefa, mudar dono, mover de etapa, mudar o estágio do contato, adicionar à lista, registrar observação, avisar alguém e **aguardar N dias**. A espera transforma a automação em sequência: o passo agenda a retomada em `sequence_enrollments` e o worker continua depois. Um erro em qualquer passo interrompe só aquele registro e fica no histórico.
+
+### Relatórios
+
+O construtor monta a consulta a partir de listas fechadas no código (entidade → métrica → agrupamento → filtros). Nada do que o usuário digita entra no SQL: só as chaves escolhidas, e os filtros vão como parâmetro. Formatos: barras, linha, pizza e tabela.
 
 ### Segurança
 

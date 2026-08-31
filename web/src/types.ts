@@ -25,6 +25,48 @@ export interface Attachment {
   created_at: string
 }
 
+export interface ReportFilters {
+  days: number
+  owner_id: number
+  status: string
+}
+
+export interface Report {
+  id: number
+  name: string
+  description: string
+  entity: string
+  metric: string
+  dimension: string
+  filters: ReportFilters
+  chart: string
+  shared: boolean
+  position: number
+  created_by: number | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ReportRow {
+  label: string
+  value: number
+}
+
+export interface ReportResult {
+  rows: ReportRow[]
+  total: number
+  metric_label: string
+  is_money: boolean
+  dimension_label: string
+}
+
+export interface ReportCatalogEntry {
+  key: string
+  label: string
+  metrics: Record<string, string>
+  dimensions: Record<string, string>
+}
+
 export interface AutomationAction {
   kind: string
   config?: Record<string, unknown>

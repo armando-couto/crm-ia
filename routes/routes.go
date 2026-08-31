@@ -158,6 +158,14 @@ func Register(app *iris.Application) {
 	// Trilha de auditoria (quem fez o quê).
 	auth.Get("/audit", can(models.PermSettingsAudit), controllers.ListAuditLog)
 
+	// Relatórios montados pela equipe.
+	auth.Get("/reports", can(models.PermReportsView), controllers.ListReports)
+	auth.Post("/reports", can(models.PermReportsManage), controllers.CreateReport)
+	auth.Post("/reports/preview", can(models.PermReportsView), controllers.PreviewReport)
+	auth.Get("/reports/{id:int64}/run", can(models.PermReportsView), controllers.RunReportByID)
+	auth.Put("/reports/{id:int64}", can(models.PermReportsManage), controllers.UpdateReportByID)
+	auth.Delete("/reports/{id:int64}", can(models.PermReportsManage), controllers.DeleteReportByID)
+
 	// Automações e sequências.
 	auth.Get("/automations", can(models.PermAutomationsView), controllers.ListAutomations)
 	auth.Post("/automations", can(models.PermAutomationsManage), controllers.CreateAutomationHandler)

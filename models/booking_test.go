@@ -3,6 +3,7 @@ package models_test
 import (
 	"database/sql"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -274,7 +275,10 @@ func createTestUser(t *testing.T, db *sql.DB, email string) int64 {
 	if _, err := db.Exec(`DELETE FROM users WHERE email = $1`, email); err != nil {
 		t.Fatal(err)
 	}
-	user := &models.User{Name: "Agenda", Email: email, Role: models.RoleSeller,
+	// O nome sai do e-mail: relatórios agrupam por nome e dois usuários com o
+	// mesmo rótulo cairiam na mesma linha.
+	name, _, _ := strings.Cut(email, "@")
+	user := &models.User{Name: name, Email: email, Role: models.RoleSeller,
 		Active: true, PasswordHash: "x"}
 	if err := models.CreateUser(db, user); err != nil {
 		t.Fatal(err)

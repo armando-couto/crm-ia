@@ -19,6 +19,10 @@ const emit = defineEmits<{ close: [] }>()
         <div class="body">
           <slot />
         </div>
+        <!-- Rodapé opcional para os botões de ação do modal. -->
+        <footer v-if="$slots.footer">
+          <slot name="footer" />
+        </footer>
       </div>
     </div>
   </Teleport>
@@ -79,6 +83,16 @@ h3 {
 
 .body {
   padding: 16px 22px 22px;
+}
+
+footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 14px 22px;
+  border-top: 1px solid var(--fix-border);
+  background: var(--fix-bg);
+  border-radius: 0 0 14px 14px;
 }
 
 @keyframes modal-in {

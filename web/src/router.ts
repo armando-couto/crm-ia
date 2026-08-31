@@ -31,6 +31,12 @@ const routes = [
     meta: { permission: 'contacts.view' }
   },
   {
+    path: '/duplicados',
+    name: 'duplicates',
+    component: () => import('./views/DuplicatesView.vue'),
+    meta: { permission: 'contacts.view' }
+  },
+  {
     path: '/empresas',
     name: 'companies',
     component: () => import('./views/CompaniesView.vue'),

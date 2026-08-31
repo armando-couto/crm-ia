@@ -158,6 +158,10 @@ func Register(app *iris.Application) {
 	// Trilha de auditoria (quem fez o quê).
 	auth.Get("/audit", can(models.PermSettingsAudit), controllers.ListAuditLog)
 
+	// Duplicados: listar e mesclar (a mesclagem apaga o registro duplicado).
+	auth.Get("/duplicates", can(models.PermContactsView), controllers.ListDuplicates)
+	auth.Post("/duplicates/merge", can(models.PermRecordsMerge), controllers.MergeRecords)
+
 	// Anexos de contatos, empresas, negócios e tickets.
 	auth.Get("/attachments", can(models.PermFilesView), controllers.ListAttachments)
 	auth.Post("/attachments", can(models.PermFilesManage), controllers.UploadAttachment)

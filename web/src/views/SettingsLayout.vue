@@ -30,6 +30,9 @@ const auth = useAuthStore()
         <router-link v-if="auth.can('settings.audit')" to="/configuracoes/auditoria" active-class="active">
           Auditoria
         </router-link>
+        <router-link v-if="auth.can('records.merge')" to="/duplicados" active-class="active">
+          Duplicados
+        </router-link>
         <router-link to="/visualizacoes" active-class="active">Visualizações</router-link>
         <router-link v-if="auth.can('lists.view')" to="/listas" active-class="active">Listas</router-link>
       </template>

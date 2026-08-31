@@ -36,7 +36,8 @@ export const useAuthStore = defineStore('auth', {
         this.can('settings.properties') ||
         this.can('settings.permissions') ||
         this.can('settings.forms') ||
-        this.can('settings.audit')
+        this.can('settings.audit') ||
+        this.can('records.merge')
       )
     }
   },

@@ -50,6 +50,8 @@ const (
 	PermFilesView   = "files.view"
 	PermFilesManage = "files.manage"
 
+	PermRecordsMerge = "records.merge"
+
 	PermDashboardView = "dashboard.view"
 	PermViewsManage   = "views.manage"
 
@@ -141,6 +143,8 @@ var PermissionCatalog = []PermissionDef{
 	{PermFilesView, "Ver e baixar anexos", "Arquivos"},
 	{PermFilesManage, "Anexar e remover arquivos", "Arquivos"},
 
+	{PermRecordsMerge, "Mesclar registros duplicados", "Manutenção"},
+
 	{PermDashboardView, "Ver dashboard e métricas", "Relatórios"},
 
 	{PermSettingsUsers, "Gerenciar usuários e equipes", "Configurações"},
@@ -189,6 +193,7 @@ var managerDefaults = append(append([]string{}, sellerDefaults...),
 	PermListsManage,
 	PermLibraryManage,
 	PermSettingsPipelines, PermSettingsProperties, PermSettingsForms,
+	PermRecordsMerge,
 )
 
 // DefaultPermissions devolve a matriz padrão (Admin tem tudo).

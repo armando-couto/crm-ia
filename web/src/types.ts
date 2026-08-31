@@ -25,6 +25,37 @@ export interface Attachment {
   created_at: string
 }
 
+export interface PublicFormField {
+  key: string
+  label: string
+  type: string
+  required: boolean
+  options?: string[]
+}
+
+export interface PublicForm {
+  id: number
+  slug: string
+  name: string
+  headline: string
+  description: string
+  fields: PublicFormField[]
+  submit_label: string
+  success_message: string
+  redirect_url: string
+  owner_id: number | null
+  owner_name?: string
+  list_id: number | null
+  list_name?: string
+  lifecycle_stage: string
+  source: string
+  active: boolean
+  submissions: number
+  created_by: number | null
+  created_at: string
+  updated_at: string
+}
+
 export interface EmailMessage {
   id: number
   subject: string

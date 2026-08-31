@@ -13,6 +13,12 @@ const routes = [
     meta: { forcePassword: true }
   },
   {
+    path: '/f/:slug',
+    name: 'public-form',
+    component: () => import('./views/PublicFormView.vue'),
+    meta: { public: true }
+  },
+  {
     path: '/',
     name: 'dashboard',
     component: () => import('./views/DashboardView.vue'),
@@ -175,6 +181,12 @@ const routes = [
         name: 'settings-pipelines',
         component: () => import('./views/SettingsPipelinesView.vue'),
         meta: { permission: 'settings.pipelines' }
+      },
+      {
+        path: 'formularios',
+        name: 'settings-forms',
+        component: () => import('./views/SettingsFormsView.vue'),
+        meta: { permission: 'settings.forms' }
       },
       {
         path: 'auditoria',

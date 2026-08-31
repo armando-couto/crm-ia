@@ -89,6 +89,12 @@ func scanContact(row interface{ Scan(...any) error }) (*Contact, error) {
 	return &c, nil
 }
 
+// ContactByEmail busca pelo e-mail normalizado (usado na captura de leads,
+// para o mesmo e-mail não virar contato novo a cada envio).
+func ContactByEmail(db *sql.DB, email string) (*Contact, error) {
+	return scanContact(db.QueryRow(contactSelect+` WHERE LOWER(c.email) = $1`, NormalizeEmail(email)))
+}
+
 func ListContacts(db *sql.DB, f ContactFilter) ([]Contact, int, error) {
 	f.Normalize()
 

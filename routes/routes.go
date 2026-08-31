@@ -158,6 +158,13 @@ func Register(app *iris.Application) {
 	// Trilha de auditoria (quem fez o quê).
 	auth.Get("/audit", can(models.PermSettingsAudit), controllers.ListAuditLog)
 
+	// Formulários públicos de captura (administração).
+	auth.Get("/forms", can(models.PermSettingsForms), controllers.ListPublicForms)
+	auth.Post("/forms", can(models.PermSettingsForms), controllers.CreatePublicForm)
+	auth.Put("/forms/{id:int64}", can(models.PermSettingsForms), controllers.UpdatePublicFormByID)
+	auth.Delete("/forms/{id:int64}", can(models.PermSettingsForms), controllers.DeletePublicFormByID)
+	auth.Get("/forms/{id:int64}/submissions", can(models.PermSettingsForms), controllers.ListFormSubmissions)
+
 	// Duplicados: listar e mesclar (a mesclagem apaga o registro duplicado).
 	auth.Get("/duplicates", can(models.PermContactsView), controllers.ListDuplicates)
 	auth.Post("/duplicates/merge", can(models.PermRecordsMerge), controllers.MergeRecords)
@@ -180,6 +187,10 @@ func Register(app *iris.Application) {
 	auth.Get("/emails/sent", can(models.PermEmailSend), controllers.ListEmailMessages)
 	auth.Get("/emails/stats", can(models.PermEmailSend), controllers.EmailStatsHandler)
 	auth.Get("/emails/sent/{id:int64}", can(models.PermEmailSend), controllers.GetEmailMessage)
+
+	// Formulários públicos: consumidos pelo site do cliente (sem sessão).
+	app.Get("/api/public/forms/{slug:string}", controllers.GetPublicForm)
+	app.Post("/api/public/forms/{slug:string}", controllers.SubmitPublicFormHandler)
 
 	// Pixel de abertura e redirecionador de clique: chamados pelo cliente de
 	// e-mail do destinatário, portanto públicos e sem token de sessão.

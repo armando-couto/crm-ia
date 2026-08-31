@@ -75,3 +75,29 @@ func NotifyAssignment(db *sql.DB, ownerID *int64, actorID int64, kind, title, pa
 		log.Printf("falha ao notificar atribuição (%s -> %s): %v", kind, owner.Email, err)
 	}
 }
+
+// NotifyNewLead avisa o dono do formulário que chegou um lead novo. Roda em
+// goroutine a partir do handler público, então não bloqueia o envio do site.
+func NotifyNewLead(db *sql.DB, ownerID int64, formName, contactName, contactEmail string, contactID int64) {
+	if Mail == nil {
+		return
+	}
+	owner, err := models.UserByID(db, ownerID)
+	if err != nil || !owner.Active || owner.Email == "" {
+		return
+	}
+
+	subject := "Fix CRM: novo lead pelo formulário " + formName
+	link := fmt.Sprintf("%s/contatos/%d", utils.AppURL, contactID)
+	body := fmt.Sprintf(`
+		<p>Olá, <strong>%s</strong>!</p>
+		<p>O formulário <strong>%s</strong> acabou de receber um lead:</p>
+		<p style="font-size:16px;font-weight:bold;">%s</p>
+		<p>%s</p>
+		<p><a href="%s" style="display:inline-block;background:#9B52DF;color:#FFFFFF;padding:10px 24px;border-radius:8px;text-decoration:none;">Abrir o contato</a></p>`,
+		owner.Name, formName, contactName, contactEmail, link)
+
+	if err := Mail.Send(owner.Email, owner.Name, subject, emailLayout(subject, body)); err != nil {
+		log.Printf("falha ao avisar sobre o lead do formulário %s: %v", formName, err)
+	}
+}

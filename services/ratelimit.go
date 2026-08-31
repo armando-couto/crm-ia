@@ -91,6 +91,37 @@ func RegisterLoginFailure(key string) bool {
 	return false
 }
 
+// Limites das rotas públicas (formulários e agendamento): mais folgados que o
+// login, mas suficientes para conter robô de spam vindo de um mesmo IP.
+const (
+	PublicMaxAttempts = 20
+	PublicWindow      = 10 * time.Minute
+)
+
+// PublicRateLimited conta um envio público e devolve true quando o IP passou do
+// limite da janela. Diferente do login, aqui não há bloqueio prolongado: assim
+// que a janela anda, o IP volta a enviar.
+func PublicRateLimited(key string) bool {
+	now := time.Now()
+	attemptsMu.Lock()
+	defer attemptsMu.Unlock()
+
+	rec, ok := attempts["public|"+key]
+	if !ok {
+		rec = &attemptRecord{}
+		attempts["public|"+key] = rec
+	}
+
+	kept := rec.failures[:0]
+	for _, t := range rec.failures {
+		if now.Sub(t) <= PublicWindow {
+			kept = append(kept, t)
+		}
+	}
+	rec.failures = append(kept, now)
+	return len(rec.failures) > PublicMaxAttempts
+}
+
 // ClearLoginFailures zera o histórico após um login bem-sucedido.
 func ClearLoginFailures(key string) {
 	attemptsMu.Lock()

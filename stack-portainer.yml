@@ -5,7 +5,7 @@ services:
     image: fixpay/fix-crm:latest
     restart: always
     ports:
-      - "9000:9000"
+      - "3483:9000"
     deploy:
       replicas: 1
       placement:

@@ -108,4 +108,39 @@ describe('SettingsUsersView (usuários e equipes)', () => {
     expect(JSON.parse(postCall![1].body).team_id).toBe(1)
     wrapper.unmount()
   })
+
+  it('reenvia a senha do usuário depois de confirmar', async () => {
+    const fetchMock = stubFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(true))
+    const wrapper = build()
+    await flushPromises()
+
+    const row = wrapper.findAll('tbody tr').find((r) => r.text().includes('Fabio Militao'))!
+    const botao = row.findAll('button').find((b) => b.text() === 'Reenviar senha')!
+    expect(botao).toBeTruthy()
+    await botao.trigger('click')
+    await flushPromises()
+
+    const call = fetchMock.mock.calls.find((c: any[]) => String(c[0]).includes('/resend-invite'))
+    expect(call).toBeTruthy()
+    expect(String(call![0])).toBe('/api/v1/users/2/resend-invite')
+    expect(call![1].method).toBe('POST')
+    wrapper.unmount()
+  })
+
+  it('não reenvia se o usuário cancelar a confirmação', async () => {
+    const fetchMock = stubFetch()
+    vi.stubGlobal('fetch', fetchMock)
+    vi.stubGlobal('confirm', vi.fn().mockReturnValue(false))
+    const wrapper = build()
+    await flushPromises()
+
+    const row = wrapper.findAll('tbody tr').find((r) => r.text().includes('Fabio Militao'))!
+    await row.findAll('button').find((b) => b.text() === 'Reenviar senha')!.trigger('click')
+    await flushPromises()
+
+    expect(fetchMock.mock.calls.some((c: any[]) => String(c[0]).includes('/resend-invite'))).toBe(false)
+    wrapper.unmount()
+  })
 })

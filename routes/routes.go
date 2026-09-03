@@ -36,6 +36,7 @@ func Register(app *iris.Application) {
 	auth.Post("/users", can(models.PermSettingsUsers), controllers.CreateUser)
 	auth.Put("/users/{id:int64}", can(models.PermSettingsUsers), controllers.UpdateUserByID)
 	auth.Delete("/users/{id:int64}", can(models.PermSettingsUsers), controllers.DeactivateUser)
+	auth.Post("/users/{id:int64}/resend-invite", can(models.PermSettingsUsers), controllers.ResendUserInvite)
 
 	auth.Get("/teams", controllers.ListTeams)
 	auth.Post("/teams", can(models.PermSettingsUsers), controllers.CreateTeam)

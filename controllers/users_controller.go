@@ -108,6 +108,62 @@ func CreateUser(ctx iris.Context) {
 	ctx.JSON(user)
 }
 
+// ResendUserInvite gera uma senha temporária nova e reenvia o e-mail de acesso.
+// Serve para quem perdeu o convite ou deixou ele expirar: o usuário volta a ser
+// obrigado a trocar a senha no primeiro acesso e as sessões antigas caem.
+func ResendUserInvite(ctx iris.Context) {
+	user, err := models.UserByID(utils.DB, paramID(ctx))
+	if err != nil {
+		handleDBError(ctx, err)
+		return
+	}
+	if !user.Active {
+		badRequest(ctx, "usuário desativado: reative o acesso antes de reenviar a senha")
+		return
+	}
+	// Sem serviço de e-mail a senha seria trocada e ninguém receberia a nova:
+	// melhor recusar antes de mexer no banco.
+	if services.Mail == nil {
+		badRequest(ctx, "serviço de e-mail não configurado")
+		return
+	}
+
+	tempPassword, err := services.RandomToken()
+	if err != nil {
+		serverError(ctx, err)
+		return
+	}
+	tempPassword = tempPassword[:12]
+
+	hash, err := services.HashPassword(tempPassword)
+	if err != nil {
+		serverError(ctx, err)
+		return
+	}
+
+	expiresAt := time.Now().Add(InviteTTL)
+	if err := models.ResetUserInvite(utils.DB, user.ID, hash, expiresAt); err != nil {
+		serverError(ctx, err)
+		return
+	}
+	// O middleware guarda o usuário por 30s: sem isso a sessão antiga
+	// sobreviveria até o cache expirar.
+	middleware.InvalidateUser(user.ID)
+
+	subject, html := services.WelcomeEmail(user.Name, tempPassword, utils.AppURL)
+	if err := services.Mail.Send(user.Email, user.Name, subject, html); err != nil {
+		ctx.Application().Logger().Errorf("falha ao reenviar a senha de %s: %v", user.Email, err)
+		ctx.StopWithJSON(iris.StatusBadGateway, iris.Map{
+			"error": "a senha foi trocada, mas o e-mail não pôde ser enviado — tente de novo",
+		})
+		return
+	}
+
+	audit(ctx, models.AuditUpdate, "usuario", user.ID,
+		"reenviou a senha de acesso para "+user.Email)
+	ctx.JSON(iris.Map{"message": "senha nova enviada para " + user.Email})
+}
+
 // UpdateUserByID (admin) atualiza nome, e-mail, papel e status.
 func UpdateUserByID(ctx iris.Context) {
 	id := paramID(ctx)

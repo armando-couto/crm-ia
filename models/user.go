@@ -112,6 +112,18 @@ func UpdateUserPassword(db *sql.DB, userID int64, passwordHash string) error {
 	return err
 }
 
+// ResetUserInvite troca a senha por uma nova temporária e devolve o usuário ao
+// estado de convite: ele é obrigado a trocar a senha no próximo acesso e o
+// convite ganha prazo novo. Como password_changed_at avança, os tokens
+// emitidos antes deixam de valer.
+func ResetUserInvite(db *sql.DB, userID int64, passwordHash string, expiresAt time.Time) error {
+	_, err := db.Exec(`
+		UPDATE users SET password_hash = $1, must_change_password = TRUE, invite_expires_at = $2,
+		       password_changed_at = NOW(), updated_at = NOW()
+		WHERE id = $3`, passwordHash, expiresAt, userID)
+	return err
+}
+
 // PasswordReset representa um token de redefinição de senha.
 type PasswordReset struct {
 	ID        int64

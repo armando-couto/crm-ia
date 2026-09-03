@@ -65,6 +65,22 @@ async function save() {
   }
 }
 
+async function resendInvite(user: User) {
+  if (
+    !confirm(
+      `Enviar uma senha nova para ${user.email}?\n\n` +
+        'A senha atual deixa de valer na hora e as sessões abertas caem.'
+    )
+  )
+    return
+  try {
+    const resp = await api.post<{ message: string }>(`/users/${user.id}/resend-invite`)
+    toast.push(resp.message)
+  } catch (e: any) {
+    toast.error(e.message)
+  }
+}
+
 async function deactivate(user: User) {
   if (!confirm(`Desativar o acesso de ${user.name}? O histórico será mantido.`)) return
   try {
@@ -148,7 +164,7 @@ onMounted(load)
             <th>Equipe principal</th>
             <th>Status</th>
             <th>Criado</th>
-            <th style="width: 170px"></th>
+            <th style="width: 290px"></th>
           </tr>
         </thead>
         <tbody>
@@ -161,6 +177,15 @@ onMounted(load)
             <td class="muted">{{ formatDate(u.created_at) }}</td>
             <td>
               <button class="btn btn-outline btn-sm" type="button" @click="openEdit(u)">Editar</button>
+              <button
+                v-if="u.active && u.id !== auth.user?.id"
+                class="btn btn-outline btn-sm"
+                type="button"
+                title="Gera uma senha temporária nova e reenvia o e-mail de acesso"
+                @click="resendInvite(u)"
+              >
+                Reenviar senha
+              </button>
               <button
                 v-if="u.active && u.id !== auth.user?.id"
                 class="btn btn-danger btn-sm"

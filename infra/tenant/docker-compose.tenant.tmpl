@@ -1,0 +1,197 @@
+# =============================================================================
+# Stack do ambiente de um cliente CRM IA — gerada pelo provisionador.
+#
+# NÃO EDITE o arquivo gerado: ele é reescrito a cada provisionamento. Mexa
+# neste template (infra/tenant/docker-compose.tenant.tmpl).
+#
+# Cliente : {{ .Nome }} ({{ .CNPJ }})
+# Slug    : {{ .Slug }}
+# Versão  : {{ .Versao }}
+# Gerado  : {{ .GeradoEm }}
+#
+# Cada cliente tem o SEU PostgreSQL e o SEU Redis, em volumes próprios, numa
+# rede interna que só a aplicação dele alcança. Nada é compartilhado entre
+# clientes; o banco não tem porta publicada nem rota.
+# =============================================================================
+name: ci-{{ .Slug }}
+
+services:
+  db:
+    image: {{ .ImagemDB }}
+    container_name: ci-{{ .Slug }}-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "{{ .BancoNome }}"
+      POSTGRES_USER: "{{ .BancoUsuario }}"
+      POSTGRES_PASSWORD: "{{ .BancoSenha }}"
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C.UTF-8"
+      TZ: "America/Sao_Paulo"
+      PGTZ: "America/Sao_Paulo"
+    volumes:
+      - dados:/var/lib/postgresql/data
+    networks:
+      - interna
+    labels:
+      - "crmia.tenant={{ .Slug }}"
+      - "crmia.papel=db"
+    deploy:
+      resources:
+        limits:
+          memory: {{ .DBMemLimite }}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U {{ .BancoUsuario }} -d {{ .BancoNome }}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: {{ .ImagemRedis }}
+    container_name: ci-{{ .Slug }}-redis
+    restart: unless-stopped
+    # Cache do ambiente: sessões, limites de login, contadores de disparo.
+    # Sem persistência em disco de propósito — tudo aqui é recalculável.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "{{ .RedisMemLimite }}", "--maxmemory-policy", "allkeys-lru"]
+    networks:
+      - interna
+    labels:
+      - "crmia.tenant={{ .Slug }}"
+      - "crmia.papel=redis"
+    deploy:
+      resources:
+        limits:
+          memory: {{ .RedisMemLimite }}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  app:
+    image: {{ .ImagemApp }}:{{ .Versao }}
+    container_name: ci-{{ .Slug }}-app
+    restart: unless-stopped
+    environment:
+      APP_ENV: "production"
+      PORT: "8080"
+      APP_URL: "{{ .URL }}"
+      BASE_PATH: "/{{ .Slug }}"
+      TENANT_SLUG: "{{ .Slug }}"
+      TENANT_NOME: "{{ .Nome }}"
+      TENANT_CNPJ: "{{ .CNPJ }}"
+      VERSAO: "{{ .Versao }}"
+
+      DATABASE_URL: "postgres://{{ .BancoUsuario }}:{{ .BancoSenha }}@db:5432/{{ .BancoNome }}?sslmode=disable"
+      REDIS_URL: "redis://redis:6379/0"
+
+      # Segredos próprios do ambiente: JWT distinto por cliente é o que faz um
+      # token emitido em /outro ser recusado aqui.
+      JWT_SECRET: "{{ .JWTSegredo }}"
+      CHAVE_CRIPTO: "{{ .ChaveCripto }}"
+      # Token que o painel da plataforma usa nas rotas /api/interno.
+      TOKEN_INTERNO: "{{ .TokenInterno }}"
+      PAINEL_URL: "{{ .PainelURL }}"
+
+      # Licença: teto de usuários ativos do plano contratado.
+      LICENCA_USUARIOS_MAX: "{{ .UsuariosMax }}"
+
+      # Identidade inicial (o cliente muda depois em Configurações → Empresa).
+      TEMA_COR_PRIMARIA: "{{ .CorPrimaria }}"
+      TEMA_LOGO_URL: "{{ .LogoURL }}"
+
+      # Administrador semeado no primeiro boot. A senha é gerada pelo
+      # provisionador, exibida uma única vez no painel e nunca guardada lá.
+      ADMIN_NOME: "{{ .AdminNome }}"
+      ADMIN_EMAIL: "{{ .AdminEmail }}"
+      ADMIN_SENHA: "{{ .AdminSenha }}"
+
+      # E-mail padrão da plataforma; o cliente escolhe o provedor dele no setup.
+      MANDRILL_API_KEY: "{{ .MandrillChave }}"
+      FROM_EMAIL: "{{ .FromEmail }}"
+      FROM_NAME: "{{ .FromNome }}"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - interna
+      - publica
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network={{ .RedePublica }}"
+      # /{slug}/api/interno não sai para a internet: o painel chega pela rede
+      # interna do Docker. Path || PathPrefix com barra: o slug precisa terminar
+      # num segmento (senão /loca casaria /locafesta).
+      - "traefik.http.routers.ci-{{ .Slug }}.rule=Host(`{{ .Dominio }}`) && (Path(`/{{ .Slug }}`) || PathPrefix(`/{{ .Slug }}/`)) && !PathPrefix(`/{{ .Slug }}/api/interno`)"
+      - "traefik.http.routers.ci-{{ .Slug }}.entrypoints=websecure"
+      - "traefik.http.routers.ci-{{ .Slug }}.priority=50"
+      - "traefik.http.routers.ci-{{ .Slug }}.middlewares=ci-{{ .Slug }}-strip,chain-tenant@file"
+      - "traefik.http.middlewares.ci-{{ .Slug }}-strip.stripprefix.prefixes=/{{ .Slug }}"
+      - "traefik.http.services.ci-{{ .Slug }}.loadbalancer.server.port=8080"
+      - "crmia.tenant={{ .Slug }}"
+      - "crmia.papel=app"
+      - "crmia.versao={{ .Versao }}"
+    deploy:
+      resources:
+        limits:
+          cpus: "{{ .CPULimite }}"
+          memory: {{ .MemLimite }}
+    healthcheck:
+      test: ["CMD", "/app/crm-ia", "-healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Só sobe quando a licença não está vigente (profile "suspenso"): assume a
+  # rota do cliente com prioridade acima da aplicação.
+  suspenso:
+    image: {{ .ImagemSuspenso }}
+    container_name: ci-{{ .Slug }}-suspenso
+    restart: unless-stopped
+    profiles:
+      - suspenso
+    environment:
+      TENANT_NOME: "{{ .Nome }}"
+    networks:
+      - publica
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network={{ .RedePublica }}"
+      - "traefik.http.routers.ci-{{ .Slug }}-suspenso.rule=Host(`{{ .Dominio }}`) && (Path(`/{{ .Slug }}`) || PathPrefix(`/{{ .Slug }}/`))"
+      - "traefik.http.routers.ci-{{ .Slug }}-suspenso.entrypoints=websecure"
+      - "traefik.http.routers.ci-{{ .Slug }}-suspenso.priority=200"
+      - "traefik.http.routers.ci-{{ .Slug }}-suspenso.middlewares=chain-tenant@file"
+      - "traefik.http.services.ci-{{ .Slug }}-suspenso.loadbalancer.server.port=8080"
+      - "crmia.tenant={{ .Slug }}"
+      - "crmia.papel=suspenso"
+
+networks:
+  publica:
+    external: true
+    name: {{ .RedePublica }}
+  # Rede interna da stack: db, redis e app. Sem rota para fora.
+  interna:
+    name: ci-{{ .Slug }}-interna
+    internal: true
+
+volumes:
+  # Dados do PostgreSQL deste cliente. Remover o ambiente exige backup antes.
+  dados:
+    name: ci-{{ .Slug }}-dados

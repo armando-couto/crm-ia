@@ -1,0 +1,69 @@
+# =============================================================================
+# Traefik do CRM IA — configuração estática embutida na imagem.
+#
+# É a borda do nó: o DNS do domínio aponta para ele, que atende 80/443 e
+# roteia pelo CAMINHO da URL:
+#   /            → landing
+#   /painel      → painel administrativo
+#   /<slug>      → app do cliente (um container por empresa)
+#
+# Só o provider docker: os ambientes dos clientes são containers comuns,
+# criados pelo provisionador no socket deste nó. O filtro por rótulo faz este
+# Traefik enxergar apenas os containers do CRM IA, convivendo com outros
+# projetos na mesma máquina.
+# =============================================================================
+global:
+  checkNewVersion: false
+  sendAnonymousUsage: false
+log:
+  level: INFO
+  format: json
+accessLog:
+  format: json
+  filters:
+    statusCodes: ["400-599"]
+  fields:
+    headers:
+      defaultMode: drop
+      names:
+        User-Agent: keep
+api:
+  dashboard: false
+ping: {}
+entryPoints:
+  web:
+    address: ":80"
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+          permanent: true
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: letsencrypt
+    transport:
+      respondingTimeouts:
+        readTimeout: 60s
+        # Provisionar acontece dentro da requisição do painel: minutos.
+        writeTimeout: 10m
+        idleTimeout: 180s
+providers:
+  docker:
+    endpoint: unix:///var/run/docker.sock
+    exposedByDefault: false
+    network: crmia_public
+    constraints: "Label(`crmia.roteado`,`sim`) || LabelRegex(`crmia.tenant`,`.+`)"
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: __ACME_EMAIL__
+      caServer: __ACME_CA_SERVER__
+      storage: /letsencrypt/acme.json
+      httpChallenge:
+        entryPoint: web

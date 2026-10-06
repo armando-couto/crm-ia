@@ -1,0 +1,32 @@
+{{ define "acoes-topo" }}{{ if .Sessao.PodeEditarFaturas }}<form method="post" action="{{ url "/faturas/conferir" }}"><input type="hidden" name="_csrf" value="{{ .CSRF }}"><button class="btn btn--neutro">Conferir pagamentos agora</button></form>{{ end }}{{ end }}
+{{ define "conteudo" }}
+<div class="grade grade--3">
+  <div class="cartao indicador"><span class="indicador__valor">{{ brl .V.TotalPendente }}</span><span class="indicador__rotulo">pendente (na lista atual)</span></div>
+  <div class="cartao indicador indicador--alerta"><span class="indicador__valor">{{ brl .V.TotalVencido }}</span><span class="indicador__rotulo">vencido (na lista atual)</span></div>
+  <div class="cartao"><p class="suave">As faturas das licenças recorrentes são baixadas sozinhas quando a cobrança no cartão é confirmada (conferência a cada 30 min, ou pelo botão acima). A baixa manual é para pagamento recebido por fora. Fatura paga renova a licença e reativa o ambiente suspenso por atraso.</p></div>
+</div>
+{{ if .V.Simulado }}<div class="aviso aviso--atencao">Cobrança em modo simulado: a conferência automática não encontra pagamentos — use a baixa manual.</div>{{ end }}
+<section class="cartao">
+  <div class="barra-filtros" style="margin-bottom:12px">
+    <a class="btn btn--pequeno {{ if eq .V.Status "" }}{{ else }}btn--neutro{{ end }}" href="{{ url "/faturas" }}">todas</a>
+    <a class="btn btn--pequeno {{ if eq .V.Status "pendente" }}{{ else }}btn--neutro{{ end }}" href="{{ url "/faturas?status=pendente" }}">pendentes</a>
+    <a class="btn btn--pequeno {{ if eq .V.Status "vencida" }}{{ else }}btn--neutro{{ end }}" href="{{ url "/faturas?status=vencida" }}">vencidas</a>
+    <a class="btn btn--pequeno {{ if eq .V.Status "paga" }}{{ else }}btn--neutro{{ end }}" href="{{ url "/faturas?status=paga" }}">pagas</a>
+  </div>
+  {{ if .V.Faturas }}
+  <div class="tabela-wrap"><table><thead><tr><th>Competência</th><th>Grupo / CNPJ</th><th>Plano</th><th>Vencimento</th><th class="num">Valor</th><th>Cobrança</th><th>Status</th><th>Pago em</th><th></th></tr></thead><tbody>
+    {{ range .V.Faturas }}<tr>
+      <td>{{ .Competencia.Format "01/2006" }}</td><td>{{ .GrupoNome }}{{ if .ClienteNome }} · {{ .ClienteNome }}{{ end }}</td><td>{{ .PlanoNome }}</td><td>{{ data .Vencimento }}</td>
+      <td class="num">{{ brl .ValorCentavos }}</td>
+      <td><small>{{ if .Forma }}{{ .Forma }}{{ else if .AssinaturaID }}recorrente ({{ .PagamentoStatus }}){{ else }}manual{{ end }}</small></td>
+      <td><span class="etiqueta {{ if eq .Status "paga" }}etiqueta--ok{{ else if eq .Status "vencida" }}etiqueta--erro{{ else if eq .Status "pendente" }}etiqueta--atencao{{ else }}etiqueta--neutro{{ end }}">{{ .Status }}</span></td>
+      <td>{{ dataPtr .PagoEm }}</td>
+      <td class="acoes">{{ if and $.Sessao.PodeEditarFaturas .EmAberto }}<div class="linha-acoes">
+        <form method="post" action="{{ url (printf "/faturas/%d/baixar" .ID) }}" onsubmit="return confirm('Dar baixa manual? Use só para pagamento recebido por fora.')"><input type="hidden" name="_csrf" value="{{ $.CSRF }}"><button class="btn btn--pequeno btn--neutro">Baixar</button></form>
+        <form method="post" action="{{ url (printf "/faturas/%d/cancelar" .ID) }}" onsubmit="return confirm('Cancelar esta fatura?')"><input type="hidden" name="_csrf" value="{{ $.CSRF }}"><button class="btn btn--pequeno btn--perigo">Cancelar</button></form>
+      </div>{{ end }}</td>
+    </tr>{{ end }}
+  </tbody></table></div>
+  {{ else }}{{ template "vazio" "Nenhuma fatura." }}{{ end }}
+</section>
+{{ end }}

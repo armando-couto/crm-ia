@@ -1,0 +1,16 @@
+{{ define "conteudo" }}
+<div class="login">
+  <div class="login__cartao">
+    <a class="login__marca" href="{{ site }}" title="Ir para o site">
+      <span class="menu__logo">IA</span>
+      <div><strong>{{ produto }}</strong><small>painel da plataforma</small></div>
+    </a>
+    {{ if .Erro }}<div class="aviso aviso--erro" style="margin-bottom:14px">{{ .Erro }}</div>{{ end }}
+    <form method="post" action="{{ url "/login" }}" class="formulario" autocomplete="on">
+      <div class="campo"><label for="email">E-mail</label><input id="email" name="email" type="email" required autofocus value="{{ .V.Email }}"></div>
+      <div class="campo"><label for="senha">Senha</label><input id="senha" name="senha" type="password" required minlength="8"></div>
+      <button type="submit" class="btn" style="justify-content:center">Entrar</button>
+    </form>
+  </div>
+</div>
+{{ end }}

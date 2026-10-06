@@ -1,0 +1,35 @@
+{{ define "conteudo" }}
+<section class="cartao" style="max-width:860px">
+  {{ if .V.Simulado }}<div class="aviso aviso--atencao" style="margin-bottom:14px">Cobrança em modo simulado: a assinatura é de mentira e o cartão terminado em 0002 é recusado na página de pagamento.</div>
+  {{ else if not .V.CobrancaConfigurada }}<div class="aviso aviso--atencao" style="margin-bottom:14px">Cobrança recorrente indisponível ({{ .V.MotivoSemCobranca }}). A licença pode ser criada com cobrança manual.</div>{{ end }}
+  <form method="post" class="formulario">
+    <input type="hidden" name="_csrf" value="{{ .CSRF }}">
+    <div class="campos">
+      <div class="campo"><label>Grupo *</label>
+        <select name="grupo_id" required><option value="">— escolha —</option>{{ range .V.Grupos }}<option value="{{ .ID }}" {{ if eq (i64 .ID) $.V.GrupoID }}selected{{ end }}>{{ .Nome }}</option>{{ end }}</select></div>
+      <div class="campo"><label>Abrangência</label>
+        <select name="cliente_id"><option value="">Grupo inteiro (cobrança unificada)</option>{{ range .V.Clientes }}<option value="{{ .ID }}" {{ if eq (i64 .ID) $.V.ClienteID }}selected{{ end }}>{{ .NomeFantasia }} — {{ cnpj .CNPJ }} ({{ .GrupoNome }})</option>{{ end }}</select>
+        <small>Escolha um CNPJ para licença individual (ele precisa pertencer ao grupo).</small></div>
+      <div class="campo"><label>Plano *</label>
+        <select name="plano_id" required>{{ range .V.Planos }}<option value="{{ .ID }}">{{ .Nome }} · {{ .Faixa }}{{ if not .SobConsulta }} · {{ brl .PrecoMensalCentavos }}/mês{{ else }} · sob consulta{{ end }}</option>{{ end }}</select></div>
+      <div class="campo"><label>Teto de usuários</label><input type="number" name="usuarios_max" min="1" placeholder="padrão: máximo da faixa"></div>
+      <div class="campo"><label>Periodicidade</label><select name="periodicidade"><option value="mensal">Mensal</option><option value="anual">Anual (cobrança manual)</option></select></div>
+      <div class="campo"><label>Início</label><input type="date" name="inicio" value="{{ hoje.Format "2006-01-02" }}"></div>
+      <div class="campo"><label>Unidades (licença de grupo)</label><input type="number" name="unidades" min="1" value="1"><small>Quantos CNPJs a licença cobre; multiplica o valor.</small></div>
+      <div class="campo"><label>Cobrança</label>
+        <select name="cobranca">
+          <option value="recorrente" {{ if not .V.CobrancaConfigurada }}disabled{{ end }}>Recorrente no cartão de crédito (mensal, automática)</option>
+          <option value="manual" {{ if not .V.CobrancaConfigurada }}selected{{ end }}>Manual (pagamento por fora, baixa no painel)</option>
+        </select></div>
+    </div>
+    <div class="cartao" style="background:var(--p-50);border-color:var(--p-100)">
+      <p class="suave" style="margin:0"><strong>Como funciona a recorrente:</strong> a licença nasce com a primeira fatura e um <strong>link de cadastro do cartão</strong>, numa página com a marca do {{ produto }}. Quando o cliente cadastra, a primeira cobrança acontece na hora e as seguintes caem todo mês, sozinhas. Cada pagamento confirmado baixa a fatura e renova a licença; sem pagamento, a rotina suspende o ambiente depois da tolerância.</p>
+    </div>
+    <div class="campo"><label>Observações</label><textarea name="observacoes"></textarea></div>
+    <div class="linha-acoes" style="justify-content:flex-start">
+      <button class="btn">Contratar licença</button>
+      <a class="btn btn--neutro" href="{{ url "/licencas" }}">Cancelar</a>
+    </div>
+  </form>
+</section>
+{{ end }}

@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{{ .Titulo }} · {{ produto }}</title>
+  <link rel="stylesheet" href="{{ estatico "/estatico/painel.css" }}">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><rect width='64' height='64' rx='16' fill='%236d5df6'/><text x='32' y='42' font-family='sans-serif' font-size='24' font-weight='800' fill='white' text-anchor='middle'>IA</text></svg>">
+</head>
+<body>
+{{ if or (eq .Secao "login") (eq .Secao "erro") (eq .Secao "checkout") }}
+  {{ template "conteudo" . }}
+{{ else }}
+<div class="aplicacao">
+  <nav class="menu" aria-label="Menu principal">
+    <a class="menu__marca" href="{{ url "/" }}">
+      <span class="menu__logo">IA</span>
+      <div><strong>{{ produto }}</strong><small>painel da plataforma</small></div>
+    </a>
+    <div class="menu__grupo">
+      <p class="menu__rotulo">Comercial</p>
+      <a href="{{ url "/" }}" {{ if eq .Secao "painel" }}class="ativo"{{ end }}>Visão geral</a>
+      <a href="{{ url "/leads" }}" {{ if eq .Secao "leads" }}class="ativo"{{ end }}>Leads</a>
+      <a href="{{ url "/grupos" }}" {{ if eq .Secao "grupos" }}class="ativo"{{ end }}>Grupos de CNPJ</a>
+      <a href="{{ url "/clientes" }}" {{ if eq .Secao "clientes" }}class="ativo"{{ end }}>Clientes</a>
+      <a href="{{ url "/licencas" }}" {{ if eq .Secao "licencas" }}class="ativo"{{ end }}>Licenças</a>
+      <a href="{{ url "/faturas" }}" {{ if eq .Secao "faturas" }}class="ativo"{{ end }}>Faturas</a>
+      <a href="{{ url "/solicitacoes" }}" {{ if eq .Secao "solicitacoes" }}class="ativo"{{ end }}>Solicitações</a>
+    </div>
+    <div class="menu__grupo">
+      <p class="menu__rotulo">Plataforma</p>
+      <a href="{{ url "/ambientes" }}" {{ if eq .Secao "ambientes" }}class="ativo"{{ end }}>Ambientes</a>
+      <a href="{{ url "/versoes" }}" {{ if eq .Secao "versoes" }}class="ativo"{{ end }}>Versões</a>
+      <a href="{{ url "/planos" }}" {{ if eq .Secao "planos" }}class="ativo"{{ end }}>Planos e preços</a>
+    </div>
+    {{ if .Sessao.PodeGerenciarUsuarios }}
+    <div class="menu__grupo">
+      <p class="menu__rotulo">Administração</p>
+      <a href="{{ url "/usuarios" }}" {{ if eq .Secao "usuarios" }}class="ativo"{{ end }}>Usuários</a>
+      <a href="{{ url "/auditoria" }}" {{ if eq .Secao "auditoria" }}class="ativo"{{ end }}>Auditoria</a>
+    </div>
+    {{ end }}
+    <div class="menu__rodape">
+      <div class="menu__usuario">{{ .Sessao.Nome }}</div>
+      <div class="menu__perfil">{{ .Sessao.Perfil.Rotulo }}</div>
+      <form method="post" action="{{ url "/logout" }}" style="margin-top:9px">
+        <input type="hidden" name="_csrf" value="{{ .CSRF }}">
+        <button type="submit" class="btn btn--neutro btn--pequeno">Sair</button>
+      </form>
+    </div>
+  </nav>
+  <div class="conteudo">
+    <header class="topo">
+      <h1>{{ .Titulo }}</h1>
+      {{ block "acoes-topo" . }}{{ end }}
+    </header>
+    <main class="principal">
+      {{ if .Sucesso }}<div class="aviso aviso--ok" role="status">{{ .Sucesso }}</div>{{ end }}
+      {{ if .Erro }}<div class="aviso aviso--erro" role="alert">{{ .Erro }}</div>{{ end }}
+      {{ if .Aviso }}<div class="aviso aviso--atencao">{{ .Aviso }}</div>{{ end }}
+      {{ template "conteudo" . }}
+    </main>
+  </div>
+</div>
+{{ end }}
+</body>
+</html>

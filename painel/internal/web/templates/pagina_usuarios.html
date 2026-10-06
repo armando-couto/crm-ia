@@ -1,0 +1,35 @@
+{{ define "conteudo" }}
+<div class="grade grade--2">
+  <section class="cartao">
+    <h2>Usuários do painel</h2>
+    {{ if .V.Usuarios }}
+    <div class="tabela-wrap"><table><thead><tr><th>Nome</th><th>E-mail</th><th>Perfil</th><th>Último acesso</th><th>Status</th><th></th></tr></thead><tbody>
+      {{ range .V.Usuarios }}<tr>
+        <td>{{ .Nome }}</td><td>{{ .Email }}</td><td>{{ .Perfil.Rotulo }}</td><td>{{ dataPtr .UltimoLogin }}</td>
+        <td>{{ if .Ativo }}<span class="etiqueta etiqueta--ok">ativo</span>{{ else }}<span class="etiqueta etiqueta--neutro">inativo</span>{{ end }}</td>
+        <td class="acoes"><details><summary class="btn btn--pequeno btn--neutro">Editar</summary>
+          <form method="post" action="{{ url "/usuarios" }}" class="formulario" style="margin-top:8px"><input type="hidden" name="_csrf" value="{{ $.CSRF }}"><input type="hidden" name="id" value="{{ .ID }}">
+            <input type="text" name="nome" value="{{ .Nome }}"><input type="email" name="email" value="{{ .Email }}">
+            <select name="perfil">{{ range $.V.Perfis }}<option value="{{ . }}" >{{ .Rotulo }}</option>{{ end }}</select>
+            <label class="marcacao"><input type="checkbox" name="ativo" {{ if .Ativo }}checked{{ end }}> ativo</label><button class="btn btn--pequeno">Salvar</button></form>
+          <form method="post" action="{{ url (printf "/usuarios/%d/senha" .ID) }}" class="formulario" style="margin-top:6px"><input type="hidden" name="_csrf" value="{{ $.CSRF }}">
+            <input type="text" name="senha" placeholder="nova senha (10+ caracteres)" autocomplete="off"><button class="btn btn--pequeno btn--neutro">Trocar senha</button></form>
+        </details></td>
+      </tr>{{ end }}
+    </tbody></table></div>
+    {{ end }}
+  </section>
+  <section class="cartao">
+    <h2>Novo usuário</h2>
+    <form method="post" action="{{ url "/usuarios" }}" class="formulario">
+      <input type="hidden" name="_csrf" value="{{ .CSRF }}">
+      <div class="campo"><label>Nome</label><input type="text" name="nome" required></div>
+      <div class="campo"><label>E-mail</label><input type="email" name="email" required></div>
+      <div class="campo"><label>Perfil</label><select name="perfil">{{ range .V.Perfis }}<option value="{{ . }}">{{ .Rotulo }}</option>{{ end }}</select></div>
+      <div class="campo"><label>Senha inicial</label><input type="text" name="senha" required minlength="10" autocomplete="off"><small>10+ caracteres, letras e números.</small></div>
+      <div><button class="btn">Criar usuário</button></div>
+    </form>
+    <p class="suave" style="margin-top:12px"><strong>Perfis:</strong> Administrador faz tudo; Comercial cadastra clientes e licenças; Financeiro baixa faturas e suspende; Suporte provisiona e atualiza ambientes.</p>
+  </section>
+</div>
+{{ end }}

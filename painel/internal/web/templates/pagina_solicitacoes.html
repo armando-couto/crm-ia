@@ -1,0 +1,19 @@
+{{ define "conteudo" }}
+<section class="cartao">
+  <p class="suave">Pedidos feitos pelo administrador do cliente em “Meu plano”, dentro do CRM. Aprovar um upgrade troca o plano da licença vigente; aprovar um cancelamento encerra a licença e a cobrança recorrente.</p>
+  {{ if .V.Solicitacoes }}
+  <div class="tabela-wrap"><table><thead><tr><th>Quando</th><th>Empresa</th><th>Pedido</th><th>Mensagem</th><th>Status</th><th></th></tr></thead><tbody>
+    {{ range .V.Solicitacoes }}<tr>
+      <td><small>{{ dataHora .CriadoEm }}</small></td><td>{{ .ClienteNome }} <small>/{{ .ClienteSlug }}</small></td>
+      <td>{{ if eq .Tipo "upgrade" }}Upgrade para <strong>{{ .PlanoNome }}</strong>{{ else }}<strong>Cancelamento</strong>{{ end }}</td>
+      <td><small>{{ .Mensagem }}</small>{{ if .Resposta }}<br><small class="suave">↳ {{ .Resposta }}</small>{{ end }}</td>
+      <td><span class="etiqueta {{ if eq .Status "pendente" }}etiqueta--atencao{{ else if eq .Status "aprovada" }}etiqueta--ok{{ else }}etiqueta--neutro{{ end }}">{{ .Status }}</span>{{ if .DecididoPor }}<br><small>{{ .DecididoPor }}</small>{{ end }}</td>
+      <td class="acoes">{{ if and $.Sessao.PodeEditarLicencas (eq .Status "pendente") }}<div class="linha-acoes">
+        <form method="post" action="{{ url (printf "/solicitacoes/%d/aprovar" .ID) }}" onsubmit="return confirm('Aprovar e aplicar agora?')"><input type="hidden" name="_csrf" value="{{ $.CSRF }}"><button class="btn btn--pequeno">Aprovar</button></form>
+        <form method="post" action="{{ url (printf "/solicitacoes/%d/recusar" .ID) }}" class="inline"><input type="hidden" name="_csrf" value="{{ $.CSRF }}"><input type="text" name="resposta" placeholder="motivo (opcional)"><button class="btn btn--pequeno btn--neutro">Recusar</button></form>
+      </div>{{ end }}</td>
+    </tr>{{ end }}
+  </tbody></table></div>
+  {{ else }}{{ template "vazio" "Nenhuma solicitação." }}{{ end }}
+</section>
+{{ end }}

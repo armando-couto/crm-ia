@@ -1,0 +1,17 @@
+{{ define "conteudo" }}
+<section class="cartao">
+  {{ if .V.Leads }}
+  <div class="tabela-wrap"><table><thead><tr><th>Quando</th><th>Nome</th><th>Empresa</th><th>Contato</th><th>Usuários</th><th>Plano</th><th>Mensagem</th><th>Status</th></tr></thead><tbody>
+    {{ range .V.Leads }}<tr>
+      <td><small>{{ dataHora .CriadoEm }}</small></td><td>{{ .Nome }}</td><td>{{ ou .Empresa "—" }}{{ if .Segmento }}<br><small>{{ .Segmento }}</small>{{ end }}</td>
+      <td>{{ .Email }}<br><small>{{ .Telefone }}</small></td><td>{{ .Usuarios }}</td><td>{{ ou .PlanoInteresse "—" }}</td><td><small>{{ curto .Mensagem 120 }}</small></td>
+      <td><form method="post" action="{{ url (printf "/leads/%d/status" .ID) }}" class="inline"><input type="hidden" name="_csrf" value="{{ $.CSRF }}">
+        <select name="status" onchange="this.form.submit()">
+          <option value="novo" {{ if eq .Status "novo" }}selected{{ end }}>novo</option><option value="contato" {{ if eq .Status "contato" }}selected{{ end }}>em contato</option>
+          <option value="convertido" {{ if eq .Status "convertido" }}selected{{ end }}>convertido</option><option value="perdido" {{ if eq .Status "perdido" }}selected{{ end }}>perdido</option>
+        </select></form></td>
+    </tr>{{ end }}
+  </tbody></table></div>
+  {{ else }}{{ template "vazio" "Nenhum lead ainda. Eles chegam pelo formulário da landing." }}{{ end }}
+</section>
+{{ end }}

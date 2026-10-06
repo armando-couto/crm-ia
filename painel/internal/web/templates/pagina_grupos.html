@@ -1,0 +1,19 @@
+{{ define "acoes-topo" }}{{ if .Sessao.PodeEditarClientes }}<a class="btn" href="{{ url "/grupos/novo" }}">Novo grupo</a>{{ end }}{{ end }}
+{{ define "conteudo" }}
+<section class="cartao">
+  <p class="suave">Um grupo reúne os CNPJs de um mesmo cliente comercial (rede, franquia, matriz e filiais). A licença pode cobrir o grupo inteiro ou cada CNPJ separadamente.</p>
+  {{ if .V.Grupos }}
+  <div class="tabela-wrap"><table><thead><tr><th>Grupo</th><th>CNPJ responsável</th><th>Financeiro</th><th>Cobrança</th><th class="num">CNPJs</th><th>Status</th><th></th></tr></thead><tbody>
+    {{ range .V.Grupos }}<tr>
+      <td><a href="{{ url (printf "/grupos/%d" .ID) }}"><strong>{{ .Nome }}</strong></a></td>
+      <td>{{ if .CNPJResponsavel }}{{ cnpj .CNPJResponsavel }}{{ else }}—{{ end }}</td>
+      <td>{{ ou .EmailFinanceiro "—" }}</td>
+      <td>{{ if .CobrancaUnificada }}unificada{{ else }}por CNPJ{{ end }}</td>
+      <td class="num">{{ .ClientesAtivos }}/{{ .TotalClientes }}</td>
+      <td>{{ if .Ativo }}<span class="etiqueta etiqueta--ok">ativo</span>{{ else }}<span class="etiqueta etiqueta--neutro">inativo</span>{{ end }}</td>
+      <td class="acoes"><a class="btn btn--pequeno btn--neutro" href="{{ url (printf "/grupos/%d" .ID) }}">Abrir</a></td>
+    </tr>{{ end }}
+  </tbody></table></div>
+  {{ else }}{{ template "vazio" "Nenhum grupo. Crie o primeiro para cadastrar um cliente." }}{{ end }}
+</section>
+{{ end }}

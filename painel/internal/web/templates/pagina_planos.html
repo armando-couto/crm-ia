@@ -1,0 +1,29 @@
+{{ define "acoes-topo" }}{{ if .Sessao.PodeEditarPlanos }}<a class="btn" href="{{ url "/planos/novo" }}">Novo plano</a>{{ end }}{{ end }}
+{{ define "conteudo" }}
+<div class="aviso">Mudar o preço vale para licenças novas; as existentes mantêm o valor contratado (a assinatura recorrente carrega o valor fixo).</div>
+<section class="cartao">
+  <div class="cartao__cabecalho"><h2>Planos por faixa de usuários</h2><small>Lidos pela landing em tempo real (<code>{{ url "/api/planos" }}</code>)</small></div>
+  <div class="tabela-wrap"><table><thead><tr><th>Ordem</th><th>Plano</th><th>Faixa</th><th class="num">Mensal</th><th class="num">Anual</th><th>Recursos</th><th>Status</th><th></th></tr></thead><tbody>
+    {{ range .V.Planos }}<tr>
+      <td>{{ .Ordem }}</td><td><strong>{{ .Nome }}</strong> {{ if .Destaque }}<span class="etiqueta etiqueta--info">destaque</span>{{ end }}<br><small><code>{{ .Codigo }}</code> · {{ .Descricao }}</small></td>
+      <td>{{ .Faixa }}</td><td class="num">{{ if .SobConsulta }}sob consulta{{ else }}{{ brl .PrecoMensalCentavos }}{{ end }}</td><td class="num">{{ if .PrecoAnualCentavos }}{{ brl .PrecoAnualCentavos }}{{ else }}—{{ end }}</td>
+      <td><small>{{ juntar .Recursos " · " }}</small></td>
+      <td>{{ if .Ativo }}<span class="etiqueta etiqueta--ok">ativo</span>{{ else }}<span class="etiqueta etiqueta--neutro">inativo</span>{{ end }}</td>
+      <td class="acoes">{{ if $.Sessao.PodeEditarPlanos }}<a class="btn btn--pequeno btn--neutro" href="{{ url (printf "/planos/%d/editar" .ID) }}">Editar</a>{{ end }}</td>
+    </tr>{{ end }}
+  </tbody></table></div>
+</section>
+<section class="cartao">
+  <h2>Textos e parâmetros</h2>
+  <form method="post" action="{{ url "/planos/configuracoes" }}" class="formulario">
+    <input type="hidden" name="_csrf" value="{{ .CSRF }}">
+    <div class="campos">{{ range .V.Configuracoes }}
+      <div class="campo"><label><code>{{ .Chave }}</code></label>
+        {{ if gt (len .Valor) 70 }}<textarea name="cfg.{{ .Chave }}" {{ if not $.Sessao.PodeEditarPlanos }}readonly{{ end }}>{{ .Valor }}</textarea>
+        {{ else }}<input type="text" name="cfg.{{ .Chave }}" value="{{ .Valor }}" {{ if not $.Sessao.PodeEditarPlanos }}readonly{{ end }}>{{ end }}
+        <small>{{ .Descricao }}</small></div>{{ end }}
+    </div>
+    {{ if .Sessao.PodeEditarPlanos }}<div><button class="btn">Salvar configurações</button></div>{{ end }}
+  </form>
+</section>
+{{ end }}

@@ -1,0 +1,61 @@
+{{ define "conteudo" }}
+{{ $c := .V.Cliente }}
+<section class="cartao" style="max-width:920px">
+  <form method="post" class="formulario">
+    <input type="hidden" name="_csrf" value="{{ .CSRF }}">
+    <h2>Empresa</h2>
+    <div class="campos">
+      <div class="campo"><label>Grupo de CNPJ *</label>
+        <select name="grupo_id" required><option value="">— escolha —</option>
+          {{ range .V.Grupos }}<option value="{{ .ID }}" {{ if eq .ID $c.GrupoID }}selected{{ end }}>{{ .Nome }}{{ if not .CobrancaUnificada }} (cobrança por CNPJ){{ end }}</option>{{ end }}
+        </select><small>Não achou? <a href="{{ url "/grupos/novo" }}">Crie o grupo</a> primeiro.</small></div>
+      <div class="campo"><label>Modelo de CRM sugerido</label>
+        <select name="modelo_crm">{{ range .V.Segmentos }}<option value="{{ .Codigo }}" {{ if eq .Codigo $c.ModeloCRM }}selected{{ end }}>{{ .Nome }}</option>{{ end }}</select>
+        <small>O administrador confirma no assistente de configuração do CRM.</small></div>
+      <div class="campo"><label>Razão social *</label><input type="text" name="razao_social" required value="{{ $c.RazaoSocial }}"></div>
+      <div class="campo"><label>Nome fantasia *</label><input type="text" name="nome_fantasia" required value="{{ $c.NomeFantasia }}"></div>
+      <div class="campo"><label>CNPJ *</label><input type="text" name="cnpj" required value="{{ $c.CNPJ }}" {{ if $c.ID }}readonly{{ end }} placeholder="somente números"></div>
+      <div class="campo"><label>Endereço na plataforma</label>
+        <div class="inline" style="width:100%"><span class="suave">{{ .Dominio }}/</span><input type="text" name="slug" value="{{ $c.Slug }}" {{ if $c.ID }}readonly{{ end }} placeholder="gerado do nome fantasia" style="flex:1"></div>
+        <small>Minúsculas, números e hífen. Não muda depois de criado.</small></div>
+      <div class="campo"><label>Telefone</label><input type="text" name="telefone" value="{{ $c.Telefone }}"></div>
+      <div class="campo"><label>Segmento (texto livre)</label><input type="text" name="segmento" value="{{ $c.Segmento }}"></div>
+    </div>
+    <h2 style="margin-top:10px">Endereço de cobrança</h2>
+    <p class="suave">Exigido pela cobrança recorrente quando este CNPJ paga a própria licença.</p>
+    <div class="campos campos--3">
+      <div class="campo"><label>CEP</label><input type="text" name="cep" value="{{ $c.CEP }}"></div>
+      <div class="campo"><label>Logradouro</label><input type="text" name="logradouro" value="{{ $c.Logradouro }}"></div>
+      <div class="campo"><label>Número</label><input type="text" name="numero" value="{{ $c.Numero }}"></div>
+      <div class="campo"><label>Bairro</label><input type="text" name="bairro" value="{{ $c.Bairro }}"></div>
+      <div class="campo"><label>Cidade</label><input type="text" name="cidade" value="{{ $c.Cidade }}"></div>
+      <div class="campo"><label>UF</label><input type="text" name="uf" maxlength="2" value="{{ $c.UF }}"></div>
+    </div>
+    <h2 style="margin-top:10px">Administrador da empresa</h2>
+    <p class="suave">Recebe o acesso inicial (login por e-mail e senha) e faz o assistente de configuração.</p>
+    <div class="campos">
+      <div class="campo"><label>Nome *</label><input type="text" name="admin_nome" required value="{{ $c.AdminNome }}"></div>
+      <div class="campo"><label>E-mail *</label><input type="email" name="admin_email" required value="{{ $c.AdminEmail }}"></div>
+    </div>
+    <h2 style="margin-top:10px">Comercial</h2>
+    <div class="campos campos--3">
+      <div class="campo"><label>Plano</label>
+        <select name="plano_id"><option value="">— definir na licença —</option>
+          {{ range .V.Planos }}<option value="{{ .ID }}" {{ if idIgual $c.PlanoID .ID }}selected{{ end }}>{{ .Nome }} · {{ .Faixa }}{{ if not .SobConsulta }} · {{ brl .PrecoMensalCentavos }}/mês{{ end }}</option>{{ end }}
+        </select></div>
+      <div class="campo"><label>Usuários contratados</label><input type="number" name="usuarios_contratados" min="1" value="{{ $c.UsuariosContratados }}"><small>Teto de usuários ativos no CRM.</small></div>
+      <div class="campo"><label>&nbsp;</label><label class="marcacao"><input type="checkbox" name="cobranca_propria" {{ if $c.CobrancaPropria }}checked{{ end }}> Este CNPJ paga a própria licença</label></div>
+    </div>
+    <h2 style="margin-top:10px">Ambiente</h2>
+    <div class="campos campos--3">
+      <div class="campo"><label>Cor primária</label><input type="color" name="cor_primaria" value="{{ ou $c.CorPrimaria "#6d5df6" }}"><small>O cliente muda depois, dentro do CRM.</small></div>
+      <div class="campo"><label>URL da logo</label><input type="url" name="logo_url" value="{{ $c.LogoURL }}" placeholder="https://…/logo.png"></div>
+      <div class="campo"><label>&nbsp;</label><label class="marcacao"><input type="checkbox" name="auto_atualizar" {{ if $c.AutoAtualizar }}checked{{ end }}> Acompanhar a versão padrão automaticamente</label></div>
+    </div>
+    <div class="linha-acoes" style="justify-content:flex-start;margin-top:8px">
+      <button class="btn" type="submit">{{ if $c.ID }}Salvar alterações{{ else }}Criar cliente{{ end }}</button>
+      <a class="btn btn--neutro" href="{{ if $c.ID }}{{ url (printf "/clientes/%d" $c.ID) }}{{ else }}{{ url "/clientes" }}{{ end }}">Cancelar</a>
+    </div>
+  </form>
+</section>
+{{ end }}

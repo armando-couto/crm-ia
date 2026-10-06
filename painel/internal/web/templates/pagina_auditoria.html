@@ -1,0 +1,10 @@
+{{ define "conteudo" }}
+<section class="cartao">
+  {{ if .V.Auditoria }}
+  <div class="tabela-wrap"><table><thead><tr><th>Quando</th><th>Quem</th><th>Ação</th><th>Entidade</th><th>Detalhes</th><th>IP</th></tr></thead><tbody>
+    {{ range .V.Auditoria }}<tr><td><small>{{ dataHora .CriadoEm }}</small></td><td>{{ .Usuario }}</td><td><code>{{ .Acao }}</code></td><td>{{ .Entidade }}{{ if .EntidadeID }} #{{ .EntidadeID }}{{ end }}</td><td><small>{{ curto .Detalhes 140 }}</small></td><td><small>{{ .IP }}</small></td></tr>{{ end }}
+  </tbody></table></div>
+  <p class="suave" style="margin-top:8px"><a href="{{ url "/auditoria?limite=2000" }}">ver mais</a></p>
+  {{ else }}{{ template "vazio" "Nada registrado ainda." }}{{ end }}
+</section>
+{{ end }}

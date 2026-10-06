@@ -1,0 +1,133 @@
+name: Docker Publish
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+env:
+  REGISTRY: docker.io
+  IMAGE_NAME: fixpay/fix-crm
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+
+    steps:
+      # 1) Código
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # 2) Build do front-end Vue
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Gerando o Build do Front-end
+        run: |
+          cd web
+          npm ci
+          npm test
+          npm run build
+
+      # 3) Build da aplicação Go
+      - name: Gerando o Build da Aplicacao
+        run: |
+          export GIT_TERMINAL_PROMPT=1
+          go env -w GOPRIVATE=github.com/Fix-Pay/models,github.com/Fix-Pay/erede,github.com/Fix-Pay/aws-sdk,github.com/Fix-Pay/antifraude,github.com/Fix-Pay/abc-brasil
+          git config --global url."https://${{ secrets.HUB_USERNAME }}:${{ secrets.ACCESS_TOKEN }}@github.com".insteadOf "https://github.com"
+          echo "${{ secrets.ENV_PRODUCTION }}" > .env.production
+          go test ./... -count=1
+          env CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o fix-crm application.go
+
+      # 4) Cosign (se você realmente for assinar)
+      - name: Install cosign
+        if: github.event_name != 'pull_request'
+        uses: sigstore/cosign-installer@v3.1.1
+        with:
+          cosign-release: 'v2.1.1'
+
+      # 5) Docker buildx + login + metadata
+      - name: Setup Docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          platforms: linux/amd64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # 6) VPN (config do .ovpn vinda de secret)
+      - name: Create OpenVPN config from secret
+        run: |
+          echo "${{ secrets.OVPN_CONFIG }}" > client.ovpn
+
+      - name: Install OpenVPN
+        if: success()
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y openvpn openvpn-systemd-resolved
+
+      - name: Connect to VPN
+        if: success()
+        uses: kota65535/github-openvpn-connect-action@v2
+        with:
+          config_file: ./client.ovpn
+          username: ${{ secrets.OVPN_USERNAME }}
+          password: ${{ secrets.OVPN_PASSWORD }}
+          client_key: ${{ secrets.OVPN_CLIENT_KEY }}
+
+      # 7) UPDATE INCREMENTAL via SSH no Swarm (stack "fix-crm")
+      - name: Update Swarm service via SSH com autenticação
+        if: success()
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_KEY }}
+          port: 22
+          script: |
+            echo "🔐 Fazendo login no Docker Hub..."
+            echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin ${{ env.REGISTRY }}
+
+            echo "Listando stack"
+            docker stack services fix-crm
+
+            echo "🔄 Fazendo pull da nova imagem..."
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.ref_name }}
+            docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+
+            # Atualiza com --with-registry-auth para propagar credenciais
+            docker service update \
+              --with-registry-auth \
+              --image ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest \
+              fix-crm_app
+
+            echo "✅ Serviço atualizado"

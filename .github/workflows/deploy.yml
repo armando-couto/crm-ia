@@ -1,0 +1,103 @@
+# Publica as imagens no GHCR a cada tag vX.Y.Z e, se houver um host
+# configurado, atualiza a plataforma por SSH. O app dos clientes recebe a tag
+# da versão (crmia/app:X.Y.Z); o painel decide quem é atualizado.
+#
+# Segredos esperados no repositório:
+#   ENV_PRODUCTION   conteúdo do .env de produção (infra/scripts/pipe-env.sh --gravar)
+#   DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY   (opcionais) nó onde a plataforma roda
+name: Deploy
+
+on:
+  push:
+    tags: ["v*.*.*"]
+  workflow_dispatch:
+    inputs:
+      versao:
+        description: "Versão a publicar (sem o v)"
+        required: true
+
+env:
+  REGISTRO: ghcr.io/${{ github.repository_owner }}
+
+jobs:
+  imagens:
+    name: Publicar imagens
+    runs-on: ubuntu-latest
+    permissions: { contents: read, packages: write }
+    outputs:
+      versao: ${{ steps.v.outputs.versao }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        run: |
+          V="${{ github.event.inputs.versao }}"; [ -n "$V" ] || V="${GITHUB_REF_NAME#v}"
+          echo "versao=$V" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - name: app dos clientes
+        uses: docker/build-push-action@v6
+        with:
+          context: ./app
+          push: true
+          build-args: VERSAO=${{ steps.v.outputs.versao }}
+          tags: ${{ env.REGISTRO }}/crmia-app:${{ steps.v.outputs.versao }},${{ env.REGISTRO }}/crmia-app:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: painel
+        uses: docker/build-push-action@v6
+        with: { context: ./painel, push: true, tags: "${{ env.REGISTRO }}/crmia-painel:${{ steps.v.outputs.versao }},${{ env.REGISTRO }}/crmia-painel:latest" }
+      - name: provisionador
+        uses: docker/build-push-action@v6
+        with: { context: ./provisioner, push: true, tags: "${{ env.REGISTRO }}/crmia-provisioner:${{ steps.v.outputs.versao }},${{ env.REGISTRO }}/crmia-provisioner:latest" }
+      - name: landing
+        uses: docker/build-push-action@v6
+        with: { context: ./landing, push: true, tags: "${{ env.REGISTRO }}/crmia-landing:${{ steps.v.outputs.versao }},${{ env.REGISTRO }}/crmia-landing:latest" }
+      - name: página de suspensão
+        uses: docker/build-push-action@v6
+        with: { context: ./infra/suspenso, push: true, tags: "${{ env.REGISTRO }}/crmia-suspenso:latest" }
+
+  plataforma:
+    name: Atualizar plataforma
+    needs: imagens
+    if: ${{ secrets.DEPLOY_HOST != '' }}
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - name: enviar compose e .env
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "docker-compose.yml,infra/traefik/dynamic,infra/tenant"
+          target: /opt/crmia
+      - name: subir
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          ENV_PRODUCTION: ${{ secrets.ENV_PRODUCTION }}
+          VERSAO: ${{ needs.imagens.outputs.versao }}
+          REGISTRO: ${{ env.REGISTRO }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          envs: ENV_PRODUCTION,VERSAO,REGISTRO
+          script: |
+            set -e
+            cd /opt/crmia
+            printf '%s\n' "$ENV_PRODUCTION" > .env
+            # As imagens vêm do registro; o compose só precisa saber o nome.
+            grep -q '^TENANT_IMAGE_APP=' .env && sed -i "s#^TENANT_IMAGE_APP=.*#TENANT_IMAGE_APP=$REGISTRO/crmia-app#" .env
+            grep -q '^TENANT_IMAGE_SUSPENSO=' .env && sed -i "s#^TENANT_IMAGE_SUSPENSO=.*#TENANT_IMAGE_SUSPENSO=$REGISTRO/crmia-suspenso:latest#" .env
+            echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin 2>/dev/null || true
+            docker pull $REGISTRO/crmia-painel:$VERSAO $REGISTRO/crmia-provisioner:$VERSAO $REGISTRO/crmia-landing:$VERSAO || true
+            docker tag $REGISTRO/crmia-painel:$VERSAO crmia/painel:latest
+            docker tag $REGISTRO/crmia-provisioner:$VERSAO crmia/provisioner:latest
+            docker tag $REGISTRO/crmia-landing:$VERSAO crmia/landing:latest
+            docker compose up -d --remove-orphans --no-build
+            # registra a versão no painel; os clientes com auto-atualizar recebem-na
+            TOKEN=$(grep '^PROVISIONER_TOKEN=' .env | cut -d= -f2-)
+            docker exec crmia-painel wget -qO- --method=POST --header="Authorization: Bearer $TOKEN" --header='Content-Type: application/json' \
+              --body-data="{\"tag\":\"$VERSAO\",\"descricao\":\"publicada pela pipeline\",\"estavel\":true,\"padrao\":true,\"aplicar\":true}" http://127.0.0.1:7894/painel/api/interno/versoes || echo "aviso: cadastre a versão $VERSAO no painel"

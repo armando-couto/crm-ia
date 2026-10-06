@@ -1,0 +1,111 @@
+{{ define "acoes-topo" }}
+<div class="linha-acoes">
+  {{ if .V.Cliente.URL }}<a class="btn btn--neutro" href="{{ .V.Cliente.URL }}" target="_blank" rel="noopener">Abrir CRM ↗</a>{{ end }}
+  {{ if .Sessao.PodeEditarClientes }}<a class="btn btn--neutro" href="{{ url (printf "/clientes/%d/editar" .V.Cliente.ID) }}">Editar cadastro</a>{{ end }}
+  {{ if .Sessao.PodeEditarLicencas }}<a class="btn btn--neutro" href="{{ url (printf "/licencas/nova?grupo=%d&cliente=%d" .V.Cliente.GrupoID .V.Cliente.ID) }}">Nova licença</a>{{ end }}
+</div>
+{{ end }}
+{{ define "conteudo" }}
+{{ $c := .V.Cliente }}
+{{ with .V.SenhaUnica }}
+<div class="aviso aviso--atencao"><strong>{{ .Titulo }} ({{ or .Email $c.AdminEmail }}):</strong> <span class="senha-inicial">{{ .Senha }}</span>
+  <br><small>Anote e repasse ao cliente por canal seguro. Ela não fica guardada e não será exibida de novo. No primeiro acesso a empresa troca a senha e faz o assistente de configuração.</small></div>
+{{ end }}
+<div class="grade grade--3">
+  <section class="cartao" style="grid-column: span 2">
+    <div class="cartao__cabecalho"><h2>{{ $c.RazaoSocial }}</h2>{{ template "etiqueta-status" $c.Status }}</div>
+    <dl class="detalhes">
+      <div><dt>CNPJ</dt><dd>{{ cnpj $c.CNPJ }}</dd></div>
+      <div><dt>Grupo</dt><dd><a href="{{ url (printf "/grupos/%d" $c.GrupoID) }}">{{ $c.GrupoNome }}</a></dd></div>
+      <div class="detalhes__largo"><dt>Endereço</dt><dd><code>{{ .Dominio }}/{{ $c.Slug }}</code></dd></div>
+      <div><dt>Administrador</dt><dd>{{ $c.AdminNome }}<br><small>{{ $c.AdminEmail }}</small></dd></div>
+      <div><dt>Plano</dt><dd>{{ ou $c.PlanoNome "—" }} · {{ $c.UsuariosContratados }} usuários</dd></div>
+      <div><dt>Cobrança</dt><dd>{{ if $c.CobrancaPropria }}Própria{{ else }}Do grupo{{ end }}</dd></div>
+      <div><dt>Modelo de CRM</dt><dd>{{ ou $c.ModeloCRM "—" }}</dd></div>
+      <div><dt>Versão</dt><dd>{{ ou $c.Versao "—" }} {{ if $c.AutoAtualizar }}<small>(acompanha a padrão)</small>{{ else }}<small>(fixa)</small>{{ end }}</dd></div>
+      <div><dt>Aparência</dt><dd><span class="cor-amostra" style="background:{{ $c.CorPrimaria }}"></span>{{ $c.CorPrimaria }}{{ if $c.LogoURL }} · logo{{ end }}</dd></div>
+    </dl>
+    {{ with .V.Licenca }}
+    <p style="margin-top:6px"><strong>Licença:</strong> {{ .PlanoNome }} ({{ if .DoGrupo }}do grupo{{ else }}deste CNPJ{{ end }}), {{ brl .ValorCentavos }}/{{ if eq .Periodicidade "anual" }}ano{{ else }}mês{{ end }}, até {{ .UsuariosMax }} usuários, válida até {{ data .Fim }} <small>({{ .DiasParaVencer hoje }} dias)</small> · {{ template "etiqueta-pagamento" . }}
+      {{ if and $.V.URLCheckout (ne .PagamentoStatus "ativo") }}<br><small>Link de cadastro do cartão: <a href="{{ $.V.URLCheckout }}" target="_blank" rel="noopener">{{ $.V.URLCheckout }}</a></small>{{ end }}</p>
+    {{ else }}
+    <p class="aviso aviso--atencao" style="margin-top:6px">Sem licença cobrindo este CNPJ. <a href="{{ url (printf "/licencas/nova?grupo=%d&cliente=%d" $c.GrupoID $c.ID) }}">Criar licença</a>.</p>
+    {{ end }}
+    {{ with .V.Solicitacao }}{{ if eq .Status "pendente" }}
+    <div class="aviso aviso--atencao" style="margin-top:8px">O administrador solicitou <strong>{{ if eq .Tipo "upgrade" }}upgrade para o plano {{ .PlanoNome }}{{ else }}o cancelamento do plano{{ end }}</strong> em {{ data .CriadoEm }}. <a href="{{ url "/solicitacoes" }}">Decidir</a>.</div>
+    {{ end }}{{ end }}
+    {{ if $c.UltimoErro }}<div class="aviso aviso--erro" style="margin-top:8px">Último erro: {{ $c.UltimoErro }}</div>{{ end }}
+  </section>
+  <section class="cartao">
+    <h2>Passos</h2>
+    <div class="passos">
+      <div class="passo passo--feito"><span class="passo__n">1</span><div><strong>Cadastro</strong><br><small>empresa, administrador e plano</small></div></div>
+      <div class="passo {{ if $c.Provisionado }}passo--feito{{ else }}passo--atual{{ end }}"><span class="passo__n">2</span><div><strong>Ambiente provisionado</strong><br><small>{{ if $c.ProvisionadoEm }}no ar desde {{ dataPtr $c.ProvisionadoEm }}{{ else }}PostgreSQL + Redis + CRM próprios{{ end }}</small></div></div>
+      <div class="passo {{ if .V.Licenca }}passo--feito{{ else if $c.Provisionado }}passo--atual{{ end }}"><span class="passo__n">3</span><div><strong>Licença</strong><br><small>{{ if .V.Licenca }}contratada{{ else }}define acesso e cobrança{{ end }}</small></div></div>
+      <div class="passo {{ if .V.Licenca }}{{ if eq .V.Licenca.PagamentoStatus "ativo" }}passo--feito{{ else if eq .V.Licenca.PagamentoStatus "manual" }}passo--feito{{ else }}passo--atual{{ end }}{{ end }}"><span class="passo__n">4</span><div><strong>Cartão cadastrado</strong><br><small>{{ if .V.Licenca }}{{ .V.Licenca.PagamentoRotulo }}{{ else }}cobrança mensal automática{{ end }}</small></div></div>
+    </div>
+  </section>
+</div>
+
+<div class="grade grade--2">
+  <section class="cartao">
+    <div class="cartao__cabecalho"><h2>Ambiente</h2>
+      {{ with .V.Ambiente }}<span class="etiqueta {{ if eq .Status "ativo" }}etiqueta--ok{{ else if eq .Status "suspenso" }}etiqueta--erro{{ else }}etiqueta--neutro{{ end }}">{{ .Status }} · {{ ou .Versao "?" }}</span>{{ end }}</div>
+    {{ if .V.AmbienteErro }}<div class="aviso aviso--atencao">Não consegui consultar o provisionador: {{ .V.AmbienteErro }}</div>{{ end }}
+    {{ with .V.Ambiente }}{{ if .Containers }}
+    <div class="tabela-wrap" style="margin-bottom:12px"><table><thead><tr><th>Container</th><th>Estado</th><th>Imagem</th></tr></thead>
+      <tbody>{{ range .Containers }}<tr><td><code>{{ .Nome }}</code></td><td>{{ .Status }}</td><td><small>{{ .Imagem }}</small></td></tr>{{ end }}</tbody></table></div>
+    {{ end }}{{ end }}
+    {{ if .Sessao.PodeProvisionar }}
+    <div class="linha-acoes" style="justify-content:flex-start;gap:8px">
+      {{ if not $c.Provisionado }}
+      <form method="post" action="{{ url (printf "/clientes/%d/provisionar" $c.ID) }}" class="inline" onsubmit="this.querySelector('button').disabled=true;this.querySelector('button').textContent='Provisionando… (1–2 min)'">
+        <input type="hidden" name="_csrf" value="{{ $.CSRF }}">
+        <select name="versao"><option value="">versão padrão</option>{{ range .V.Versoes }}<option value="{{ .Tag }}">{{ .Tag }}{{ if .Padrao }} (padrão){{ end }}</option>{{ end }}</select>
+        <button class="btn">Provisionar ambiente</button>
+      </form>
+      {{ else }}
+      <form method="post" action="{{ url (printf "/clientes/%d/atualizar" $c.ID) }}" class="inline" onsubmit="this.querySelector('button').disabled=true">
+        <input type="hidden" name="_csrf" value="{{ $.CSRF }}">
+        <select name="versao" required><option value="">mover para a versão…</option>{{ range .V.Versoes }}<option value="{{ .Tag }}" {{ if eq .Tag $c.Versao }}disabled{{ end }}>{{ .Tag }}{{ if .Padrao }} (padrão){{ end }}{{ if eq .Tag $c.Versao }} — atual{{ end }}</option>{{ end }}</select>
+        <button class="btn btn--neutro">Atualizar versão</button>
+      </form>
+      <form method="post" action="{{ url (printf "/clientes/%d/provisionar" $c.ID) }}" class="inline" onsubmit="return confirm('Recriar os containers (banco e dados são preservados)?')">
+        <input type="hidden" name="_csrf" value="{{ $.CSRF }}"><button class="btn btn--neutro btn--pequeno">Recriar containers</button></form>
+      <form method="post" action="{{ url (printf "/clientes/%d/backup" $c.ID) }}" class="inline">
+        <input type="hidden" name="_csrf" value="{{ $.CSRF }}"><button class="btn btn--neutro btn--pequeno">Backup agora</button></form>
+      {{ if and $.Sessao.PodeRedefinirSenhaCliente (eq $c.Status "ativo") }}
+      <form method="post" action="{{ url (printf "/clientes/%d/senha-admin" $c.ID) }}" class="inline" onsubmit="return confirm('Gerar uma senha provisória para {{ $c.AdminEmail }}? A atual deixa de valer.')">
+        <input type="hidden" name="_csrf" value="{{ $.CSRF }}"><button class="btn btn--neutro btn--pequeno">Redefinir senha do admin</button></form>
+      {{ end }}
+      {{ end }}
+    </div>
+    {{ end }}
+    {{ if .Sessao.PodeSuspender }}
+    <div class="linha-acoes" style="justify-content:flex-start;margin-top:10px">
+      {{ if eq $c.Status "ativo" }}
+      <form method="post" action="{{ url (printf "/clientes/%d/suspender" $c.ID) }}" onsubmit="return confirm('Suspender o acesso deste cliente? Os dados são preservados.')">
+        <input type="hidden" name="_csrf" value="{{ $.CSRF }}"><button class="btn btn--perigo btn--pequeno">Suspender acesso</button></form>
+      {{ else if eq $c.Status "suspenso" }}
+      <form method="post" action="{{ url (printf "/clientes/%d/reativar" $c.ID) }}">
+        <input type="hidden" name="_csrf" value="{{ $.CSRF }}"><button class="btn btn--pequeno">Reativar acesso</button></form>
+      {{ if $c.SuspensoPorInadimplencia }}<small class="suave">Suspenso por inadimplência: volta sozinho quando a fatura em atraso for paga.</small>{{ end }}
+      {{ end }}
+    </div>
+    {{ end }}
+  </section>
+  <section class="cartao">
+    <h2>Histórico do ambiente</h2>
+    {{ if .V.Eventos }}<ul class="lista-eventos">{{ range .V.Eventos }}<li><time>{{ dataHora .CriadoEm }}</time><div><strong>{{ .Tipo }}</strong> <small>{{ .Detalhe }}</small></div></li>{{ end }}</ul>
+    {{ else }}{{ template "vazio" "Nenhum evento ainda." }}{{ end }}
+    {{ if and .Sessao.PodeProvisionar (ne $c.Status "cancelado") }}
+    <details style="margin-top:16px"><summary class="suave" style="cursor:pointer">Zona de perigo</summary>
+      <form method="post" action="{{ url (printf "/clientes/%d/remover" $c.ID) }}" class="formulario" style="margin-top:10px" onsubmit="return confirm('Remover o ambiente e apagar o banco deste cliente? Um backup é feito antes.')">
+        <input type="hidden" name="_csrf" value="{{ .CSRF }}">
+        <div class="campo"><label>Digite <code>{{ $c.Slug }}</code> para confirmar</label><input type="text" name="confirmar" autocomplete="off"></div>
+        <div><button class="btn btn--perigo btn--pequeno">Remover ambiente (com backup)</button></div>
+      </form></details>
+    {{ end }}
+  </section>
+</div>
+{{ end }}

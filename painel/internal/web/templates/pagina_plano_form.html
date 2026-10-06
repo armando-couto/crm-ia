@@ -1,0 +1,22 @@
+{{ define "conteudo" }}
+{{ $p := .V.Plano }}
+<section class="cartao" style="max-width:760px">
+  <form method="post" class="formulario">
+    <input type="hidden" name="_csrf" value="{{ .CSRF }}">
+    <div class="campos">
+      <div class="campo"><label>Código *</label><input type="text" name="codigo" required value="{{ $p.Codigo }}" placeholder="profissional"></div>
+      <div class="campo"><label>Nome *</label><input type="text" name="nome" required value="{{ $p.Nome }}"></div>
+      <div class="campo"><label>Usuários (mín.)</label><input type="number" name="usuarios_min" min="1" value="{{ $p.UsuariosMin }}"></div>
+      <div class="campo"><label>Usuários (máx.) — 999 = “a partir de”</label><input type="number" name="usuarios_max" min="1" value="{{ $p.UsuariosMax }}"></div>
+      <div class="campo"><label>Mensal (R$) — 0 = sob consulta</label><input type="text" name="preco_mensal" value="{{ reais $p.PrecoMensalCentavos }}"></div>
+      <div class="campo"><label>Anual (R$) — 0 = sem opção anual</label><input type="text" name="preco_anual" value="{{ reais $p.PrecoAnualCentavos }}"></div>
+      <div class="campo"><label>Ordem na landing</label><input type="number" name="ordem" value="{{ $p.Ordem }}"></div>
+      <div class="campo"><label>&nbsp;</label><label class="marcacao"><input type="checkbox" name="destaque" {{ if $p.Destaque }}checked{{ end }}> Destaque (“mais escolhido”)</label><label class="marcacao"><input type="checkbox" name="ativo" {{ if $p.Ativo }}checked{{ end }}> Ativo</label></div>
+    </div>
+    <div class="campo"><label>Descrição curta</label><input type="text" name="descricao" value="{{ $p.Descricao }}"></div>
+    <div class="campo"><label>Recursos (um por linha)</label><textarea name="recursos" rows="8">{{ range $p.Recursos }}{{ . }}
+{{ end }}</textarea></div>
+    <div class="linha-acoes" style="justify-content:flex-start"><button class="btn">Salvar plano</button><a class="btn btn--neutro" href="{{ url "/planos" }}">Cancelar</a></div>
+  </form>
+</section>
+{{ end }}

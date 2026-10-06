@@ -1,0 +1,50 @@
+{{ define "acoes-topo" }}
+<div class="linha-acoes">
+  {{ if .Sessao.PodeEditarClientes }}
+  <a class="btn btn--neutro" href="{{ url (printf "/grupos/%d/editar" .V.Grupo.ID) }}">Editar grupo</a>
+  <a class="btn btn--neutro" href="{{ url (printf "/licencas/nova?grupo=%d" .V.Grupo.ID) }}">Nova licença</a>
+  <a class="btn" href="{{ url (printf "/clientes/novo?grupo=%d" .V.Grupo.ID) }}">Adicionar CNPJ</a>
+  {{ end }}
+</div>
+{{ end }}
+{{ define "conteudo" }}
+{{ $g := .V.Grupo }}
+<div class="grade grade--3">
+  <section class="cartao" style="grid-column: span 2">
+    <h2>Dados do grupo</h2>
+    <dl class="detalhes">
+      <div><dt>CNPJ responsável</dt><dd>{{ if $g.CNPJResponsavel }}{{ cnpj $g.CNPJResponsavel }}{{ else }}—{{ end }}</dd></div>
+      <div><dt>Financeiro</dt><dd>{{ ou $g.EmailFinanceiro "—" }}<br><small>{{ $g.Telefone }}</small></dd></div>
+      <div><dt>Cobrança</dt><dd>{{ if $g.CobrancaUnificada }}Unificada (grupo){{ else }}Por CNPJ{{ end }}</dd></div>
+      <div><dt>Desde</dt><dd>{{ data $g.CriadoEm }}</dd></div>
+    </dl>
+    {{ if $g.Observacoes }}<p class="suave">{{ $g.Observacoes }}</p>{{ end }}
+  </section>
+  <section class="cartao indicador"><span class="indicador__valor">{{ $g.ClientesAtivos }}/{{ $g.TotalClientes }}</span><span class="indicador__rotulo">CNPJs ativos no grupo</span></section>
+</div>
+<section class="cartao">
+  <div class="cartao__cabecalho"><h2>CNPJs do grupo</h2></div>
+  {{ if .V.Clientes }}
+  <div class="tabela-wrap"><table><thead><tr><th>Cliente</th><th>CNPJ</th><th>Endereço</th><th>Plano</th><th>Usuários</th><th>Versão</th><th>Status</th><th></th></tr></thead><tbody>
+    {{ range .V.Clientes }}<tr>
+      <td><a href="{{ url (printf "/clientes/%d" .ID) }}"><strong>{{ .NomeFantasia }}</strong></a><br><small>{{ .RazaoSocial }}</small></td>
+      <td>{{ cnpj .CNPJ }}</td><td><code>/{{ .Slug }}</code></td><td>{{ ou .PlanoNome "—" }}</td><td>{{ .UsuariosContratados }}</td><td>{{ ou .Versao "—" }}</td>
+      <td>{{ template "etiqueta-status" .Status }}</td>
+      <td class="acoes"><a class="btn btn--pequeno btn--neutro" href="{{ url (printf "/clientes/%d" .ID) }}">Abrir</a></td>
+    </tr>{{ end }}
+  </tbody></table></div>
+  {{ else }}{{ template "vazio" "Nenhum CNPJ neste grupo ainda." }}{{ end }}
+</section>
+<section class="cartao">
+  <div class="cartao__cabecalho"><h2>Licenças do grupo</h2></div>
+  {{ if .V.Licencas }}
+  <div class="tabela-wrap"><table><thead><tr><th>Abrangência</th><th>Plano</th><th>Usuários</th><th class="num">Valor</th><th>Vigência</th><th>Pagamento</th><th>Status</th></tr></thead><tbody>
+    {{ range .V.Licencas }}<tr>
+      <td>{{ if .DoGrupo }}<strong>Grupo inteiro</strong>{{ else }}{{ .ClienteNome }}{{ end }}</td><td>{{ .PlanoNome }}</td><td>até {{ .UsuariosMax }}</td>
+      <td class="num">{{ brl .ValorCentavos }}</td><td>{{ data .Inicio }} → {{ data .Fim }}</td><td>{{ template "etiqueta-pagamento" . }}</td>
+      <td><span class="etiqueta {{ if eq .Status "ativa" }}etiqueta--ok{{ else if eq .Status "vencida" }}etiqueta--erro{{ else }}etiqueta--neutro{{ end }}">{{ .Status }}</span></td>
+    </tr>{{ end }}
+  </tbody></table></div>
+  {{ else }}{{ template "vazio" "Nenhuma licença. Crie uma para liberar o acesso." }}{{ end }}
+</section>
+{{ end }}

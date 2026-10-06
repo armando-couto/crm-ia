@@ -1,0 +1,42 @@
+{{ define "conteudo" }}
+<div class="grade grade--2">
+  <section class="cartao">
+    <div class="cartao__cabecalho"><h2>Catálogo de versões</h2></div>
+    <p class="suave">Cada cliente fica na tag em que foi provisionado. Atualizar é sempre uma decisão: por cliente, em massa, ou automática para quem acompanha a versão padrão.</p>
+    {{ if .V.Versoes }}
+    <div class="tabela-wrap"><table><thead><tr><th>Tag</th><th>Descrição</th><th class="num">Clientes</th><th>Publicada</th><th></th></tr></thead><tbody>
+      {{ range .V.Versoes }}<tr>
+        <td><code>{{ .Tag }}</code> {{ if .Padrao }}<span class="etiqueta etiqueta--ok">padrão</span>{{ end }}{{ if not .Estavel }} <span class="etiqueta etiqueta--atencao">beta</span>{{ end }}</td>
+        <td>{{ .Descricao }}{{ if .Changelog }}<br><small>{{ curto .Changelog 160 }}</small>{{ end }}</td>
+        <td class="num">{{ .Clientes }}</td><td>{{ dataHora .PublicadaEm }}</td>
+        <td class="acoes">{{ if $.Sessao.PodeProvisionar }}<div class="linha-acoes">
+          {{ if not .Padrao }}<form method="post" action="{{ url (printf "/versoes/%d/padrao" .ID) }}"><input type="hidden" name="_csrf" value="{{ $.CSRF }}"><button class="btn btn--pequeno">Tornar padrão</button></form>
+          <form method="post" action="{{ url (printf "/versoes/%d/remover" .ID) }}" onsubmit="return confirm('Remover a versão do catálogo?')"><input type="hidden" name="_csrf" value="{{ $.CSRF }}"><button class="btn btn--pequeno btn--neutro">Remover</button></form>{{ end }}
+        </div>{{ end }}</td>
+      </tr>{{ end }}
+    </tbody></table></div>
+    {{ else }}{{ template "vazio" "Nenhuma versão cadastrada." }}{{ end }}
+    {{ with .V.TagsNoHost }}<p class="suave" style="margin-top:10px">Imagens no host: {{ range . }}<code>{{ . }}</code> {{ end }}</p>{{ end }}
+  </section>
+  <section class="cartao">
+    {{ if .Sessao.PodeProvisionar }}
+    <h2>Cadastrar versão</h2>
+    <form method="post" action="{{ url "/versoes/nova" }}" class="formulario">
+      <input type="hidden" name="_csrf" value="{{ .CSRF }}">
+      <div class="campos"><div class="campo"><label>Tag *</label><input type="text" name="tag" required placeholder="1.2.0"></div>
+        <div class="campo"><label>Descrição</label><input type="text" name="descricao"></div></div>
+      <div class="campo"><label>Changelog</label><textarea name="changelog" rows="3"></textarea></div>
+      <label class="marcacao"><input type="checkbox" name="estavel" checked> Estável</label>
+      <div><button class="btn">Cadastrar</button></div>
+    </form>
+    <h2 style="margin-top:18px">Aplicar a clientes</h2>
+    <form method="post" action="{{ url "/versoes/aplicar" }}" class="formulario" onsubmit="return confirm('Atualizar os clientes selecionados agora?')">
+      <input type="hidden" name="_csrf" value="{{ .CSRF }}">
+      <div class="campo"><label>Versão</label><select name="tag">{{ range .V.Versoes }}<option value="{{ .Tag }}">{{ .Tag }}{{ if .Padrao }} (padrão){{ end }}</option>{{ end }}</select></div>
+      <div class="campo"><label>Clientes ativos</label><div class="lista-marcacao">{{ range .V.Clientes }}<label class="marcacao"><input type="checkbox" name="clientes" value="{{ .ID }}"> {{ .NomeFantasia }} <small>({{ ou .Versao "?" }})</small></label>{{ end }}</div></div>
+      <div><button class="btn btn--neutro">Aplicar agora</button></div>
+    </form>
+    {{ end }}
+  </section>
+</div>
+{{ end }}

@@ -1,0 +1,65 @@
+{{ define "acoes-topo" }}
+<div class="linha-acoes">
+  <a class="btn btn--neutro" href="{{ url "/grupos/novo" }}">Novo grupo</a>
+  <a class="btn" href="{{ url "/clientes/novo" }}">Novo cliente (CNPJ)</a>
+</div>
+{{ end }}
+{{ define "conteudo" }}
+{{ $r := .V.Resumo }}
+{{ if gt $r.SolicitacoesPendentes 0 }}<div class="aviso aviso--atencao">{{ $r.SolicitacoesPendentes }} solicitação(ões) de plano aguardando decisão — <a href="{{ url "/solicitacoes" }}">decidir agora</a>.</div>{{ end }}
+{{ if .V.Simulado }}<div class="aviso aviso--atencao">Cobrança recorrente em modo <strong>simulado</strong>: nenhum cartão é cobrado de verdade.</div>
+{{ else if not .V.CobrancaConfigurada }}<div class="aviso aviso--atencao">Cobrança recorrente indisponível: {{ .V.MotivoSemCobranca }}. Licenças podem ser criadas com cobrança manual.</div>{{ end }}
+
+<div class="grade grade--4">
+  <div class="cartao indicador"><span class="indicador__valor">{{ $r.ClientesAtivos }}</span><span class="indicador__rotulo">clientes ativos · {{ $r.Grupos }} grupos</span></div>
+  <div class="cartao indicador"><span class="indicador__valor">{{ brl $r.MRRCentavos }}</span><span class="indicador__rotulo">receita recorrente mensal</span></div>
+  <div class="cartao indicador {{ if gt $r.LicencasSemCartao 0 }}indicador--atencao{{ end }}"><span class="indicador__valor">{{ $r.LicencasSemCartao }}</span><span class="indicador__rotulo">assinaturas aguardando cartão</span></div>
+  <div class="cartao indicador {{ if gt $r.FaturasVencidas 0 }}indicador--alerta{{ end }}"><span class="indicador__valor">{{ $r.FaturasVencidas }}</span><span class="indicador__rotulo">faturas vencidas · {{ $r.FaturasPendentes }} pendentes</span></div>
+</div>
+<div class="grade grade--4">
+  <div class="cartao indicador {{ if gt $r.ClientesAguardando 0 }}indicador--atencao{{ end }}"><span class="indicador__valor">{{ $r.ClientesAguardando }}</span><span class="indicador__rotulo">clientes a provisionar</span></div>
+  <div class="cartao indicador {{ if gt $r.LicencasVencendo 0 }}indicador--atencao{{ end }}"><span class="indicador__valor">{{ $r.LicencasVencendo }}</span><span class="indicador__rotulo">licenças vencendo em 15 dias</span></div>
+  <div class="cartao indicador {{ if gt $r.ClientesSuspensos 0 }}indicador--alerta{{ end }}"><span class="indicador__valor">{{ $r.ClientesSuspensos }}</span><span class="indicador__rotulo">ambientes suspensos</span></div>
+  <div class="cartao indicador {{ if gt $r.LeadsNovos 0 }}indicador--atencao{{ end }}"><span class="indicador__valor">{{ $r.LeadsNovos }}</span><span class="indicador__rotulo">leads novos · {{ $r.ClientesDesatualizados }} ambientes fora da versão padrão</span></div>
+</div>
+
+<div class="grade grade--2">
+  <section class="cartao">
+    <div class="cartao__cabecalho"><h2>Clientes a provisionar</h2><a href="{{ url "/clientes?status=pronto" }}">ver todos</a></div>
+    {{ if .V.Aguardando }}
+    <div class="tabela-wrap"><table><thead><tr><th>Cliente</th><th>CNPJ</th><th>Grupo</th><th></th></tr></thead><tbody>
+      {{ range .V.Aguardando }}<tr><td><a href="{{ url (printf "/clientes/%d" .ID) }}">{{ .NomeFantasia }}</a></td><td>{{ cnpj .CNPJ }}</td><td>{{ .GrupoNome }}</td>
+        <td class="acoes"><a class="btn btn--pequeno" href="{{ url (printf "/clientes/%d" .ID) }}">Provisionar</a></td></tr>{{ end }}
+    </tbody></table></div>
+    {{ else }}{{ template "vazio" "Nenhum cliente aguardando. Tudo no ar." }}{{ end }}
+  </section>
+  <section class="cartao">
+    <div class="cartao__cabecalho"><h2>Assinaturas aguardando cartão</h2><a href="{{ url "/licencas" }}">ver licenças</a></div>
+    {{ if .V.SemCartao }}
+    <div class="tabela-wrap"><table><thead><tr><th>Grupo / CNPJ</th><th>Plano</th><th class="num">Valor</th><th></th></tr></thead><tbody>
+      {{ range .V.SemCartao }}<tr><td>{{ .GrupoNome }}{{ if not .DoGrupo }} · {{ .ClienteNome }}{{ end }}</td><td>{{ .PlanoNome }}</td><td class="num">{{ brl .ValorCentavos }}</td>
+        <td class="acoes"><form method="post" action="{{ url (printf "/licencas/%d/enviar-link" .ID) }}"><input type="hidden" name="_csrf" value="{{ $.CSRF }}"><button class="btn btn--pequeno btn--neutro">Reenviar link</button></form></td></tr>{{ end }}
+    </tbody></table></div>
+    {{ else }}{{ template "vazio" "Nenhuma assinatura pendente de cartão." }}{{ end }}
+  </section>
+</div>
+
+<div class="grade grade--2">
+  <section class="cartao">
+    <div class="cartao__cabecalho"><h2>Licenças vencendo</h2><a href="{{ url "/licencas" }}">ver todas</a></div>
+    {{ if .V.Vencendo }}
+    <div class="tabela-wrap"><table><thead><tr><th>Grupo / CNPJ</th><th>Plano</th><th>Vence em</th><th>Pagamento</th></tr></thead><tbody>
+      {{ range .V.Vencendo }}<tr><td>{{ .GrupoNome }}{{ if not .DoGrupo }} · {{ .ClienteNome }}{{ end }}</td><td>{{ .PlanoNome }}</td><td>{{ data .Fim }} <small>({{ .DiasParaVencer hoje }} d)</small></td><td>{{ template "etiqueta-pagamento" . }}</td></tr>{{ end }}
+    </tbody></table></div>
+    {{ else }}{{ template "vazio" "Nenhuma licença vence nos próximos 15 dias." }}{{ end }}
+  </section>
+  <section class="cartao">
+    <div class="cartao__cabecalho"><h2>Últimos leads</h2><a href="{{ url "/leads" }}">ver todos</a></div>
+    {{ if .V.Leads }}
+    <div class="tabela-wrap"><table><thead><tr><th>Quando</th><th>Nome</th><th>Empresa</th><th>Plano</th><th>Status</th></tr></thead><tbody>
+      {{ range .V.Leads }}<tr><td><small>{{ dataHora .CriadoEm }}</small></td><td>{{ .Nome }}<br><small>{{ .Email }}</small></td><td>{{ ou .Empresa "—" }}</td><td>{{ ou .PlanoInteresse "—" }}</td><td><span class="etiqueta etiqueta--neutro">{{ .Status }}</span></td></tr>{{ end }}
+    </tbody></table></div>
+    {{ else }}{{ template "vazio" "Nenhum lead ainda." }}{{ end }}
+  </section>
+</div>
+{{ end }}

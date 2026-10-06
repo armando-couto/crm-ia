@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- Preenchido pela API ao servir a página: cada cliente vive em /<slug>/. -->
+    <base href="__TENANT_BASE__" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="__TEMA_COR_PRIMARIA__" />
+    <title>__TENANT_NOME__ · CRM</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <script>
+      // Identidade do ambiente, injetada pela API (routes/spa.go). Em `npm run
+      // dev` o plugin do Vite preenche com um tenant de desenvolvimento.
+      window.__TENANT__ = __TENANT_JSON__
+    </script>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>

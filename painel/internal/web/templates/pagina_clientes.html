@@ -1,0 +1,20 @@
+{{ define "acoes-topo" }}{{ if .Sessao.PodeEditarClientes }}<a class="btn" href="{{ url "/clientes/novo" }}">Novo cliente (CNPJ)</a>{{ end }}{{ end }}
+{{ define "conteudo" }}
+<section class="cartao">
+  <form method="get" class="barra-filtros" style="margin-bottom:12px">
+    <input type="search" name="q" value="{{ .V.Filtro.Busca }}" placeholder="nome, CNPJ ou endereço">
+    <select name="status"><option value="">todos os status</option>{{ range .V.Status }}<option value="{{ . }}" {{ if eq (printf "%s" .) $.V.Filtro.Status }}selected{{ end }}>{{ .Rotulo }}</option>{{ end }}</select>
+    <button class="btn btn--pequeno btn--neutro">Filtrar</button>
+  </form>
+  {{ if .V.Clientes }}
+  <div class="tabela-wrap"><table><thead><tr><th>Cliente</th><th>CNPJ</th><th>Endereço</th><th>Grupo</th><th>Plano</th><th>Versão</th><th>Status</th><th></th></tr></thead><tbody>
+    {{ range .V.Clientes }}<tr>
+      <td><a href="{{ url (printf "/clientes/%d" .ID) }}"><strong>{{ .NomeFantasia }}</strong></a><br><small>{{ .RazaoSocial }}</small></td>
+      <td>{{ cnpj .CNPJ }}</td><td><code>{{ $.Dominio }}/{{ .Slug }}</code></td><td>{{ .GrupoNome }}</td><td>{{ ou .PlanoNome "—" }} · {{ .UsuariosContratados }} us.</td><td>{{ ou .Versao "—" }}</td>
+      <td>{{ template "etiqueta-status" .Status }}</td>
+      <td class="acoes"><a class="btn btn--pequeno btn--neutro" href="{{ url (printf "/clientes/%d" .ID) }}">Abrir</a></td>
+    </tr>{{ end }}
+  </tbody></table></div>
+  {{ else }}{{ template "vazio" "Nenhum cliente encontrado." }}{{ end }}
+</section>
+{{ end }}

@@ -1,0 +1,3 @@
+{{ define "etiqueta-status" }}<span class="etiqueta etiqueta--{{ .Cor }}">{{ .Rotulo }}</span>{{ end }}
+{{ define "vazio" }}<div class="vazio"><p>{{ . }}</p></div>{{ end }}
+{{ define "etiqueta-pagamento" }}<span class="etiqueta {{ if eq .PagamentoStatus "ativo" }}etiqueta--ok{{ else if eq .PagamentoStatus "aguardando_cartao" }}etiqueta--atencao{{ else if eq .PagamentoStatus "recusado" }}etiqueta--erro{{ else }}etiqueta--neutro{{ end }}">{{ .PagamentoRotulo }}</span>{{ end }}

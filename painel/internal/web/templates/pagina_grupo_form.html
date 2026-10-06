@@ -1,0 +1,36 @@
+{{ define "conteudo" }}
+{{ $g := .V.Grupo }}
+<section class="cartao" style="max-width:780px">
+  <form method="post" class="formulario">
+    <input type="hidden" name="_csrf" value="{{ .CSRF }}">
+    <div class="campo"><label>Nome do grupo *</label><input type="text" name="nome" required value="{{ $g.Nome }}" placeholder="Ex.: Rede Exemplo"></div>
+    <div class="campos">
+      <div class="campo"><label>CNPJ responsável</label><input type="text" name="cnpj_responsavel" value="{{ $g.CNPJResponsavel }}" placeholder="somente números"><small>Quem paga quando a cobrança é unificada. Obrigatório para a cobrança recorrente do grupo.</small></div>
+      <div class="campo"><label>E-mail financeiro</label><input type="email" name="email_financeiro" value="{{ $g.EmailFinanceiro }}"><small>Recebe o link de cadastro do cartão.</small></div>
+      <div class="campo"><label>Telefone</label><input type="text" name="telefone" value="{{ $g.Telefone }}"></div>
+      <div class="campo"><label>Modelo de cobrança</label>
+        <select name="cobranca">
+          <option value="unificada" {{ if $g.CobrancaUnificada }}selected{{ end }}>Unificada — uma assinatura para o grupo</option>
+          <option value="por_cnpj" {{ if not $g.CobrancaUnificada }}selected{{ end }}>Por CNPJ — cada unidade paga a sua</option>
+        </select>
+      </div>
+    </div>
+    <h2 style="margin-top:10px">Endereço de cobrança</h2>
+    <p class="suave">A cobrança recorrente exige o endereço completo do pagador.</p>
+    <div class="campos campos--3">
+      <div class="campo"><label>CEP</label><input type="text" name="cep" value="{{ $g.CEP }}"></div>
+      <div class="campo"><label>Logradouro</label><input type="text" name="logradouro" value="{{ $g.Logradouro }}"></div>
+      <div class="campo"><label>Número</label><input type="text" name="numero" value="{{ $g.Numero }}"></div>
+      <div class="campo"><label>Bairro</label><input type="text" name="bairro" value="{{ $g.Bairro }}"></div>
+      <div class="campo"><label>Município</label><input type="text" name="municipio" value="{{ $g.Municipio }}"></div>
+      <div class="campo"><label>UF</label><input type="text" name="uf" maxlength="2" value="{{ $g.UF }}"></div>
+    </div>
+    <div class="campo"><label>Observações</label><textarea name="observacoes">{{ $g.Observacoes }}</textarea></div>
+    {{ if $g.ID }}<label class="marcacao"><input type="checkbox" name="ativo" {{ if $g.Ativo }}checked{{ end }}> Grupo ativo</label>{{ end }}
+    <div class="linha-acoes" style="justify-content:flex-start">
+      <button class="btn" type="submit">Salvar grupo</button>
+      <a class="btn btn--neutro" href="{{ url "/grupos" }}">Cancelar</a>
+    </div>
+  </form>
+</section>
+{{ end }}

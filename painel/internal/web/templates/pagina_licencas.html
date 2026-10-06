@@ -1,0 +1,29 @@
+{{ define "acoes-topo" }}{{ if .Sessao.PodeEditarLicencas }}<a class="btn" href="{{ url "/licencas/nova" }}">Nova licença</a>{{ end }}{{ end }}
+{{ define "conteudo" }}
+<section class="cartao">
+  <div class="barra-filtros" style="margin-bottom:12px">
+    <a class="btn btn--pequeno {{ if eq .V.Status "" }}{{ else }}btn--neutro{{ end }}" href="{{ url "/licencas" }}">todas</a>
+    <a class="btn btn--pequeno {{ if eq .V.Status "ativa" }}{{ else }}btn--neutro{{ end }}" href="{{ url "/licencas?status=ativa" }}">ativas</a>
+    <a class="btn btn--pequeno {{ if eq .V.Status "vencida" }}{{ else }}btn--neutro{{ end }}" href="{{ url "/licencas?status=vencida" }}">vencidas</a>
+    <a class="btn btn--pequeno {{ if eq .V.Status "cancelada" }}{{ else }}btn--neutro{{ end }}" href="{{ url "/licencas?status=cancelada" }}">canceladas</a>
+  </div>
+  {{ if .V.Licencas }}
+  <div class="tabela-wrap"><table><thead><tr><th>Grupo</th><th>Abrangência</th><th>Plano</th><th>Usuários</th><th class="num">Valor</th><th>Vigência</th><th>Pagamento</th><th>Status</th><th></th></tr></thead><tbody>
+    {{ range .V.Licencas }}<tr>
+      <td><a href="{{ url (printf "/grupos/%d" .GrupoID) }}">{{ .GrupoNome }}</a></td>
+      <td>{{ if .DoGrupo }}<span class="etiqueta etiqueta--info">grupo inteiro</span>{{ else }}{{ .ClienteNome }}{{ end }}</td>
+      <td>{{ .PlanoNome }}</td><td>até {{ .UsuariosMax }}</td><td class="num">{{ brl .ValorCentavos }}<br><small>{{ .Periodicidade }}</small></td>
+      <td>{{ data .Inicio }} → {{ data .Fim }}{{ if eq .Status "ativa" }}<br><small>{{ .DiasParaVencer hoje }} dias</small>{{ end }}</td>
+      <td>{{ template "etiqueta-pagamento" . }}{{ if and .CodigoCheckout (ne .PagamentoStatus "ativo") (ne .Status "cancelada") }}<br><small><a href="{{ call $.V.URLCheckout .CodigoCheckout }}" target="_blank" rel="noopener">link do cartão</a></small>{{ end }}</td>
+      <td><span class="etiqueta {{ if eq .Status "ativa" }}etiqueta--ok{{ else if eq .Status "vencida" }}etiqueta--erro{{ else }}etiqueta--neutro{{ end }}">{{ .Status }}</span></td>
+      <td class="acoes">{{ if $.Sessao.PodeEditarLicencas }}{{ if ne .Status "cancelada" }}
+        <div class="linha-acoes">
+        {{ if and .CodigoCheckout (ne .PagamentoStatus "ativo") }}<form method="post" action="{{ url (printf "/licencas/%d/enviar-link" .ID) }}"><input type="hidden" name="_csrf" value="{{ $.CSRF }}"><button class="btn btn--pequeno">Enviar link</button></form>{{ end }}
+        <form method="post" action="{{ url (printf "/licencas/%d/renovar" .ID) }}"><input type="hidden" name="_csrf" value="{{ $.CSRF }}"><button class="btn btn--pequeno btn--neutro">Renovar</button></form>
+        <form method="post" action="{{ url (printf "/licencas/%d/cancelar" .ID) }}" onsubmit="return confirm('Cancelar esta licença e a cobrança recorrente?')"><input type="hidden" name="_csrf" value="{{ $.CSRF }}"><button class="btn btn--pequeno btn--perigo">Cancelar</button></form>
+        </div>{{ end }}{{ end }}</td>
+    </tr>{{ end }}
+  </tbody></table></div>
+  {{ else }}{{ template "vazio" "Nenhuma licença." }}{{ end }}
+</section>
+{{ end }}

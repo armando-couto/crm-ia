@@ -1,0 +1,39 @@
+# Sobreposição de desenvolvimento (use `make dev`, que faz o -f duplo).
+#   - Let's Encrypt sai de cena (certificado autoassinado do Traefik);
+#   - o painel usa o PostgreSQL que já roda na máquina (porta 5432);
+#   - a cobrança recorrente roda em modo simulado.
+services:
+  traefik:
+    command:
+      - --global.checkNewVersion=false
+      - --global.sendAnonymousUsage=false
+      - --log.level=DEBUG
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --ping=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls=true
+      - --providers.docker=true
+      - --providers.docker.endpoint=unix:///var/run/docker.sock
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=crmia_public
+      - --providers.docker.constraints=Label(`crmia.roteado`,`sim`) || LabelRegex(`crmia.tenant`,`.+`)
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+    ports:
+      - "${TRAEFIK_DASH_PORT:-8190}:8080"
+  painel:
+    environment:
+      APP_ENV: development
+      FIXPAY_SIMULADO: "${FIXPAY_SIMULADO:-true}"
+      DATABASE_URL: postgres://crmia_painel:${PAINEL_DB_PASSWORD:-dev}@${DEV_PGHOST:-host.docker.internal}:${DEV_PGPORT:-5432}/crmia_painel?sslmode=disable
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+  provisioner:
+    environment:
+      APP_ENV: development
+    ports:
+      - "${PROVISIONER_PORT:-7998}:7898"

@@ -1,0 +1,19 @@
+{{ define "conteudo" }}
+<section class="cartao">
+  <div class="cartao__cabecalho"><h2>Tudo que está no ar</h2>{{ with .V.Padrao }}{{ if .Tag }}<small>versão padrão: <code>{{ .Tag }}</code></small>{{ end }}{{ end }}</div>
+  <p class="suave">Estado lido direto do Docker pelo provisionador. Cada linha é uma stack isolada: PostgreSQL + Redis + CRM do cliente.</p>
+  {{ if .V.Linhas }}
+  <div class="tabela-wrap"><table><thead><tr><th>Endereço</th><th>Cliente</th><th>Estado real</th><th>No painel</th><th>Versão</th><th class="num">Containers</th><th></th></tr></thead><tbody>
+    {{ range .V.Linhas }}<tr>
+      <td><a href="{{ .URL }}" target="_blank" rel="noopener"><code>/{{ .Slug }}</code></a></td>
+      <td>{{ if .ClienteID }}<a href="{{ url (printf "/clientes/%d" .ClienteID) }}">{{ .Nome }}</a>{{ else }}<span class="etiqueta etiqueta--atencao">sem cadastro no painel</span>{{ end }}</td>
+      <td><span class="etiqueta {{ if eq .StatusReal "ativo" }}etiqueta--ok{{ else if eq .StatusReal "suspenso" }}etiqueta--erro{{ else }}etiqueta--neutro{{ end }}">{{ .StatusReal }}</span></td>
+      <td><small>{{ .StatusPainel }}</small></td>
+      <td><code>{{ .Versao }}</code>{{ if .Desatualizado }} <span class="etiqueta etiqueta--atencao">fora da padrão</span>{{ end }}{{ if .AutoAtualizar }} <small>auto</small>{{ end }}</td>
+      <td class="num">{{ .Containers }}</td>
+      <td class="acoes">{{ if .ClienteID }}<a class="btn btn--pequeno btn--neutro" href="{{ url (printf "/clientes/%d" .ClienteID) }}">Gerenciar</a>{{ end }}</td>
+    </tr>{{ end }}
+  </tbody></table></div>
+  {{ else }}{{ template "vazio" "Nenhum ambiente provisionado ainda." }}{{ end }}
+</section>
+{{ end }}

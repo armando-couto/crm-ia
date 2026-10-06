@@ -1,0 +1,47 @@
+# Middlewares compartilhados (recarregados a quente). Referência: `chain-tenant@file`.
+http:
+  middlewares:
+    headers-seguranca:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        forceSTSHeader: true
+        frameDeny: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: strict-origin-when-cross-origin
+        permissionsPolicy: "camera=(), microphone=(), geolocation=(), payment=(), usb=(), interest-cohort=()"
+        customResponseHeaders:
+          Server: ""
+          X-Powered-By: ""
+    compressao:
+      compress:
+        excludedContentTypes: [image/png, image/jpeg, image/webp, application/pdf]
+    rate-limit-padrao:
+      rateLimit:
+        average: 120
+        burst: 60
+        period: 1s
+    csp-publico:
+      headers:
+        contentSecurityPolicy: >-
+          default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+          img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self';
+          frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
+    # O app do cliente carrega logo própria (URL externa) e gera arquivos em blob:.
+    csp-app:
+      headers:
+        contentSecurityPolicy: >-
+          default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+          img-src 'self' data: blob: https:; font-src 'self' data: https://fonts.gstatic.com; connect-src 'self';
+          frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'
+    chain-publico:
+      chain:
+        middlewares: [compressao, headers-seguranca, csp-publico, rate-limit-padrao]
+    chain-painel:
+      chain:
+        middlewares: [compressao, headers-seguranca, csp-publico, rate-limit-padrao]
+    chain-tenant:
+      chain:
+        middlewares: [compressao, headers-seguranca, csp-app, rate-limit-padrao]

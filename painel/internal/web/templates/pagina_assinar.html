@@ -1,0 +1,47 @@
+{{ define "conteudo" }}
+<div class="checkout">
+  <div class="checkout__cartao">
+    <div class="checkout__marca"><span class="menu__logo">IA</span><div><strong>{{ produto }}</strong><small>pagamento seguro</small></div></div>
+    {{ if .Erro }}<div class="aviso aviso--erro" style="margin-bottom:14px">{{ .Erro }}</div>{{ end }}
+    {{ with .V.Checkout }}
+    {{ if or $.V.Concluido $.Sucesso }}
+      <h1>Tudo certo!</h1>
+      <p>O cartão foi cadastrado e a assinatura do <strong>{{ .Produto }}</strong> está ativa. A cobrança de <strong>{{ brl .Licenca.ValorCentavos }}</strong> acontece todo mês, automaticamente.</p>
+      <p class="suave">Você pode fechar esta página. Para trocar o cartão no futuro, use “Meu plano” dentro do CRM.</p>
+    {{ else }}
+      <div class="checkout__resumo">
+        <div><span>Plano</span><strong>{{ .Produto }}</strong></div>
+        <div><span>Valor</span><strong>{{ brl .Licenca.ValorCentavos }}<small>/mês</small></strong></div>
+        <div><span>Pagador</span><strong>{{ .Pagador }}</strong><small>{{ cnpj .Documento }}</small></div>
+        <div><span>Usuários</span><strong>até {{ .Licenca.UsuariosMax }}</strong></div>
+      </div>
+      {{ if $.V.Simulado }}<div class="aviso aviso--atencao">Ambiente de testes: nenhum valor é cobrado. Use 4111 1111 1111 1111 para aprovar ou um número terminado em 0002 para simular recusa.</div>{{ end }}
+      {{ $f := $.V.Form }}
+      <form method="post" class="formulario" autocomplete="on">
+        <h2>Dados do cartão de crédito</h2>
+        <div class="campo"><label>Nome impresso no cartão</label><input type="text" name="titular" required autocomplete="cc-name" value="{{ index $f "titular" }}"></div>
+        <div class="campo"><label>Número do cartão</label><input type="text" name="numero" required inputmode="numeric" autocomplete="cc-number" placeholder="0000 0000 0000 0000"></div>
+        <div class="campos">
+          <div class="campo"><label>Validade (MM/AA)</label><input type="text" name="validade" required inputmode="numeric" autocomplete="cc-exp" placeholder="MM/AA"></div>
+          <div class="campo"><label>Código de segurança</label><input type="password" name="cvv" required inputmode="numeric" autocomplete="cc-csc" maxlength="4"></div>
+        </div>
+        <div class="campo"><label>CPF/CNPJ do titular</label><input type="text" name="documento" required inputmode="numeric" value="{{ index $f "documento" }}"></div>
+        <h2 style="margin-top:14px">Endereço de cobrança</h2>
+        <div class="campos">
+          <div class="campo"><label>CEP</label><input type="text" name="cep" required inputmode="numeric" value="{{ index $f "cep" }}"></div>
+          <div class="campo"><label>Logradouro</label><input type="text" name="logradouro" required value="{{ index $f "logradouro" }}"></div>
+          <div class="campo"><label>Número</label><input type="text" name="numero_endereco" required value="{{ index $f "numero_endereco" }}"></div>
+          <div class="campo"><label>Complemento</label><input type="text" name="complemento" value="{{ index $f "complemento" }}"></div>
+          <div class="campo"><label>Bairro</label><input type="text" name="bairro" required value="{{ index $f "bairro" }}"></div>
+          <div class="campo"><label>Cidade</label><input type="text" name="cidade" required value="{{ index $f "cidade" }}"></div>
+          <div class="campo"><label>UF</label><input type="text" name="uf" required maxlength="2" value="{{ index $f "uf" }}"></div>
+        </div>
+        <label class="marcacao" style="margin:10px 0"><input type="checkbox" name="aceite" required> Autorizo a cobrança mensal de {{ brl .Licenca.ValorCentavos }} neste cartão enquanto a assinatura estiver ativa. Posso cancelar a qualquer momento em “Meu plano”.</label>
+        <button class="btn btn--grande" type="submit" style="width:100%;justify-content:center">Confirmar e ativar assinatura</button>
+        <p class="suave checkout__nota">Seus dados trafegam criptografados e não ficam guardados nos nossos servidores. Dúvidas: <a href="mailto:{{ $.V.EmailSuporte }}">{{ $.V.EmailSuporte }}</a></p>
+      </form>
+    {{ end }}
+    {{ end }}
+  </div>
+</div>
+{{ end }}

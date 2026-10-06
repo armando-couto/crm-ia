@@ -1,0 +1,215 @@
+# =============================================================================
+# CRM IA — stack para Docker Swarm / Portainer (um único nó manager).
+#
+# Igual ao docker-compose.yml, mas com as imagens já publicadas (sem build) e
+# o PostgreSQL da plataforma como serviço. Suba com:
+#   docker stack deploy -c stack-portainer.yml crmia --with-registry-auth
+# ou cole no Portainer (Stacks → Add stack) preenchendo as variáveis de ambiente
+# a partir do .env (o Portainer lê o arquivo em "Load variables from .env").
+#
+# Os ambientes dos clientes são criados pelo provisionador com `docker compose`
+# no socket do nó — fora do Swarm, de propósito: cada cliente é uma stack
+# pequena e independente, com versão própria. Veja docs/swarm.md.
+# =============================================================================
+version: "3.8"
+
+x-logging: &logging
+  driver: json-file
+  options: { max-size: "10m", max-file: "3" }
+
+services:
+  traefik:
+    image: traefik:v3.7
+    command:
+      - --global.checkNewVersion=false
+      - --global.sendAnonymousUsage=false
+      - --log.level=INFO
+      - --accesslog=true
+      - --accesslog.filters.statuscodes=400-599
+      - --ping=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls=true
+      - --entrypoints.websecure.http.tls.certresolver=letsencrypt
+      - --entrypoints.websecure.transport.respondingtimeouts.writetimeout=10m
+      # Serviços do Swarm (plataforma) E containers soltos (ambientes dos clientes).
+      - --providers.swarm=true
+      - --providers.swarm.endpoint=unix:///var/run/docker.sock
+      - --providers.swarm.exposedbydefault=false
+      - --providers.swarm.network=crmia_public
+      - --providers.swarm.constraints=Label(`crmia.roteado`,`sim`)
+      - --providers.docker=true
+      - --providers.docker.endpoint=unix:///var/run/docker.sock
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=crmia_public
+      - --providers.docker.constraints=LabelRegex(`crmia.tenant`,`.+`)
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+      - --certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}
+      - --certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json
+      - --certificatesresolvers.letsencrypt.acme.caserver=${ACME_CA_SERVER:-https://acme-v02.api.letsencrypt.org/directory}
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge=true
+      - --certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web
+    ports:
+      - target: 80
+        published: ${HTTP_PORT:-80}
+        mode: host
+      - target: 443
+        published: ${HTTPS_PORT:-443}
+        mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - traefik-acme:/letsencrypt
+    configs:
+      - source: traefik_middlewares
+        target: /etc/traefik/dynamic/middlewares.yml
+      - source: traefik_tls
+        target: /etc/traefik/dynamic/tls.yml
+    networks: [public]
+    logging: *logging
+    deploy:
+      mode: replicated
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy: { condition: any, delay: 5s }
+
+  postgres:
+    image: ${IMAGEM_POSTGRES:-ghcr.io/armando-couto/crmia-postgres:latest}
+    environment:
+      POSTGRES_USER: ${PGADMIN_USER:-postgres}
+      POSTGRES_PASSWORD: ${PGADMIN_PASSWORD}
+      PAINEL_DB_NAME: ${PAINEL_DB_NAME:-crmia_painel}
+      PAINEL_DB_USER: ${PAINEL_DB_USER:-crmia_painel}
+      PAINEL_DB_PASSWORD: ${PAINEL_DB_PASSWORD}
+      TZ: America/Sao_Paulo
+    volumes:
+      - postgres-dados:/var/lib/postgresql/data
+    networks: [interna]
+    logging: *logging
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy: { condition: any, delay: 5s }
+
+  landing:
+    image: ${IMAGEM_LANDING:-ghcr.io/armando-couto/crmia-landing:latest}
+    environment:
+      DOMINIO: ${DOMAIN}
+    networks: [public]
+    logging: *logging
+    deploy:
+      replicas: 1
+      labels:
+        - traefik.enable=true
+        - crmia.roteado=sim
+        - traefik.docker.network=crmia_public
+        - traefik.http.routers.ci-landing.rule=Host(`${DOMAIN}`)
+        - traefik.http.routers.ci-landing.entrypoints=websecure
+        - traefik.http.routers.ci-landing.priority=1
+        - traefik.http.routers.ci-landing.middlewares=chain-publico@file
+        - traefik.http.services.ci-landing.loadbalancer.server.port=7894
+      restart_policy: { condition: any, delay: 5s }
+
+  painel:
+    image: ${IMAGEM_PAINEL:-ghcr.io/armando-couto/crmia-painel:latest}
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      BASE_PATH: /painel
+      DOMAIN: ${DOMAIN}
+      NOME_PRODUTO: ${NOME_PRODUTO:-CRM IA}
+      EMAIL_COMERCIAL: ${EMAIL_COMERCIAL:-contato@crmia.com.br}
+      DATABASE_URL: postgres://${PAINEL_DB_USER:-crmia_painel}:${PAINEL_DB_PASSWORD}@${PGHOST:-postgres}:${PGPORT:-5432}/${PAINEL_DB_NAME:-crmia_painel}?sslmode=${PGSSLMODE:-disable}
+      SESSION_KEY: ${PAINEL_SESSION_KEY}
+      CSRF_KEY: ${PAINEL_CSRF_KEY}
+      ADMIN_EMAIL: ${PAINEL_ADMIN_EMAIL}
+      ADMIN_SENHA: ${PAINEL_ADMIN_SENHA}
+      DIAS_ATRASO_SUSPENSAO: ${DIAS_ATRASO_SUSPENSAO:-10}
+      PROVISIONER_URL: http://provisioner:7898
+      PROVISIONER_TOKEN: ${PROVISIONER_TOKEN}
+      FIXPAY_TOKEN_API: ${FIXPAY_TOKEN_API}
+      FIXPAY_APIS_URL: ${FIXPAY_APIS_URL:-https://apis.fixpay.com.br}
+      FIXPAY_SIGN_URL: ${FIXPAY_SIGN_URL:-https://signpayments.fixpay.com.br}
+      FIXPAY_SIGN_GRUPO_ID: ${FIXPAY_SIGN_GRUPO_ID:-0}
+      FIXPAY_SIMULADO: ${FIXPAY_SIMULADO:-false}
+      MANDRILL_API_KEY: ${MANDRILL_API_KEY}
+      MANDRILL_FROM_EMAIL: ${MANDRILL_FROM_EMAIL:-nao-responda@crmia.com.br}
+      MANDRILL_FROM_NOME: ${MANDRILL_FROM_NOME:-CRM IA}
+    networks: [public, interna]
+    logging: *logging
+    deploy:
+      replicas: 1
+      labels:
+        - traefik.enable=true
+        - crmia.roteado=sim
+        - traefik.docker.network=crmia_public
+        - traefik.http.routers.ci-painel.rule=Host(`${DOMAIN}`) && PathPrefix(`/painel`)
+        - traefik.http.routers.ci-painel.entrypoints=websecure
+        - traefik.http.routers.ci-painel.priority=40
+        - traefik.http.routers.ci-painel.middlewares=chain-painel@file
+        - traefik.http.services.ci-painel.loadbalancer.server.port=7894
+      restart_policy: { condition: any, delay: 5s }
+
+  provisioner:
+    image: ${IMAGEM_PROVISIONER:-ghcr.io/armando-couto/crmia-provisioner:latest}
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DOMAIN: ${DOMAIN}
+      PORT: "7898"
+      PROVISIONER_TOKEN: ${PROVISIONER_TOKEN}
+      TENANTS_DIR: /tenants
+      TEMPLATE_PATH: /templates/docker-compose.tenant.tmpl
+      BACKUPS_DIR: /backups
+      REDE_PUBLICA: crmia_public
+      TENANT_IMAGE_APP: ${TENANT_IMAGE_APP:-ghcr.io/armando-couto/crmia-app}
+      TENANT_IMAGE_DB: ${TENANT_IMAGE_DB:-postgres:16-alpine}
+      TENANT_IMAGE_REDIS: ${TENANT_IMAGE_REDIS:-redis:7-alpine}
+      TENANT_IMAGE_SUSPENSO: ${TENANT_IMAGE_SUSPENSO:-ghcr.io/armando-couto/crmia-suspenso:latest}
+      TENANT_VERSAO_PADRAO: ${TENANT_VERSAO_PADRAO:-latest}
+      TENANT_CPU_LIMIT: ${TENANT_CPU_LIMIT:-1.0}
+      TENANT_MEM_LIMIT: ${TENANT_MEM_LIMIT:-768m}
+      TENANT_DB_MEM_LIMIT: ${TENANT_DB_MEM_LIMIT:-512m}
+      TENANT_REDIS_MEM_LIMIT: ${TENANT_REDIS_MEM_LIMIT:-128m}
+      REGISTRY_USER: ${REGISTRY_USER:-}
+      REGISTRY_TOKEN: ${REGISTRY_TOKEN:-}
+      PAINEL_URL: http://painel:7894/painel
+      MANDRILL_API_KEY: ${MANDRILL_API_KEY}
+      MANDRILL_FROM_EMAIL: ${MANDRILL_FROM_EMAIL:-nao-responda@crmia.com.br}
+      MANDRILL_FROM_NOME: ${MANDRILL_FROM_NOME:-CRM IA}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - tenants-config:/tenants
+      - backups:/backups
+    networks: [interna, public]
+    logging: *logging
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      restart_policy: { condition: any, delay: 5s }
+
+configs:
+  traefik_middlewares:
+    file: ./infra/traefik/dynamic/middlewares.yml
+  traefik_tls:
+    file: ./infra/traefik/dynamic/tls.yml
+
+networks:
+  public:
+    name: crmia_public
+    driver: overlay
+    attachable: true
+  interna:
+    name: crmia_interna
+    driver: overlay
+    attachable: true
+    internal: true
+
+volumes:
+  traefik-acme: { name: crmia_traefik_acme }
+  postgres-dados: { name: crmia_postgres_dados }
+  tenants-config: { name: crmia_tenants_config }
+  backups: { name: crmia_backups }

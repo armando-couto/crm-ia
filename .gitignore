@@ -1,9 +1,0 @@
-fix-crm
-.env
-.env.production
-web/node_modules/
-web/dist/
-*.log
-.DS_Store
-.idea/
-.vscode/

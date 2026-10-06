@@ -4,7 +4,11 @@ import App from './App.vue'
 import { router } from './router'
 import { setPasswordChangeHandler, setUnauthorizedHandler } from './api'
 import { useAuthStore } from './stores/auth'
+import { aplicarTema, tenant } from './tenant'
 import './styles.css'
+
+// A marca do cliente entra antes do primeiro paint.
+aplicarTema(tenant.color, tenant.logo_url)
 
 const app = createApp(App)
 app.use(createPinia())

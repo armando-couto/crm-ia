@@ -111,8 +111,8 @@ var contactHeaderField = map[string]string{
 var companyHeaderField = map[string]string{
 	"nome": "name", "empresa": "name", "nome da empresa": "name",
 	"razao social": "name", "company": "name",
-	"cnpj":     "cnpj",
-	"dominio":  "domain", "site": "domain", "website": "domain", "domain": "domain",
+	"cnpj":    "cnpj",
+	"dominio": "domain", "site": "domain", "website": "domain", "domain": "domain",
 	"telefone": "phone", "phone": "phone",
 	"setor": "industry", "industria": "industry", "segmento": "industry", "industry": "industry",
 	"cidade": "city", "city": "city",

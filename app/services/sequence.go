@@ -151,8 +151,11 @@ func taskTypeForStep(kind string) string {
 func sendSequenceEmail(db *sql.DB, seq *models.Sequence, member *models.SequenceMember,
 	step models.SequenceStep) error {
 
-	if Mail == nil {
+	if Remetente() == nil {
 		return fmt.Errorf("serviço de e-mail não configurado")
+	}
+	if err := EnvioAutomaticoPermitido(db, time.Now()); err != nil {
+		return err
 	}
 	contact, err := models.ContactByID(db, member.ContactID)
 	if err != nil {
@@ -192,9 +195,10 @@ func sendSequenceEmail(db *sql.DB, seq *models.Sequence, member *models.Sequence
 	}
 
 	nome := strings.TrimSpace(contact.FirstName + " " + contact.LastName)
-	if err := Mail.Send(contact.Email, nome, subject, tracked); err != nil {
+	if err := Remetente().Send(contact.Email, nome, subject, tracked); err != nil {
 		return err
 	}
+	RegistrarEnvio(time.Now())
 
 	return models.CreateActivity(db, &models.Activity{
 		Kind:      models.ActivityEmail,

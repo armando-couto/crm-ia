@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -60,6 +61,11 @@ func CreateUser(ctx iris.Context) {
 	}
 	if msg := req.validate(); msg != "" {
 		badRequest(ctx, msg)
+		return
+	}
+
+	if msg := licencaPermiteNovoAcesso(); msg != "" {
+		ctx.StopWithJSON(iris.StatusUnprocessableEntity, iris.Map{"error": msg, "license_limit": true})
 		return
 	}
 
@@ -198,6 +204,13 @@ func UpdateUserByID(ctx iris.Context) {
 		changes = append(changes, "e-mail "+user.Email+" → "+req.Email)
 	}
 
+	// Reativar um acesso também conta no teto da licença.
+	if req.Active != nil && *req.Active && !user.Active {
+		if msg := licencaPermiteNovoAcesso(); msg != "" {
+			ctx.StopWithJSON(iris.StatusUnprocessableEntity, iris.Map{"error": msg, "license_limit": true})
+			return
+		}
+	}
 	user.Name = req.Name
 	user.Email = req.Email
 	user.Role = req.Role
@@ -248,4 +261,21 @@ func DeactivateUser(ctx iris.Context) {
 	middleware.InvalidateUser(user.ID)
 	audit(ctx, models.AuditUpdate, "usuario", user.ID, "desativou o acesso de "+user.Email)
 	ctx.JSON(user)
+}
+
+// licencaPermiteNovoAcesso confere o teto de usuários ativos do plano
+// (LICENCA_USUARIOS_MAX, injetado pela plataforma). Zero = sem teto.
+func licencaPermiteNovoAcesso() string {
+	max := utils.Cfg.UsuariosMax
+	if max <= 0 {
+		return ""
+	}
+	ativos, err := models.CountActiveUsers(utils.DB)
+	if err != nil {
+		return ""
+	}
+	if ativos >= max {
+		return fmt.Sprintf("seu plano permite até %d usuários ativos (%d em uso). Desative um acesso ou peça um upgrade em Configurações → Meu plano", max, ativos)
+	}
+	return ""
 }

@@ -12,7 +12,6 @@ import (
 	"github.com/armando-couto/crm-ia/app/models"
 	"github.com/armando-couto/crm-ia/app/utils"
 
-	"github.com/armando-couto/goutils"
 	"github.com/golang-jwt/jwt/v5"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -52,7 +51,7 @@ func GenerateToken(u *models.User, secret string) (string, error) {
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(TokenTTL)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
-			Issuer:    "crm-ia",
+			Issuer:    "crm-ia/" + utils.Cfg.TenantSlug,
 		},
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -94,18 +93,22 @@ func SeedAdmin(db *sql.DB) error {
 		return nil
 	}
 
-	email := goutils.Godotenv("admin_email")
-	password := goutils.Godotenv("admin_password")
+	email := utils.Cfg.AdminEmail
+	password := utils.Cfg.AdminSenha
 	if email == "" || password == "" {
-		return errors.New("banco sem usuários: configure admin_email e admin_password no .env para criar o administrador inicial")
+		return errors.New("banco sem usuários: configure ADMIN_EMAIL e ADMIN_SENHA no ambiente para criar o administrador inicial")
 	}
 
 	hash, err := HashPassword(password)
 	if err != nil {
 		return err
 	}
+	nome := utils.Cfg.AdminNome
+	if nome == "" {
+		nome = "Administrador"
+	}
 	admin := &models.User{
-		Name:         "Administrador",
+		Name:         nome,
 		Email:        email,
 		Role:         models.RoleAdmin,
 		Active:       true,
@@ -128,10 +131,10 @@ func JWTSecret() string {
 // atualiza o usuário se ele existir (reativando e garantindo papel admin)
 // ou o cria caso não exista. Útil quando a equipe fica sem acesso.
 func ResetAdmin(db *sql.DB) error {
-	email := goutils.Godotenv("admin_email")
-	password := goutils.Godotenv("admin_password")
+	email := utils.Cfg.AdminEmail
+	password := utils.Cfg.AdminSenha
 	if email == "" || password == "" {
-		return errors.New("configure admin_email e admin_password no .env antes de rodar -reset-admin")
+		return errors.New("configure ADMIN_EMAIL e ADMIN_SENHA no ambiente antes de rodar -reset-admin")
 	}
 
 	hash, err := HashPassword(password)

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { api, getToken, setToken } from '../api'
-import type { User } from '../types'
+import type { User, Workspace as WorkspaceInfo } from '../types'
+import { aplicarTema, tenant } from '../tenant'
 
 interface AuthState {
   user: User | null
@@ -8,6 +9,8 @@ interface AuthState {
   loading: boolean
   /** Convite com senha temporária: o acesso fica travado até a troca. */
   mustChangePassword: boolean
+  /** Identidade do ambiente (nome, cor, logo, setup) vinda da API. */
+  workspace: WorkspaceInfo | null
 }
 
 export const useAuthStore = defineStore('auth', {
@@ -15,7 +18,8 @@ export const useAuthStore = defineStore('auth', {
     user: null,
     permissions: {},
     loading: false,
-    mustChangePassword: false
+    mustChangePassword: false,
+    workspace: null
   }),
 
   getters: {
@@ -28,6 +32,11 @@ export const useAuthStore = defineStore('auth', {
         if (s.user?.role === 'admin') return true
         return s.permissions[permission] === true
       },
+    /** Nome da empresa para o shell (o do servidor até a API responder). */
+    workspaceName: (s) => s.workspace?.name || tenant.name,
+    workspaceLogo: (s) => s.workspace?.logo_url ?? tenant.logo_url,
+    /** O assistente ainda não foi concluído neste ambiente. */
+    setupPending: (s) => (s.workspace ? !s.workspace.setup_done : !tenant.setup_done),
     /** Atalho para telas de configuração em geral. */
     canManage(): boolean {
       return (
@@ -53,7 +62,9 @@ export const useAuthStore = defineStore('auth', {
         setToken(resp.token)
         this.user = resp.user
         this.mustChangePassword = resp.must_change_password === true
-        if (!this.mustChangePassword) await this.fetchPermissions()
+        if (!this.mustChangePassword) {
+          await Promise.all([this.fetchPermissions(), this.fetchWorkspace()])
+        }
       } finally {
         this.loading = false
       }
@@ -64,10 +75,22 @@ export const useAuthStore = defineStore('auth', {
       try {
         this.user = await api.get<User>('/me')
         this.mustChangePassword = this.user.must_change_password === true
-        if (!this.mustChangePassword) await this.fetchPermissions()
+        if (!this.mustChangePassword) {
+          await Promise.all([this.fetchPermissions(), this.fetchWorkspace()])
+        }
       } catch {
         this.user = null
         this.permissions = {}
+      }
+    },
+
+    /** Lê a identidade do ambiente e aplica a marca do cliente. */
+    async fetchWorkspace(): Promise<void> {
+      try {
+        this.workspace = await api.get<WorkspaceInfo>('/me/workspace')
+        aplicarTema(this.workspace.color, this.workspace.logo_url)
+      } catch {
+        /* fica com a identidade injetada no boot */
       }
     },
 
@@ -102,6 +125,7 @@ export const useAuthStore = defineStore('auth', {
       this.user = null
       this.permissions = {}
       this.mustChangePassword = false
+      this.workspace = null
     }
   }
 })

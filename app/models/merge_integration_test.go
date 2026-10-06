@@ -12,12 +12,12 @@ import (
 )
 
 // A mesclagem é SQL demais para sqlmock provar alguma coisa: este teste roda
-// contra um Postgres de verdade e só liga quando FIXCRM_TEST_DSN aponta para um
+// contra um Postgres de verdade e só liga quando CRMIA_TEST_DSN aponta para um
 // banco descartável. Sem a variável (CI, máquina de quem só roda unit) ele pula.
 //
 //	docker run -d --name crmia-merge-test -e POSTGRES_PASSWORD=postgres \
 //	  -e POSTGRES_DB=crmia_test -p 55433:5432 postgres:16-alpine
-//	FIXCRM_TEST_DSN="postgres://postgres:postgres@localhost:55433/crmia_test?sslmode=disable" go test ./models/
+//	CRMIA_TEST_DSN="postgres://postgres:postgres@localhost:55433/crmia_test?sslmode=disable" go test ./models/
 
 // integrationLockID identifica o lock consultivo compartilhado pelos testes de
 // integração dos dois pacotes, que dividem o mesmo banco.
@@ -25,9 +25,9 @@ const integrationLockID = 918273
 
 func testDB(t *testing.T) *sql.DB {
 	t.Helper()
-	dsn := os.Getenv("FIXCRM_TEST_DSN")
+	dsn := os.Getenv("CRMIA_TEST_DSN")
 	if dsn == "" {
-		t.Skip("FIXCRM_TEST_DSN não definido: pulando teste de integração")
+		t.Skip("CRMIA_TEST_DSN não definido: pulando teste de integração")
 	}
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {

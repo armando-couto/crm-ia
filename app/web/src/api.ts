@@ -1,4 +1,6 @@
-const TOKEN_KEY = 'crmia_token'
+import { apiBase, chaveLocal } from './tenant'
+
+const TOKEN_KEY = chaveLocal('token')
 
 export function getToken(): string | null {
   try {
@@ -55,7 +57,7 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     payload = JSON.stringify(body)
   }
 
-  const resp = await fetch(`/api/v1${path}`, { method, headers, body: payload })
+  const resp = await fetch(`${apiBase()}${path}`, { method, headers, body: payload })
 
   if (resp.status === 401) {
     setToken(null)

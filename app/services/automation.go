@@ -325,8 +325,11 @@ func runAction(db *sql.DB, action models.AutomationAction, subject Subject) erro
 // actionSendEmail manda o e-mail do modelo (ou do texto avulso) para o contato,
 // já com o rastreio de abertura e clique.
 func actionSendEmail(db *sql.DB, cfg actionConfig, subject Subject) error {
-	if Mail == nil {
+	if Remetente() == nil {
 		return fmt.Errorf("serviço de e-mail não configurado")
+	}
+	if err := EnvioAutomaticoPermitido(db, time.Now()); err != nil {
+		return err
 	}
 	if subject.ContactID == nil {
 		return fmt.Errorf("a ação de e-mail precisa de um contato")
@@ -370,9 +373,10 @@ func actionSendEmail(db *sql.DB, cfg actionConfig, subject Subject) error {
 	}
 
 	name := strings.TrimSpace(contact.FirstName + " " + contact.LastName)
-	if err := Mail.Send(contact.Email, name, subjectText, tracked); err != nil {
+	if err := Remetente().Send(contact.Email, name, subjectText, tracked); err != nil {
 		return err
 	}
+	RegistrarEnvio(time.Now())
 
 	return models.CreateActivity(db, &models.Activity{
 		Kind:      models.ActivityEmail,

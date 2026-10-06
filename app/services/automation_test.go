@@ -15,7 +15,7 @@ import (
 )
 
 // O motor de automações mexe em várias tabelas: testar contra Postgres de
-// verdade é o único jeito de provar que a sequência anda. Sem FIXCRM_TEST_DSN
+// verdade é o único jeito de provar que a sequência anda. Sem CRMIA_TEST_DSN
 // (banco descartável) os testes pulam.
 
 // integrationLockID é o mesmo lock usado pelos testes do pacote models: os dois
@@ -24,9 +24,9 @@ const integrationLockID = 918273
 
 func testDB(t *testing.T) *sql.DB {
 	t.Helper()
-	dsn := os.Getenv("FIXCRM_TEST_DSN")
+	dsn := os.Getenv("CRMIA_TEST_DSN")
 	if dsn == "" {
-		t.Skip("FIXCRM_TEST_DSN não definido: pulando teste de integração")
+		t.Skip("CRMIA_TEST_DSN não definido: pulando teste de integração")
 	}
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {

@@ -2,8 +2,9 @@ package middleware
 
 import (
 	"database/sql"
+	"encoding/json"
+	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/armando-couto/crm-ia/app/models"
@@ -18,27 +19,18 @@ const (
 	userKey   = "auth.user"
 )
 
-// Cache curto do usuário: mantém o papel e o status vindos do banco sem
-// consultar a cada requisição. Alterações de perfil valem em segundos, e o
+// Cache curto do usuário no store do ambiente (Redis em produção): mantém o
+// papel e o status vindos do banco sem consultar a cada requisição e vale para
+// todas as réplicas da API. Alterações de perfil valem em segundos, e o
 // controller invalida a entrada quando edita o usuário.
 const userCacheTTL = 30 * time.Second
 
-type cachedUser struct {
-	user     *models.User
-	loadedAt time.Time
-}
-
-var (
-	userMu    sync.RWMutex
-	userCache = map[int64]cachedUser{}
-)
+func chaveUsuario(id int64) string { return "usuario:" + strconv.FormatInt(id, 10) }
 
 // InvalidateUser derruba o cache de um usuário (efeito imediato ao mudar
 // perfil, desativar ou alterar a senha).
 func InvalidateUser(userID int64) {
-	userMu.Lock()
-	delete(userCache, userID)
-	userMu.Unlock()
+	utils.Cache.Del(chaveUsuario(userID))
 }
 
 // CacheUser guarda um usuário já lido do banco. O login usa isso para evitar
@@ -47,29 +39,36 @@ func CacheUser(u *models.User) {
 	if u == nil {
 		return
 	}
-	copied := *u
-	userMu.Lock()
-	userCache[u.ID] = cachedUser{user: &copied, loadedAt: time.Now()}
-	userMu.Unlock()
+	b, err := json.Marshal(cachedUser{User: u, PasswordHash: u.PasswordHash, PasswordChangedAt: u.PasswordChangedAt})
+	if err != nil {
+		return
+	}
+	utils.Cache.Set(chaveUsuario(u.ID), string(b), userCacheTTL)
+}
+
+// cachedUser leva junto o que o JSON do usuário omite (hash e data da senha):
+// o middleware precisa deles para cortar sessões antigas.
+type cachedUser struct {
+	*models.User
+	PasswordHash      string    `json:"password_hash"`
+	PasswordChangedAt time.Time `json:"password_changed_at"`
 }
 
 // ResetUserCache limpa o cache inteiro (usado nos testes).
 func ResetUserCache() {
-	userMu.Lock()
-	userCache = map[int64]cachedUser{}
-	userMu.Unlock()
+	utils.Cache.DelPrefixo("usuario:")
 }
 
 func loadUser(id int64) (*models.User, error) {
-	userMu.RLock()
-	entry, ok := userCache[id]
-	userMu.RUnlock()
-	if ok && time.Since(entry.loadedAt) < userCacheTTL {
-		// Cópia por requisição: o handler não altera o registro em cache.
-		copied := *entry.user
-		return &copied, nil
+	if raw, ok := utils.Cache.Get(chaveUsuario(id)); ok {
+		var c cachedUser
+		if err := json.Unmarshal([]byte(raw), &c); err == nil && c.User != nil {
+			u := *c.User
+			u.PasswordHash = c.PasswordHash
+			u.PasswordChangedAt = c.PasswordChangedAt
+			return &u, nil
+		}
 	}
-
 	user, err := models.UserByID(utils.DB, id)
 	if err != nil {
 		return nil, err

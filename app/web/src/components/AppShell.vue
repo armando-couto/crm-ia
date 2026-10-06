@@ -16,10 +16,18 @@ function logout() {
 <template>
   <div class="shell">
     <aside class="sidebar">
-      <div class="brand">
-        <span class="brand-mark">F</span>
-        <span class="brand-name">CRM IA</span>
-      </div>
+      <router-link to="/" class="brand" :title="auth.workspaceName">
+        <span class="brand-mark">
+          <img v-if="auth.workspaceLogo" :src="auth.workspaceLogo" alt="" />
+          <template v-else>{{ initials(auth.workspaceName).charAt(0) }}</template>
+        </span>
+        <span class="brand-name">{{ auth.workspaceName }}</span>
+      </router-link>
+
+      <router-link v-if="auth.setupPending && auth.can('settings.users')" to="/configurar" class="setup-link">
+        <strong>Configuração pendente</strong>
+        <small>termine o assistente inicial</small>
+      </router-link>
 
       <nav>
         <router-link v-if="auth.can('dashboard.view')" to="/" exact-active-class="active">
@@ -166,6 +174,36 @@ function logout() {
   display: flex;
   align-items: center;
   justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+}
+
+.brand-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.setup-link {
+  display: flex;
+  flex-direction: column;
+  margin: 0 10px 8px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(var(--ci-purple-rgb), 0.25);
+  color: #fff;
+  font-size: 13px;
+}
+
+.setup-link small {
+  color: #cbb8e6;
 }
 
 .brand-name {

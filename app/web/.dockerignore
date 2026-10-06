@@ -1,0 +1,11 @@
+.git
+.github
+web/node_modules
+web/dist
+*.md
+.env
+.env.production
+*.log
+.DS_Store
+.idea
+.vscode

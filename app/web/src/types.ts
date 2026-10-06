@@ -829,3 +829,120 @@ export interface CustomProperty {
   created_at: string
   updated_at: string
 }
+
+// ===== Ambiente, setup e preferências da empresa =====
+
+export interface Workspace {
+  slug: string
+  name: string
+  color: string
+  logo_url: string
+  version: string
+  base_path: string
+  app_url: string
+  plan_enabled: boolean
+  setup_done: boolean
+}
+
+export interface WorkspaceSettings {
+  name: string
+  segment: string
+  color: string
+  logo_url: string
+  website: string
+  timezone: string
+}
+
+export type EmailProvider = 'plataforma' | 'mandrill_api' | 'mandrill_smtp' | 'maileroo_smtp' | 'smtp'
+
+export interface EmailSettings {
+  provider: EmailProvider
+  from_email: string
+  from_name: string
+  reply_to: string
+  smtp_host?: string
+  smtp_port?: number
+  smtp_user?: string
+  has_secret: boolean
+  tested_at?: string | null
+  test_result?: string
+}
+
+export interface EmailPreset {
+  nome: string
+  host: string
+  port: number
+  dica: string
+}
+
+export interface SendingSettings {
+  daily_limit: number
+  window_start: number
+  window_end: number
+  weekdays_only: boolean
+  paused: boolean
+  signature: string
+  track_opens: boolean
+  track_clicks: boolean
+  timezone: string
+}
+
+export interface SendingSummary {
+  enviados_hoje: number
+  teto: number
+  dentro_da_janela: boolean
+  provedor: string
+}
+
+export interface CRMTemplate {
+  codigo: string
+  nome: string
+  descricao: string
+  icone: string
+  segmentos: string[]
+  destaques: string[]
+  pipelines: number
+  etapas: number
+  emails: number
+  cadencias: number
+  campos: number
+}
+
+export interface SetupStatus {
+  completed: boolean
+  template: string
+  steps: string[]
+  workspace: WorkspaceSettings
+  email: EmailSettings | null
+  sending: SendingSettings
+  users_active: number
+  users_max: number
+  tenant: Workspace
+}
+
+export interface PlanInvoice {
+  id: number
+  competencia: string
+  vencimento: string
+  valor_centavos: number
+  status: string
+  pago_em?: string | null
+}
+
+export interface PlanOffer {
+  id: number
+  nome: string
+  descricao: string
+  faixa: string
+  valor_centavos: number
+  recursos: string[]
+  atual: boolean
+}
+
+export interface MyPlan {
+  plano: { nome: string; valor_centavos: number; usuarios_max: number; periodicidade: string; fim: string } | null
+  planos: PlanOffer[]
+  solicitacao: { tipo: string; plano_nome?: string; status: string; resposta?: string; criado_em: string } | null
+  faturas: PlanInvoice[]
+  pagamento: { status: string; link: string; cartao_final?: string; bandeira?: string } | null
+}

@@ -2,12 +2,21 @@
 <html lang="pt-BR">
   <head>
     <meta charset="UTF-8" />
+    <!-- Preenchido pela API ao servir a página: cada cliente vive em /<slug>/. -->
+    <base href="__TENANT_BASE__" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CRM IA</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%239B52DF'/%3E%3Ctext x='16' y='22' font-family='Arial' font-size='16' font-weight='bold' fill='white' text-anchor='middle'%3EF%3C/text%3E%3C/svg%3E" />
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="theme-color" content="__TEMA_COR_PRIMARIA__" />
+    <title>__TENANT_NOME__ · CRM</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+    <script>
+      // Identidade do ambiente, injetada pela API (routes/spa.go). Em `npm run
+      // dev` o plugin do Vite preenche com um tenant de desenvolvimento.
+      window.__TENANT__ = __TENANT_JSON__
+    </script>
   </head>
   <body>
     <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
+    <script type="module" src="./src/main.ts"></script>
   </body>
 </html>

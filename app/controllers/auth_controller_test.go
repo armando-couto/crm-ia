@@ -78,7 +78,7 @@ func TestLoginSuccess(t *testing.T) {
 		WillReturnRows(userRow(1, "ana@exemplo.com.br", hash, models.RoleAdmin, true))
 
 	resp := e.POST("/api/v1/auth/login").
-		WithJSON(map[string]string{"email": "Ana@FixPay.com.br", "password": "minha-senha"}).
+		WithJSON(map[string]string{"email": "Ana@exemplo.com.br", "password": "minha-senha"}).
 		Expect().Status(iris.StatusOK).JSON().Object()
 
 	resp.Value("token").String().NotEmpty()

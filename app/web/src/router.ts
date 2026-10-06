@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { getToken } from './api'
 import { useAuthStore } from './stores/auth'
+import { basePath } from './tenant'
 
 const routes = [
   { path: '/login', name: 'login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
@@ -23,6 +24,12 @@ const routes = [
     name: 'public-form',
     component: () => import('./views/PublicFormView.vue'),
     meta: { public: true }
+  },
+  {
+    path: '/configurar',
+    name: 'setup',
+    component: () => import('./views/SetupWizardView.vue'),
+    meta: { permission: 'settings.users', setup: true }
   },
   {
     path: '/',
@@ -223,6 +230,30 @@ const routes = [
       { path: 'perfil', name: 'profile', component: () => import('./views/ProfileView.vue') },
       { path: 'notificacoes', name: 'notifications', component: () => import('./views/NotificationsView.vue') },
       {
+        path: 'empresa',
+        name: 'settings-company',
+        component: () => import('./views/SettingsCompanyView.vue'),
+        meta: { permission: 'settings.users' }
+      },
+      {
+        path: 'email',
+        name: 'settings-email',
+        component: () => import('./views/SettingsEmailView.vue'),
+        meta: { permission: 'settings.users' }
+      },
+      {
+        path: 'disparo',
+        name: 'settings-sending',
+        component: () => import('./views/SettingsSendingView.vue'),
+        meta: { permission: 'settings.users' }
+      },
+      {
+        path: 'plano',
+        name: 'settings-plan',
+        component: () => import('./views/SettingsPlanView.vue'),
+        meta: { permission: 'settings.users' }
+      },
+      {
         path: 'usuarios',
         name: 'settings-users',
         component: () => import('./views/SettingsUsersView.vue'),
@@ -271,7 +302,7 @@ const routes = [
 ]
 
 export const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHistory(basePath()),
   routes
 })
 
@@ -299,5 +330,11 @@ router.beforeEach(async (to) => {
   const permission = to.meta.permission as string | undefined
   if (permission && !auth.can(permission)) {
     return { name: 'profile' }
+  }
+
+  // Primeiro acesso do administrador: o assistente de configuração vem antes
+  // de qualquer tela. Quem não administra usa o CRM normalmente.
+  if (auth.setupPending && auth.can('settings.users') && !to.meta.setup) {
+    return { name: 'setup' }
   }
 })

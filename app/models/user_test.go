@@ -9,9 +9,9 @@ import (
 
 func TestNormalizeEmail(t *testing.T) {
 	cases := map[string]string{
-		"  Joao@FixPay.com.br ": "joao@exemplo.com.br",
-		"ANA@TESTE.COM":         "ana@teste.com",
-		"":                      "",
+		"  Joao@exemplo.com.br ": "joao@exemplo.com.br",
+		"ANA@TESTE.COM":          "ana@teste.com",
+		"":                       "",
 	}
 	for in, want := range cases {
 		if got := NormalizeEmail(in); got != want {
@@ -53,7 +53,7 @@ func TestUserByEmail(t *testing.T) {
 		WillReturnRows(userRows())
 
 	// E-mail com maiúsculas deve ser normalizado antes da consulta.
-	u, err := UserByEmail(db, "  ANA@FixPay.com.br ")
+	u, err := UserByEmail(db, "  ANA@exemplo.com.br ")
 	if err != nil {
 		t.Fatalf("erro inesperado: %v", err)
 	}
@@ -77,7 +77,7 @@ func TestCreateUser(t *testing.T) {
 		WithArgs("Ana", "ana@exemplo.com.br", "hash", RoleSeller, true, nil, false, nil).
 		WillReturnRows(sqlmock.NewRows([]string{"id", "created_at", "updated_at"}).AddRow(7, now, now))
 
-	u := &User{Name: "Ana", Email: "Ana@FixPay.com.br", PasswordHash: "hash", Role: RoleSeller, Active: true}
+	u := &User{Name: "Ana", Email: "Ana@exemplo.com.br", PasswordHash: "hash", Role: RoleSeller, Active: true}
 	if err := CreateUser(db, u); err != nil {
 		t.Fatalf("erro inesperado: %v", err)
 	}

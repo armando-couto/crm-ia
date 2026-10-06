@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/armando-couto/crm-ia/app/models"
 	"github.com/armando-couto/crm-ia/app/services"
@@ -149,9 +150,10 @@ func SendEmail(ctx iris.Context) {
 	}
 
 	if err := services.Mail.Send(contact.Email, name, req.Subject, tracked); err != nil {
-		serverError(ctx, fmt.Errorf("falha no envio via Mandrill: %w", err))
+		serverError(ctx, fmt.Errorf("falha no envio do e-mail: %w", err))
 		return
 	}
+	services.RegistrarEnvio(time.Now())
 
 	meta, _ := json.Marshal(iris.Map{
 		"to": contact.Email, "subject": req.Subject, "email_message_id": msg.ID,

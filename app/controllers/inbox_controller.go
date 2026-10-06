@@ -7,7 +7,6 @@ import (
 	"github.com/armando-couto/crm-ia/app/services"
 	"github.com/armando-couto/crm-ia/app/utils"
 
-	"github.com/armando-couto/goutils"
 	"github.com/kataras/iris/v12"
 )
 
@@ -143,7 +142,7 @@ func ReplyConversation(ctx iris.Context) {
 	msg := &models.ConversationMessage{
 		ConversationID: conv.ID,
 		Direction:      "enviada",
-		FromEmail:      models.NormalizeEmail(goutils.Godotenv("from")),
+		FromEmail:      models.NormalizeEmail(remetenteAtual()),
 		ToEmail:        conv.PeerEmail,
 		Subject:        subject,
 		Body:           req.Body,
@@ -228,4 +227,13 @@ func verifyMandrillRequest(ctx iris.Context) error {
 
 	return services.VerifyMandrillSignature(
 		ctx.GetHeader("X-Mandrill-Signature"), utils.MandrillWebhookURL, params)
+}
+
+// remetenteAtual é o "de" das respostas da caixa de entrada: o configurado
+// pelo cliente ou, na falta, o padrão do ambiente.
+func remetenteAtual() string {
+	if e := models.LoadEmailSettings(utils.DB); e != nil && e.FromEmail != "" {
+		return e.FromEmail
+	}
+	return utils.Cfg.FromEmail
 }

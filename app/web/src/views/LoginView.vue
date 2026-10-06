@@ -2,6 +2,7 @@
 import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { tenant } from '../tenant'
 
 const route = useRoute()
 const router = useRouter()
@@ -30,17 +31,20 @@ async function submit() {
   <div class="login-page">
     <div class="panel">
       <div class="brand">
-        <span class="brand-mark">F</span>
+        <span class="brand-mark">
+          <img v-if="tenant.logo_url" :src="tenant.logo_url" alt="" />
+          <template v-else>{{ tenant.name.charAt(0) }}</template>
+        </span>
         <div>
-          <h1>CRM IA</h1>
-          <p class="muted">Seu CRM, do seu jeito</p>
+          <h1>{{ tenant.name }}</h1>
+          <p class="muted">Entre no CRM da sua equipe</p>
         </div>
       </div>
 
       <form @submit.prevent="submit">
         <div class="field">
           <label for="email">E-mail</label>
-          <input id="email" v-model="email" type="email" autocomplete="username" required placeholder="voce@exemplo.com.br" />
+          <input id="email" v-model="email" type="email" autocomplete="username" required placeholder="voce@suaempresa.com.br" />
         </div>
         <div class="field">
           <label for="password">Senha</label>
@@ -120,5 +124,12 @@ h1 {
   text-align: center;
   margin-top: 16px;
   font-size: 13px;
+}
+.brand-mark img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: #fff;
+  border-radius: inherit;
 }
 </style>

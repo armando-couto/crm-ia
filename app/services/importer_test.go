@@ -68,10 +68,10 @@ func TestRunImportContatos(t *testing.T) {
 
 	headers := []string{"Nome", "Sobrenome", "E-mail", "Telefone", "Empresa"}
 	rows := [][]string{
-		{"Ana Paula", "", "ana@ex.com.br", "", "Padaria Doce"},   // atualiza + associa
+		{"Ana Paula", "", "ana@ex.com.br", "", "Padaria Doce"},     // atualiza + associa
 		{"Bruno", "Souza", "bruno@ex.com.br", "11 92222-2222", ""}, // cria
 		{"Sem", "Email", "", "11 93333-3333", ""},                  // erro
-		{"", "", "", "", ""},                                       // linha vazia: ignorada
+		{"", "", "", "", ""}, // linha vazia: ignorada
 	}
 
 	record, err := services.RunImport(db, "contatos", "Carga 458 Sim.xlsx", headers, rows, nil)

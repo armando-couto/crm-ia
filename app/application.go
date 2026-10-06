@@ -1,8 +1,17 @@
+// CRM IA — aplicação do ambiente de um cliente.
+//
+// Uma imagem, muitos clientes: cada empresa roda a sua cópia desta aplicação,
+// com PostgreSQL e Redis próprios, em https://<dominio>/<slug>. A identidade do
+// ambiente (slug, nome, tema, segredos, licença) chega por variáveis de
+// ambiente, injetadas pelo provisionador da plataforma.
 package main
 
 import (
 	"flag"
+	"fmt"
 	"log"
+	"net/http"
+	"os"
 	"time"
 
 	"github.com/armando-couto/crm-ia/app/migrations"
@@ -11,78 +20,97 @@ import (
 	"github.com/armando-couto/crm-ia/app/services"
 	"github.com/armando-couto/crm-ia/app/utils"
 
-	"github.com/armando-couto/goutils"
 	"github.com/kataras/iris/v12"
 	_ "github.com/lib/pq"
 )
 
+// versaoBuild é injetada no build (-ldflags "-X main.versaoBuild=1.2.0").
+var versaoBuild = "dev"
+
 func main() {
-	//-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_ Configuração inicial Iris/APP -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
-	app := iris.Default()
-	app.Use(iris.Compression)
-	app.SetRoutesNoLog(true)
+	resetAdmin := flag.Bool("reset-admin", false, "redefine a senha do administrador com ADMIN_EMAIL/ADMIN_SENHA e sai")
+	healthcheck := flag.Bool("healthcheck", false, "consulta /health e sai (usado pelo Docker)")
+	flag.Parse()
 
 	utils.LoadConfig()
-	if utils.JWTSecret == "" {
-		log.Fatal("Chave jwt_secret não encontrada!")
+	if utils.Cfg.Versao == "dev" && versaoBuild != "dev" {
+		utils.Cfg.Versao = versaoBuild
 	}
 
-	////////////////////////////////////////////////////////////////////////
-	// Banco de dados
-	utils.DB = goutils.ConnectionBDPostgreSQL("CRMIA", "disable", false)
-	utils.DB.SetMaxOpenConns(40)
-	utils.DB.SetMaxIdleConns(20)
-	utils.DB.SetConnMaxLifetime(5 * time.Minute)
+	if *healthcheck {
+		os.Exit(checarSaude())
+	}
+	if utils.JWTSecret == "" {
+		log.Fatal("JWT_SECRET não configurado")
+	}
 
+	//-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_ Banco de dados -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+	db, err := utils.ConectarBanco(utils.Cfg.DSN())
+	if err != nil {
+		log.Fatalf("Banco de dados: %v", err)
+	}
+	utils.DB = db
 	if err := migrations.Run(utils.DB); err != nil {
 		log.Fatalf("Erro ao aplicar migrations: %v", err)
 	}
 
-	// Comando de manutenção: ./crm-ia -reset-admin redefine a senha do
-	// administrador com admin_email/admin_password do .env e encerra.
-	resetAdmin := flag.Bool("reset-admin", false, "redefine a senha do administrador com admin_email/admin_password do .env e sai")
-	flag.Parse()
 	if *resetAdmin {
 		if err := services.ResetAdmin(utils.DB); err != nil {
 			log.Fatalf("Erro ao redefinir o administrador: %v", err)
 		}
 		return
 	}
-
 	if err := services.SeedAdmin(utils.DB); err != nil {
 		log.Fatalf("Erro ao criar administrador inicial: %v", err)
 	}
 	if _, err := models.LoadPermissions(utils.DB); err != nil {
 		log.Fatalf("Erro ao carregar as permissões dos perfis: %v", err)
 	}
-	////////////////////////////////////////////////////////////////////////
 
-	////////////////////////////////////////////////////////////////////////
-	// E-mail (Mandrill) — opcional em desenvolvimento
-	mailer, err := services.NewMandrillMailer()
-	if err != nil {
+	//-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_ Redis (cache) -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+	if utils.Cfg.RedisURL != "" {
+		if err := utils.ConectarRedis(utils.Cfg.RedisURL); err != nil {
+			log.Printf("Aviso: Redis indisponível (%v); seguindo com cache em memória", err)
+		} else {
+			log.Printf("Redis conectado (cache do ambiente)")
+		}
+	}
+
+	//-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_ E-mail -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+	if descricao, err := services.ConfigurarRemetente(models.LoadEmailSettings(utils.DB)); err != nil {
 		log.Printf("Aviso: envio de e-mails desabilitado (%v)", err)
 	} else {
-		services.Mail = mailer
+		log.Printf("E-mail: %s", descricao)
 	}
-	////////////////////////////////////////////////////////////////////////
 
 	// Automações: retoma as sequências em espera e varre os gatilhos por tempo.
 	services.StartAutomationWorker(utils.DB)
 
-	//-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_ Rotas -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+	//-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_ HTTP -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
+	app := iris.New()
+	app.Use(iris.Compression)
+	app.SetRoutesNoLog(true)
 	routes.Register(app)
 
-	// Porta padrão: 9000 em produção (Swarm/stack mapeiam 9000) e 6998 em
-	// desenvolvimento; port_server no .env sempre tem prioridade.
-	port := goutils.Godotenv("port_server")
-	if port == "" {
-		if goutils.Godotenv("env") == "production" {
-			port = "9000"
-		} else {
-			port = "6998"
-		}
+	log.Printf("CRM IA %s · ambiente %q em %s (porta %s)", utils.Cfg.Versao, utils.Cfg.TenantSlug, utils.Cfg.AppURL, utils.Cfg.Porta)
+	app.Listen(":"+utils.Cfg.Porta,
+		iris.WithPostMaxMemory(models.MaxAttachmentBytes+(1<<20)),
+		iris.WithoutStartupLog,
+	)
+}
+
+// checarSaude é o healthcheck do container: 0 se a API responde.
+func checarSaude() int {
+	cli := &http.Client{Timeout: 4 * time.Second}
+	resp, err := cli.Get(fmt.Sprintf("http://127.0.0.1:%s/health", utils.Cfg.Porta))
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		return 1
 	}
-	// PostMaxMemory cobre o upload de anexos (limite por arquivo em models).
-	app.Listen(":"+port, iris.WithPostMaxMemory(models.MaxAttachmentBytes+(1<<20)))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		fmt.Fprintln(os.Stderr, "status", resp.StatusCode)
+		return 1
+	}
+	return 0
 }

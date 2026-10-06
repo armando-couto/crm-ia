@@ -1,9 +1,12 @@
 /* ===== Design tokens CRM IA ===== */
 :root {
-  --ci-purple: #9b52df;
-  --ci-purple-dark: #7c3aae;
-  --ci-purple-deep: #2e1a47;
-  --ci-purple-tint: #f2e8fa;
+  /* A cor primária é a do cliente (aplicarTema, em tenant.ts) — estes são os
+     valores de partida do CRM IA. */
+  --ci-purple: #6d5df6;
+  --ci-purple-dark: #4b3fd1;
+  --ci-purple-deep: #1e1b4b;
+  --ci-purple-tint: #efedfe;
+  --ci-purple-rgb: 109, 93, 246;
   --ci-bg: #f7f5fa;
   --ci-surface: #ffffff;
   --ci-text: #222222;

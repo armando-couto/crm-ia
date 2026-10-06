@@ -1,11 +1,10 @@
 package routes
 
 import (
-	"strings"
-
 	"github.com/armando-couto/crm-ia/app/controllers"
 	"github.com/armando-couto/crm-ia/app/middleware"
 	"github.com/armando-couto/crm-ia/app/models"
+	"github.com/armando-couto/crm-ia/app/utils"
 
 	"github.com/kataras/iris/v12"
 )
@@ -261,6 +260,34 @@ func Register(app *iris.Application) {
 	auth.Get("/emails/stats", can(models.PermEmailSend), controllers.EmailStatsHandler)
 	auth.Get("/emails/sent/{id:int64}", can(models.PermEmailSend), controllers.GetEmailMessage)
 
+	// Identidade do ambiente, assistente de configuração e preferências da
+	// empresa (e-mail, disparo). Leitura para qualquer usuário logado; escrita
+	// só para quem administra usuários (perfil admin por padrão).
+	auth.Get("/me/workspace", controllers.Workspace)
+	auth.Get("/setup", controllers.SetupStatus)
+	auth.Get("/setup/templates", controllers.SetupTemplates)
+	auth.Get("/setup/templates/{codigo:string}", controllers.SetupTemplateDetail)
+	auth.Post("/setup/template", can(models.PermSettingsUsers), controllers.SetupApplyTemplate)
+	auth.Post("/setup/step", can(models.PermSettingsUsers), controllers.SetupStep)
+	auth.Post("/setup/complete", can(models.PermSettingsUsers), controllers.SetupComplete)
+	auth.Get("/settings/workspace", controllers.GetWorkspaceSettings)
+	auth.Put("/settings/workspace", can(models.PermSettingsUsers), controllers.UpdateWorkspaceSettings)
+	auth.Get("/settings/email", can(models.PermSettingsUsers), controllers.GetEmailSettings)
+	auth.Put("/settings/email", can(models.PermSettingsUsers), controllers.UpdateEmailSettings)
+	auth.Post("/settings/email/test", can(models.PermSettingsUsers), controllers.TestEmailSettings)
+	auth.Get("/settings/sending", controllers.GetSendingSettings)
+	auth.Put("/settings/sending", can(models.PermSettingsUsers), controllers.UpdateSendingSettings)
+
+	// Meu plano: licença, faturas e forma de pagamento (repassado ao painel).
+	auth.Get("/plano", can(models.PermSettingsUsers), controllers.MeuPlano)
+	auth.Post("/plano/solicitacoes", can(models.PermSettingsUsers), controllers.SolicitarPlano)
+
+	// Rotas internas da plataforma (TOKEN_INTERNO; sem rota pública no Traefik).
+	interno := app.Party("/api/interno", controllers.RequireInternalToken)
+	interno.Get("/uso", controllers.InternoUso)
+	interno.Get("/desempenho", controllers.InternoDesempenho)
+	interno.Post("/admin/senha", controllers.InternoRedefinirSenhaAdmin)
+
 	// Formulários públicos: consumidos pelo site do cliente (sem sessão).
 	app.Get("/api/public/forms/{slug:string}", controllers.GetPublicForm)
 	app.Post("/api/public/forms/{slug:string}", controllers.SubmitPublicFormHandler)
@@ -280,26 +307,8 @@ func Register(app *iris.Application) {
 
 	// Healthcheck para o orquestrador.
 	app.Get("/health", func(ctx iris.Context) {
-		ctx.JSON(iris.Map{"status": "ok"})
+		ctx.JSON(iris.Map{"status": "ok", "versao": utils.Cfg.Versao, "ambiente": utils.Cfg.TenantSlug})
 	})
 
 	registerSPA(app)
-}
-
-// registerSPA serve o build do Vue (web/dist) com fallback para o index.html
-// (SPA: rotas do front resolvidas no cliente). A compressão fica por conta do
-// middleware global (iris.Compression); Compress aqui causaria dupla codificação.
-func registerSPA(app *iris.Application) {
-	app.HandleDir("/", iris.Dir("./web/dist"), iris.DirOptions{
-		IndexName: "index.html",
-		SPA:       true,
-	})
-
-	app.OnErrorCode(iris.StatusNotFound, func(ctx iris.Context) {
-		if strings.HasPrefix(ctx.Path(), "/api/") {
-			ctx.JSON(iris.Map{"error": "rota não encontrada"})
-			return
-		}
-		ctx.WriteString("página não encontrada")
-	})
 }

@@ -266,3 +266,127 @@ describe('DealsBoardView - drawer Criar Negócio', () => {
     wrapper.unmount()
   })
 })
+
+describe('DealsBoardView - envelhecimento na etapa e filtro "Em risco"', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    localStorage.removeItem('crmia_deals_view')
+    const auth = useAuthStore()
+    auth.user = { id: 1, name: 'Admin', email: 'a@b.c', role: 'admin', active: true, created_at: '', updated_at: '' } as any
+  })
+
+  const base = {
+    currency: 'BRL',
+    pipeline_id: 1,
+    stage_id: 2,
+    stage_name: 'Negociação',
+    contact_id: null,
+    company_id: null,
+    owner_id: 1,
+    owner_name: 'Luiz Rocha',
+    status: 'aberto',
+    temperature: '',
+    close_date: null,
+    position: 0,
+    closed_at: null,
+    last_activity_at: new Date().toISOString(),
+    created_at: '',
+    updated_at: ''
+  }
+
+  const agingDeals = [
+    // 19 dias com prazo 10: estagnado (vermelho + borda + ⚠)
+    { ...base, id: 1, name: 'Estagnado SA', amount: 30000, dias_na_etapa: 19, prazo_dias: 10, dias_sem_atividade: 2 },
+    // 8 dias de 10 (80% do prazo): âmbar; e sem atividade há 9 dias → em risco
+    { ...base, id: 2, name: 'Quase Lá Ltda', amount: 20000, dias_na_etapa: 8, prazo_dias: 10, dias_sem_atividade: 9 },
+    // 2 dias de 10: cinza, saudável
+    { ...base, id: 3, name: 'Fresquinho ME', amount: 10000, dias_na_etapa: 2, prazo_dias: 10, dias_sem_atividade: 0 },
+    // sem prazo configurado: usa o padrão de 14 dias → 3 d é normal
+    { ...base, id: 4, name: 'Sem Prazo EPP', amount: 5000, dias_na_etapa: 3, prazo_dias: null, dias_sem_atividade: 1 }
+  ]
+
+  function stubFetchAging() {
+    return vi.fn().mockImplementation((url: string) => {
+      const u = String(url)
+      let body: unknown = []
+      if (u.includes('/pipelines')) {
+        body = pipelines
+      } else if (u.includes('/deals/board')) {
+        body = { data: agingDeals }
+      } else if (u.includes('/contacts?') || u.includes('/companies?')) {
+        body = { data: [], pagination: { page: 1, per_page: 100, total: 0 } }
+      }
+      return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body)) })
+    })
+  }
+
+  it('card mostra o selo "X d" cinza, âmbar a 70% do prazo e vermelho com borda ao ultrapassar', async () => {
+    vi.stubGlobal('fetch', stubFetchAging())
+    const wrapper = mount(DealsBoardView, {
+      global: { stubs: { 'router-link': { template: '<a><slot /></a>' }, Teleport: true } }
+    })
+    await flushPromises()
+
+    const cards = wrapper.findAll('.deal-card')
+    const porNome = (nome: string) => cards.find((c) => c.text().includes(nome))!
+
+    const estagnado = porNome('Estagnado SA')
+    expect(estagnado.classes()).toContain('atrasado')
+    expect(estagnado.find('.aging').classes()).toContain('vencido')
+    expect(estagnado.find('.aging').text()).toContain('⚠')
+    expect(estagnado.find('.aging').text()).toContain('19 d')
+
+    const quase = porNome('Quase Lá Ltda')
+    expect(quase.classes()).not.toContain('atrasado')
+    expect(quase.find('.aging').classes()).toContain('atencao')
+    expect(quase.find('.aging').text()).toBe('8 d')
+
+    const fresco = porNome('Fresquinho ME')
+    expect(fresco.find('.aging').classes()).toContain('normal')
+    expect(fresco.find('.aging').classes()).not.toContain('atencao')
+
+    const semPrazo = porNome('Sem Prazo EPP')
+    expect(semPrazo.find('.aging').classes()).toContain('normal')
+    wrapper.unmount()
+  })
+
+  it('cabeçalho da coluna mostra qtd · total · ponderado e o contador de estagnados', async () => {
+    vi.stubGlobal('fetch', stubFetchAging())
+    const wrapper = mount(DealsBoardView, {
+      global: { stubs: { 'router-link': { template: '<a><slot /></a>' }, Teleport: true } }
+    })
+    await flushPromises()
+
+    const negociacao = wrapper.findAll('.column').find((c) => c.text().includes('Negociação'))!
+    expect(negociacao.find('.stage-count').text()).toBe('4')
+    expect(negociacao.find('.stage-stagnant').text()).toContain('1 estagnado(s)')
+    const totais = negociacao.find('.stage-totals').text().replace(/\u00a0/g, ' ').replace(/\s+/g, ' ')
+    expect(totais).toContain('4 · R$ 65 mil · R$ 52 mil pond.')
+
+    // Coluna sem estagnados não mostra o contador.
+    const lead = wrapper.findAll('.column').find((c) => c.text().includes('Novo Lead'))!
+    expect(lead.find('.stage-stagnant').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('filtro rápido "Em risco" deixa só estagnados, sem atividade há mais de 7 dias ou vencidos', async () => {
+    vi.stubGlobal('fetch', stubFetchAging())
+    const wrapper = mount(DealsBoardView, {
+      global: { stubs: { 'router-link': { template: '<a><slot /></a>' }, Teleport: true } }
+    })
+    await flushPromises()
+
+    expect(wrapper.findAll('.deal-card')).toHaveLength(4)
+
+    await wrapper.find('.risk-btn').trigger('click')
+    expect(wrapper.find('.risk-btn').classes()).toContain('on')
+
+    const nomes = wrapper.findAll('.deal-card').map((c) => c.find('strong').text())
+    expect(nomes).toEqual(['Estagnado SA', 'Quase Lá Ltda'])
+    expect(wrapper.findAll('.column').find((c) => c.text().includes('Negociação'))!.find('.stage-count').text()).toBe('2')
+
+    await wrapper.find('.risk-btn').trigger('click')
+    expect(wrapper.findAll('.deal-card')).toHaveLength(4)
+    wrapper.unmount()
+  })
+})

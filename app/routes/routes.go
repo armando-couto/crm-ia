@@ -62,6 +62,19 @@ func Register(app *iris.Application) {
 	auth.Put("/companies/{id:int64}", can(models.PermCompaniesEdit), controllers.UpdateCompany)
 	auth.Delete("/companies/{id:int64}", can(models.PermCompaniesDelete), controllers.DeleteCompany)
 
+	// Inteligência de empresas: consulta pública de CNPJ e enriquecimento
+	// por Receita Federal, BigDataCorp e Serasa (docs/FUNIL-E-INTELIGENCIA.md).
+	auth.Get("/cnpj/{cnpj:string}", can(models.PermCompaniesEdit), controllers.LookupCNPJ)
+	auth.Get("/companies/{id:int64}/intel", can(models.PermCompaniesView), controllers.CompanyIntel)
+	auth.Delete("/companies/{id:int64}/intel", can(models.PermCompaniesEnrich), controllers.DeleteCompanyIntel)
+	auth.Post("/companies/{id:int64}/enrich/preview", can(models.PermCompaniesEnrich), controllers.EnrichPreview)
+	auth.Post("/companies/{id:int64}/enrich/apply", can(models.PermCompaniesEnrich), controllers.EnrichApply)
+	auth.Post("/companies/enrich/bulk", can(models.PermCompaniesEnrich), controllers.EnrichBulk)
+	auth.Get("/settings/enrichment", can(models.PermSettingsIntegrations), controllers.GetEnrichmentSettings)
+	auth.Put("/settings/enrichment", can(models.PermSettingsIntegrations), controllers.UpdateEnrichmentSettings)
+	auth.Post("/settings/enrichment/test", can(models.PermSettingsIntegrations), controllers.TestEnrichmentProvider)
+	auth.Get("/settings/enrichment/usage", can(models.PermSettingsIntegrations), controllers.EnrichmentUsage)
+
 	auth.Get("/pipelines", controllers.ListPipelines)
 	pipelines := auth.Party("", can(models.PermSettingsPipelines))
 	pipelines.Post("/pipelines", controllers.CreatePipeline)
@@ -82,6 +95,9 @@ func Register(app *iris.Application) {
 	auth.Patch("/deals/{id:int64}/close", can(models.PermDealsEdit), controllers.CloseDealHandler)
 	auth.Patch("/deals/{id:int64}/forecast", can(models.PermDealsEdit), controllers.SetDealForecastCategory)
 	auth.Delete("/deals/{id:int64}", can(models.PermDealsDelete), controllers.DeleteDeal)
+
+	// Funil visual para reuniões de pipeline (docs/FUNIL-E-INTELIGENCIA.md).
+	auth.Get("/funil", can(models.PermDealsView), controllers.Funil)
 
 	auth.Get("/tasks", can(models.PermTasksView), controllers.ListTasks)
 	auth.Post("/tasks", can(models.PermTasksEdit), controllers.CreateTask)

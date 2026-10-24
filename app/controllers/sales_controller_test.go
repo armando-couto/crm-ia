@@ -11,19 +11,9 @@ import (
 )
 
 // companyRow monta a linha de empresa no formato lido pelo model
-// (colunas base + as de negócio da Fix Pay + as de conta-alvo).
+// (colunas base + as de negócio da Fix Pay + as de conta-alvo + cadastrais).
 func companyRow(id int64, name string) *sqlmock.Rows {
-	now := time.Now()
-	return sqlmock.NewRows([]string{
-		"id", "name", "domain", "phone", "industry", "city", "state", "owner_id",
-		"owner_name", "created_at", "updated_at",
-		"ec_number", "economic_group", "cnpj", "accredited_at", "representative",
-		"instagram", "products", "machines_count", "is_client", "anticipation_mode",
-		"validator", "do_not_disturb",
-		"is_target", "target_tier", "target_notes", "target_since",
-	}).AddRow(id, name, "", "", "", "", "", nil, "", now, now,
-		"", "", "", nil, "", "", []byte("{}"), 0, false, "", false, false,
-		false, 0, "", nil)
+	return companyRowCNPJ(id, name, "")
 }
 
 // ===== Contas-alvo =====

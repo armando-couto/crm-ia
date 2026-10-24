@@ -42,6 +42,13 @@ Cria o cliente de exemplo **acme** pelo painel e provisiona o ambiente dele em `
 2. Num único nó Docker: copie o repositório, renomeie para `.env` e rode `make up`. Em Swarm/Portainer, use `stack-portainer.yml` ([docs/swarm.md](docs/swarm.md)).
 3. Publique o app dos clientes com `make publicar` (cria a tag `vX.Y.Z`; a pipeline envia as imagens e registra a versão no painel).
 
+## Dentro do CRM: funil visual e inteligência de empresas
+
+* **Funil** (`/funil`): a tela da reunião de pipeline. Meta × realizado com cobertura, waterfall de movimentação do período, funil por etapa com conversão e mediana de dias, negócios em risco (estagnados, sem atividade, adiados, vencidos), visão por vendedor e lista com drill-down a partir de qualquer gráfico. **Modo reunião** em tela cheia, navegável por teclado. No kanban, cada card mostra há quantos dias está na etapa e fica vermelho ao passar do prazo saudável configurado por etapa.
+* **Inteligência de empresas**: a partir do CNPJ, a empresa é "hidratada" com os dados públicos da Receita Federal (grátis, com cache) e, sob demanda, com BigDataCorp e Serasa Experian. Prévia com diferença campo a campo antes de aplicar, fonte e data em cada campo, aba *Inteligência* com sinais, sócios, indicadores de atividade, risco de crédito, processos e conformidade, enriquecimento em massa e consulta automática ao cadastrar. Credenciais, custos estimados e limite mensal em Configurações → Integrações de dados; há modo demonstração para apresentar antes de contratar os provedores.
+
+Contrato e decisões de UX em [docs/FUNIL-E-INTELIGENCIA.md](docs/FUNIL-E-INTELIGENCIA.md).
+
 ## Fluxo comercial
 
 1. O lead pede o teste na landing (ou o comercial cadastra direto no painel).

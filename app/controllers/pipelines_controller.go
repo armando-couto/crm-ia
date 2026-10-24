@@ -66,6 +66,8 @@ type stageRequest struct {
 	Probability int    `json:"probability"`
 	IsWon       bool   `json:"is_won"`
 	IsLost      bool   `json:"is_lost"`
+	// Prazo saudável na etapa, em dias (nulo = padrão do workspace).
+	PrazoDias *int `json:"prazo_dias"`
 }
 
 func (r *stageRequest) validate() string {
@@ -78,6 +80,9 @@ func (r *stageRequest) validate() string {
 	}
 	if r.IsWon && r.IsLost {
 		return "a etapa não pode ser de ganho e perda ao mesmo tempo"
+	}
+	if r.PrazoDias != nil && (*r.PrazoDias < 1 || *r.PrazoDias > 365) {
+		return "o prazo da etapa deve estar entre 1 e 365 dias"
 	}
 	return ""
 }
@@ -99,6 +104,7 @@ func CreateStage(ctx iris.Context) {
 		Probability: req.Probability,
 		IsWon:       req.IsWon,
 		IsLost:      req.IsLost,
+		PrazoDias:   req.PrazoDias,
 	}
 	if err := models.CreateStage(utils.DB, s); err != nil {
 		serverError(ctx, err)
@@ -128,6 +134,7 @@ func UpdateStage(ctx iris.Context) {
 	stage.Probability = req.Probability
 	stage.IsWon = req.IsWon
 	stage.IsLost = req.IsLost
+	stage.PrazoDias = req.PrazoDias
 	if err := models.UpdateStage(utils.DB, stage); err != nil {
 		serverError(ctx, err)
 		return

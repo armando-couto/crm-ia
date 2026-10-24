@@ -288,7 +288,7 @@ func UpdateDeal(ctx iris.Context) {
 	deal.OwnerID = req.OwnerID
 	deal.Temperature = req.Temperature
 	deal.CloseDate = closeDate
-	if err := models.UpdateDeal(utils.DB, deal); err != nil {
+	if err := models.UpdateDealBy(utils.DB, deal, userIDPtr(ctx)); err != nil {
 		serverError(ctx, err)
 		return
 	}
@@ -322,7 +322,7 @@ func MoveDeal(ctx iris.Context) {
 		return
 	}
 
-	if err := models.MoveDealStage(utils.DB, id, req.StageID, req.Position); err != nil {
+	if err := models.MoveDealStageBy(utils.DB, id, req.StageID, req.Position, userIDPtr(ctx)); err != nil {
 		serverError(ctx, err)
 		return
 	}
@@ -358,7 +358,7 @@ func CloseDealHandler(ctx iris.Context) {
 	}
 
 	id := paramID(ctx)
-	if err := models.CloseDeal(utils.DB, id, req.Won); err != nil {
+	if err := models.CloseDealBy(utils.DB, id, req.Won, userIDPtr(ctx)); err != nil {
 		handleDBError(ctx, err)
 		return
 	}

@@ -1,10 +1,13 @@
 package controllers
 
 import (
+	"context"
+	"encoding/json"
 	"strings"
 	"time"
 
 	"github.com/armando-couto/crm-ia/app/models"
+	"github.com/armando-couto/crm-ia/app/services/enriquecimento"
 	"github.com/armando-couto/crm-ia/app/utils"
 
 	"github.com/kataras/iris/v12"
@@ -69,6 +72,35 @@ type companyRequest struct {
 	AnticipationMode string   `json:"anticipation_mode"`
 	Validator        bool     `json:"validator"`
 	DoNotDisturb     bool     `json:"do_not_disturb"`
+
+	// Dados cadastrais (enriquecimento). Ponteiros: ausente no JSON mantém
+	// o valor atual, para formulários antigos não apagarem o que a Receita
+	// preencheu.
+	LegalName            *string  `json:"legal_name"`
+	TradeName            *string  `json:"trade_name"`
+	CNAECode             *string  `json:"cnae_code"`
+	CNAEDescription      *string  `json:"cnae_description"`
+	LegalNature          *string  `json:"legal_nature"`
+	FoundedAt            *string  `json:"founded_at"` // AAAA-MM-DD ("" limpa)
+	Capital              *float64 `json:"capital"`
+	CompanySize          *string  `json:"company_size"`
+	RegistrationStatus   *string  `json:"registration_status"`
+	RegistrationStatusAt *string  `json:"registration_status_at"`
+	Simples              *bool    `json:"simples"`
+	MEI                  *bool    `json:"mei"`
+	Street               *string  `json:"street"`
+	StreetNumber         *string  `json:"street_number"`
+	Complement           *string  `json:"complement"`
+	Neighborhood         *string  `json:"neighborhood"`
+	Zip                  *string  `json:"zip"`
+	Email                *string  `json:"email"`
+	Website              *string  `json:"website"`
+	EmployeesRange       *string  `json:"employees_range"`
+	RevenueRange         *string  `json:"revenue_range"`
+
+	// AutoReceita (só na criação) sobrepõe a configuração "preencher
+	// automaticamente pela Receita Federal".
+	AutoReceita *bool `json:"auto_receita"`
 }
 
 func (r *companyRequest) validate() string {
@@ -120,7 +152,127 @@ func (r *companyRequest) apply(c *models.Company) string {
 		}
 		c.AccreditedAt = &t
 	}
+	return r.applyCadastro(c)
+}
+
+// applyCadastro grava os campos cadastrais presentes no JSON.
+func (r *companyRequest) applyCadastro(c *models.Company) string {
+	texto := func(dest *string, v *string) {
+		if v != nil {
+			*dest = strings.TrimSpace(*v)
+		}
+	}
+	texto(&c.LegalName, r.LegalName)
+	texto(&c.TradeName, r.TradeName)
+	texto(&c.CNAECode, r.CNAECode)
+	texto(&c.CNAEDescription, r.CNAEDescription)
+	texto(&c.LegalNature, r.LegalNature)
+	texto(&c.CompanySize, r.CompanySize)
+	texto(&c.RegistrationStatus, r.RegistrationStatus)
+	texto(&c.Street, r.Street)
+	texto(&c.StreetNumber, r.StreetNumber)
+	texto(&c.Complement, r.Complement)
+	texto(&c.Neighborhood, r.Neighborhood)
+	texto(&c.Email, r.Email)
+	texto(&c.Website, r.Website)
+	texto(&c.EmployeesRange, r.EmployeesRange)
+	texto(&c.RevenueRange, r.RevenueRange)
+	if r.Zip != nil {
+		c.Zip = enriquecimento.SomenteDigitos(*r.Zip)
+	}
+	if r.Email != nil {
+		c.Email = strings.ToLower(c.Email)
+	}
+	if r.Capital != nil {
+		if *r.Capital < 0 {
+			return "capital social não pode ser negativo"
+		}
+		v := *r.Capital
+		c.Capital = &v
+	}
+	if r.Simples != nil {
+		v := *r.Simples
+		c.Simples = &v
+	}
+	if r.MEI != nil {
+		v := *r.MEI
+		c.MEI = &v
+	}
+	if r.FoundedAt != nil {
+		d, err := models.ParseDate(*r.FoundedAt)
+		if err != nil {
+			return "data de abertura inválida (use AAAA-MM-DD)"
+		}
+		c.FoundedAt = d
+	}
+	if r.RegistrationStatusAt != nil {
+		d, err := models.ParseDate(*r.RegistrationStatusAt)
+		if err != nil {
+			return "data da situação cadastral inválida (use AAAA-MM-DD)"
+		}
+		c.RegistrationStatusAt = d
+	}
+	if c.CNPJ != "" && !enriquecimento.ValidarCNPJ(c.CNPJ) && len(enriquecimento.SomenteDigitos(c.CNPJ)) == 14 {
+		return "CNPJ inválido (dígitos verificadores não conferem)"
+	}
 	return ""
+}
+
+// preencherPelaReceita consulta a Receita Federal de forma síncrona (6 s) na
+// criação e preenche o que estiver vazio. Falha é silenciosa: a empresa é
+// criada do mesmo jeito. Devolve o perfil e os campos preenchidos.
+func preencherPelaReceita(ctx iris.Context, company *models.Company, cfg models.EnrichmentSettings) (*enriquecimento.Perfil, []enriquecimento.CampoDiff) {
+	reqCtx, cancelar := context.WithTimeout(ctx.Request().Context(), 6*time.Second)
+	defer cancelar()
+	prov := &enriquecimento.Receita{PrazoCache: time.Duration(cfg.PrazoCacheDias) * 24 * time.Hour}
+	perfil, _, err := prov.Consultar(reqCtx, company.CNPJ, enriquecimento.Opcoes{Timeout: 6 * time.Second})
+	if err != nil || perfil == nil {
+		return nil, nil
+	}
+	aplicados := []enriquecimento.CampoDiff{}
+	for _, d := range enriquecimento.Diff(company, perfil, "vazios") {
+		if d.Sugerido && models.EnrichableColumns[d.Campo] && enriquecimento.AtribuirCampo(company, d.Campo, d.Proposto) {
+			aplicados = append(aplicados, d)
+		}
+	}
+	return perfil, aplicados
+}
+
+// registrarAutoReceita grava o histórico, as fontes e o intel do preenchimento
+// automático feito na criação.
+func registrarAutoReceita(ctx iris.Context, company *models.Company, perfil *enriquecimento.Perfil, aplicados []enriquecimento.CampoDiff) {
+	if perfil == nil {
+		return
+	}
+	campos := make([]string, 0, len(aplicados))
+	for _, d := range aplicados {
+		campos = append(campos, d.Campo)
+	}
+	raw, _ := json.Marshal(perfil)
+	row := models.Enrichment{CompanyID: company.ID, Provedor: models.ProvedorReceita, Status: models.EnrichmentOK,
+		Perfil: raw, UserID: userIDPtr(ctx)}
+	if err := models.InsertEnrichment(utils.DB, &row); err != nil {
+		return
+	}
+	fontes := make([]models.FieldSource, 0, len(campos))
+	for _, c := range campos {
+		id := row.ID
+		fontes = append(fontes, models.FieldSource{Campo: c, Provedor: models.ProvedorReceita, EnrichmentID: &id})
+	}
+	_ = models.UpsertFieldSources(utils.DB, company.ID, fontes)
+	_ = models.MarkEnrichmentsApplied(utils.DB, []int64{row.ID}, campos)
+	if mesclado := enriquecimento.Mesclar(perfil); mesclado != nil {
+		if b, err := json.Marshal(mesclado); err == nil {
+			_ = models.SetCompanyIntel(utils.DB, company.ID, b)
+		}
+	}
+	if len(campos) > 0 {
+		logActivity(ctx, models.Activity{
+			Kind:      models.ActivitySistema,
+			Content:   fraseEnriquecimento([]string{models.ProvedorReceita}, len(campos)),
+			CompanyID: &company.ID,
+		})
+	}
 }
 
 func CreateCompany(ctx iris.Context) {
@@ -144,6 +296,22 @@ func CreateCompany(ctx iris.Context) {
 			company.OwnerID = &claims.UserID
 		}
 	}
+
+	// Preenchimento automático pela Receita Federal (configurável; só com
+	// CNPJ válido e sem razão social informada).
+	var perfilAuto *enriquecimento.Perfil
+	var camposAuto []enriquecimento.CampoDiff
+	if enriquecimento.ValidarCNPJ(company.CNPJ) && company.LegalName == "" {
+		cfg := models.LoadEnrichmentSettings(utils.DB)
+		auto := cfg.AutoReceita
+		if req.AutoReceita != nil {
+			auto = *req.AutoReceita
+		}
+		if auto {
+			perfilAuto, camposAuto = preencherPelaReceita(ctx, company, cfg)
+		}
+	}
+
 	if err := models.CreateCompany(utils.DB, company); err != nil {
 		serverError(ctx, err)
 		return
@@ -153,6 +321,12 @@ func CreateCompany(ctx iris.Context) {
 		Content:   "Empresa criada",
 		CompanyID: &company.ID,
 	})
+	registrarAutoReceita(ctx, company, perfilAuto, camposAuto)
+	if perfilAuto != nil {
+		if atualizada, err := models.CompanyByID(utils.DB, company.ID); err == nil {
+			company = atualizada
+		}
+	}
 	ctx.StatusCode(iris.StatusCreated)
 	ctx.JSON(company)
 }

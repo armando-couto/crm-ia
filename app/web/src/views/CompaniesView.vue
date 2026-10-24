@@ -7,7 +7,10 @@ import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import AdvancedFilters from '../components/AdvancedFilters.vue'
 import ModalDialog from '../components/ModalDialog.vue'
+import CnpjField from '../components/intel/CnpjField.vue'
+import { preencherVazios } from '../components/intel/util'
 import type { Company, FilterFieldDef, FilterGroup, Paginated, SavedView, User } from '../types'
+import type { ConsultaCnpj, EnrichBulk } from '../types-intel'
 
 const router = useRouter()
 const route = useRoute()
@@ -121,15 +124,120 @@ function applyAdvanced(groups: FilterGroup[]) {
 
 const modalOpen = ref(false)
 const saving = ref(false)
-const form = ref({
-  name: '',
-  domain: '',
-  phone: '',
-  industry: '',
-  city: '',
-  state: '',
-  owner_id: null as number | null
-})
+
+function formVazio() {
+  return {
+    name: '',
+    cnpj: '',
+    legal_name: '',
+    domain: '',
+    phone: '',
+    email: '',
+    website: '',
+    industry: '',
+    city: '',
+    state: '',
+    zip: '',
+    street: '',
+    street_number: '',
+    complement: '',
+    neighborhood: '',
+    owner_id: null as number | null
+  }
+}
+
+const form = ref(formVazio())
+
+// ===== Pré-preenchimento pela Receita Federal (GET /cnpj) =====
+const cnpjPreenchido = ref(false)
+const cnpjExistente = ref<{ id: number; name: string } | null>(null)
+const cnpjConsultando = ref(false)
+
+async function lookupCnpj(cnpj: string) {
+  cnpjConsultando.value = true
+  cnpjExistente.value = null
+  try {
+    const r = await api.get<ConsultaCnpj>(`/cnpj/${cnpj}`)
+    cnpjExistente.value = r.existente ?? null
+    if (preencherVazios(form.value, r.perfil?.campos).length) cnpjPreenchido.value = true
+  } catch (e: any) {
+    toast.error(e.message)
+  } finally {
+    cnpjConsultando.value = false
+  }
+}
+
+function openCreate() {
+  form.value = formVazio()
+  cnpjPreenchido.value = false
+  cnpjExistente.value = null
+  modalOpen.value = true
+}
+
+// ===== Seleção e ação em massa "Enriquecer pela Receita" =====
+const selecionados = ref<number[]>([])
+const LIMITE_MASSA = 100
+const LOTE = 25
+
+const todosNaPagina = computed(() => companies.value.length > 0 && companies.value.every((c) => selecionados.value.includes(c.id)))
+
+function alternarSelecao(id: number) {
+  selecionados.value = selecionados.value.includes(id) ? selecionados.value.filter((x) => x !== id) : [...selecionados.value, id]
+}
+
+function alternarTodos() {
+  const ids = companies.value.map((c) => c.id)
+  selecionados.value = todosNaPagina.value
+    ? selecionados.value.filter((id) => !ids.includes(id))
+    : [...selecionados.value, ...ids.filter((id) => !selecionados.value.includes(id))]
+}
+
+const bulkOpen = ref(false)
+const bulkEtapa = ref<'confirmar' | 'rodando' | 'resumo'>('confirmar')
+const bulkFeitos = ref(0)
+const bulkTotal = ref(0)
+const bulkResumo = ref<EnrichBulk>({ processados: 0, enriquecidos: 0, sem_cnpj: 0, erros: [] })
+const bulkErro = ref('')
+
+const bulkProgresso = computed(() => (bulkTotal.value ? Math.round((bulkFeitos.value / bulkTotal.value) * 100) : 0))
+
+function openBulk() {
+  bulkEtapa.value = 'confirmar'
+  bulkFeitos.value = 0
+  bulkTotal.value = Math.min(selecionados.value.length, LIMITE_MASSA)
+  bulkResumo.value = { processados: 0, enriquecidos: 0, sem_cnpj: 0, erros: [] }
+  bulkErro.value = ''
+  bulkOpen.value = true
+}
+
+async function runBulk() {
+  const ids = selecionados.value.slice(0, LIMITE_MASSA)
+  bulkEtapa.value = 'rodando'
+  bulkErro.value = ''
+  try {
+    for (let i = 0; i < ids.length; i += LOTE) {
+      const lote = ids.slice(i, i + LOTE)
+      const r = await api.post<EnrichBulk>('/companies/enrich/bulk', { ids: lote, provedores: ['receita'] })
+      bulkResumo.value = {
+        processados: bulkResumo.value.processados + (r.processados ?? 0),
+        enriquecidos: bulkResumo.value.enriquecidos + (r.enriquecidos ?? 0),
+        sem_cnpj: bulkResumo.value.sem_cnpj + (r.sem_cnpj ?? 0),
+        erros: [...bulkResumo.value.erros, ...(r.erros ?? [])]
+      }
+      bulkFeitos.value = Math.min(ids.length, i + lote.length)
+    }
+  } catch (e: any) {
+    bulkErro.value = e.message
+  } finally {
+    bulkEtapa.value = 'resumo'
+    selecionados.value = []
+    await load()
+  }
+}
+
+function nomeDaEmpresa(id: number): string {
+  return companies.value.find((c) => c.id === id)?.name ?? `#${id}`
+}
 
 let searchTimer: ReturnType<typeof setTimeout> | null = null
 watch(search, () => {
@@ -203,6 +311,7 @@ function applyFilters(filters: Record<string, any>) {
 function selectTab(key: string) {
   activeTab.value = key
   page.value = 1
+  selecionados.value = []
   if (key.startsWith('view-')) {
     const view = savedViews.value.find((v) => v.id === Number(key.replace('view-', '')))
     if (view) applyFilters((view.filters as Record<string, any>) || {})
@@ -286,7 +395,9 @@ async function save() {
     await api.post('/companies', form.value)
     toast.push('Empresa criada')
     modalOpen.value = false
-    form.value = { name: '', domain: '', phone: '', industry: '', city: '', state: '', owner_id: null }
+    form.value = formVazio()
+    cnpjPreenchido.value = false
+    cnpjExistente.value = null
     await load()
   } catch (e: any) {
     toast.error(e.message)
@@ -319,7 +430,7 @@ onMounted(async () => {
   <div class="page">
     <div class="page-head">
       <h1>Empresas <span class="muted" v-if="total">({{ total }})</span></h1>
-      <button v-if="auth.can('companies.edit')" class="btn btn-primary" type="button" @click="modalOpen = true">+ Adicionar empresa</button>
+      <button v-if="auth.can('companies.edit')" class="btn btn-primary" type="button" @click="openCreate">+ Adicionar empresa</button>
     </div>
 
     <!-- Abas de visualização -->
@@ -371,10 +482,21 @@ onMounted(async () => {
       </button>
     </div>
 
+    <!-- Barra de ação em massa -->
+    <div v-if="selecionados.length" class="bulk-bar">
+      <strong>{{ selecionados.length }} {{ selecionados.length === 1 ? 'selecionada' : 'selecionadas' }}</strong>
+      <button v-if="auth.can('companies.enrich')" class="btn btn-primary btn-sm" type="button" @click="openBulk">✦ Enriquecer pela Receita</button>
+      <span v-if="selecionados.length > LIMITE_MASSA" class="muted">só as {{ LIMITE_MASSA }} primeiras por vez</span>
+      <button class="btn btn-outline btn-sm" type="button" @click="selecionados = []">Limpar seleção</button>
+    </div>
+
     <div class="table-wrap">
       <table class="data">
         <thead>
           <tr>
+            <th class="select-col">
+              <input type="checkbox" aria-label="Selecionar todas desta página" :checked="todosNaPagina" @change="alternarTodos" />
+            </th>
             <th class="sortable" @click="sortByColumn('name')">Nome da empresa {{ sortIcon('name') }}</th>
             <template v-for="col in shownColumns" :key="col.key">
               <th v-if="col.key === 'contacts'" class="sortable" @click="sortByColumn('contacts')">
@@ -391,7 +513,10 @@ onMounted(async () => {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="c in companies" :key="c.id" @click="router.push(`/empresas/${c.id}`)">
+          <tr v-for="c in companies" :key="c.id" :class="{ selected: selecionados.includes(c.id) }" @click="router.push(`/empresas/${c.id}`)">
+            <td class="select-col" @click.stop>
+              <input type="checkbox" :aria-label="`Selecionar ${c.name}`" :checked="selecionados.includes(c.id)" @change="alternarSelecao(c.id)" />
+            </td>
             <td><strong>{{ c.name }}</strong></td>
             <template v-for="col in shownColumns" :key="col.key">
               <td v-if="col.key === 'ec_number'">{{ c.ec_number || '—' }}</td>
@@ -472,12 +597,55 @@ onMounted(async () => {
       </button>
     </ModalDialog>
 
+    <ModalDialog title="Enriquecer pela Receita Federal" :open="bulkOpen" @close="bulkEtapa !== 'rodando' && (bulkOpen = false)">
+      <template v-if="bulkEtapa === 'confirmar'">
+        <p style="margin-top: 0">
+          Consultar a Receita Federal para <strong>{{ bulkTotal }}</strong> {{ bulkTotal === 1 ? 'empresa' : 'empresas' }} (grátis). Os dados
+          encontrados entram na ficha seguindo a regra de sobrescrita das Configurações; empresas sem CNPJ válido são puladas.
+        </p>
+        <p v-if="selecionados.length > LIMITE_MASSA" class="muted" style="font-size: 13px">
+          A ação em massa processa até {{ LIMITE_MASSA }} por vez; as demais ficam para a próxima rodada.
+        </p>
+        <div style="display: flex; gap: 8px; justify-content: flex-end">
+          <button class="btn btn-outline" type="button" @click="bulkOpen = false">Cancelar</button>
+          <button class="btn btn-primary" type="button" @click="runBulk">✦ Enriquecer {{ bulkTotal }}</button>
+        </div>
+      </template>
+      <template v-else-if="bulkEtapa === 'rodando'">
+        <p style="margin-top: 0">Consultando a Receita Federal… {{ bulkFeitos }} de {{ bulkTotal }}</p>
+        <div class="progress" role="progressbar" :aria-valuenow="bulkProgresso" aria-valuemin="0" aria-valuemax="100">
+          <span :style="{ width: bulkProgresso + '%' }"></span>
+        </div>
+      </template>
+      <template v-else>
+        <p class="bulk-summary">
+          <strong>{{ bulkResumo.processados }}</strong> processadas · <strong>{{ bulkResumo.enriquecidos }}</strong> enriquecidas ·
+          <strong>{{ bulkResumo.sem_cnpj }}</strong> sem CNPJ
+        </p>
+        <p v-if="bulkErro" class="error-text">{{ bulkErro }}</p>
+        <ul v-if="bulkResumo.erros.length" class="bulk-errors">
+          <li v-for="e in bulkResumo.erros" :key="e.id"><strong>{{ nomeDaEmpresa(e.id) }}</strong>: {{ e.mensagem }}</li>
+        </ul>
+        <button class="btn btn-primary" type="button" style="width: 100%; justify-content: center" @click="bulkOpen = false">Concluir</button>
+      </template>
+    </ModalDialog>
+
     <ModalDialog title="Nova empresa" :open="modalOpen" wide @close="modalOpen = false">
       <form @submit.prevent="save">
         <div class="form-row">
           <div class="field">
+            <label>CNPJ/CPF</label>
+            <CnpjField v-model="form.cnpj" :preenchido="cnpjPreenchido" :existente="cnpjExistente" :consultando="cnpjConsultando" @lookup="lookupCnpj" />
+          </div>
+          <div class="field">
             <label>Nome *</label>
             <input v-model="form.name" required />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label>Razão social</label>
+            <input v-model="form.legal_name" />
           </div>
           <div class="field">
             <label>Domínio</label>
@@ -490,8 +658,18 @@ onMounted(async () => {
             <input v-model="form.phone" />
           </div>
           <div class="field">
+            <label>E-mail</label>
+            <input v-model="form.email" type="email" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
             <label>Segmento</label>
             <input v-model="form.industry" placeholder="varejo, saúde, serviços…" />
+          </div>
+          <div class="field">
+            <label>Site</label>
+            <input v-model="form.website" placeholder="https://" />
           </div>
         </div>
         <div class="form-row">
@@ -504,6 +682,33 @@ onMounted(async () => {
             <input v-model="form.state" maxlength="2" />
           </div>
         </div>
+        <details class="more-fields" :open="cnpjPreenchido">
+          <summary>Endereço</summary>
+          <div class="form-row">
+            <div class="field">
+              <label>CEP</label>
+              <input v-model="form.zip" maxlength="9" />
+            </div>
+            <div class="field">
+              <label>Bairro</label>
+              <input v-model="form.neighborhood" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label>Logradouro</label>
+              <input v-model="form.street" />
+            </div>
+            <div class="field">
+              <label>Número</label>
+              <input v-model="form.street_number" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Complemento</label>
+            <input v-model="form.complement" />
+          </div>
+        </details>
         <div class="field">
           <label>Proprietário</label>
           <select v-model="form.owner_id">
@@ -615,6 +820,82 @@ onMounted(async () => {
 .sortable {
   cursor: pointer;
   user-select: none;
+}
+
+.select-col {
+  width: 36px;
+  padding-right: 0 !important;
+}
+
+.select-col input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--ci-purple);
+  cursor: pointer;
+}
+
+table.data tbody tr.selected {
+  background: var(--ci-purple-tint);
+}
+
+.bulk-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  border-radius: 10px;
+  background: var(--ci-purple-tint);
+  color: var(--ci-purple-deep);
+  font-size: 13px;
+}
+
+.progress {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--ci-bg);
+  overflow: hidden;
+}
+
+.progress span {
+  display: block;
+  height: 100%;
+  background: var(--ci-purple);
+  border-radius: 999px;
+  transition: width 0.3s;
+}
+
+.bulk-summary {
+  margin: 0 0 12px;
+  font-size: 15px;
+}
+
+.bulk-errors {
+  margin: 0 0 14px;
+  padding-left: 18px;
+  font-size: 13px;
+  color: var(--ci-text-2);
+  max-height: 180px;
+  overflow: auto;
+}
+
+.more-fields {
+  border: 1px solid var(--ci-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+}
+
+.more-fields summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ci-purple);
+}
+
+.more-fields[open] summary {
+  margin-bottom: 10px;
 }
 
 .col-config {

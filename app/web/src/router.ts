@@ -96,6 +96,12 @@ const routes = [
     meta: { permission: 'deals.view' }
   },
   {
+    path: '/funil',
+    name: 'pipeline-insights',
+    component: () => import('./views/PipelineInsightsView.vue'),
+    meta: { permission: 'deals.view' }
+  },
+  {
     path: '/tarefas',
     name: 'tasks',
     component: () => import('./views/TasksView.vue'),
@@ -240,6 +246,12 @@ const routes = [
         name: 'settings-email',
         component: () => import('./views/SettingsEmailView.vue'),
         meta: { permission: 'settings.users' }
+      },
+      {
+        path: 'integracoes',
+        name: 'settings-integrations',
+        component: () => import('./views/SettingsIntegrationsView.vue'),
+        meta: { permission: 'settings.integrations' }
       },
       {
         path: 'disparo',

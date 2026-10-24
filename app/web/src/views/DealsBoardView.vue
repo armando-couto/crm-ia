@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { api, getToken } from '../api'
-import { formatDate, formatMoney, relativeDate } from '../format'
+import { formatCompact, formatDate, formatMoney, relativeDate } from '../format'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import AdvancedFilters from '../components/AdvancedFilters.vue'
@@ -38,6 +38,53 @@ const temperatureFilter = ref('')
 const createdFilter = ref(0)
 const activityFilter = ref(0)
 const closeWindowFilter = ref('')
+/** Filtro rápido "Em risco": estagnado, sem atividade há mais de 7 dias ou previsão vencida. */
+const riskFilter = ref(false)
+
+// ===== Envelhecimento na etapa (dias_na_etapa × prazo_dias) =====
+const PRAZO_PADRAO_DIAS = 14
+const SEM_ATIVIDADE_DIAS = 7
+
+function prazoDe(deal: Deal): number {
+  return deal.prazo_dias ?? PRAZO_PADRAO_DIAS
+}
+
+/** normal (cinza) → atencao (âmbar, ≥ 70% do prazo) → vencido (vermelho, passou do prazo). */
+function agingClass(deal: Deal): 'normal' | 'atencao' | 'vencido' | null {
+  if (deal.dias_na_etapa == null) return null
+  const prazo = prazoDe(deal)
+  if (deal.dias_na_etapa > prazo) return 'vencido'
+  if (deal.dias_na_etapa >= prazo * 0.7) return 'atencao'
+  return 'normal'
+}
+
+function isEstagnado(deal: Deal): boolean {
+  return agingClass(deal) === 'vencido'
+}
+
+function isSemAtividade(deal: Deal): boolean {
+  return (deal.dias_sem_atividade ?? 0) > SEM_ATIVIDADE_DIAS
+}
+
+function isVencido(deal: Deal): boolean {
+  if (!deal.close_date || deal.status !== 'aberto') return false
+  return deal.close_date.slice(0, 10) < new Date().toISOString().slice(0, 10)
+}
+
+function emRisco(deal: Deal): boolean {
+  return isEstagnado(deal) || isSemAtividade(deal) || isVencido(deal)
+}
+
+function agingTitle(deal: Deal): string {
+  const partes = [`${deal.dias_na_etapa} dia(s) nesta etapa · prazo saudável ${prazoDe(deal)} d`]
+  if (isSemAtividade(deal)) partes.push(`sem atividade há ${deal.dias_sem_atividade} d`)
+  if (isVencido(deal)) partes.push('previsão de fechamento vencida')
+  return partes.join(' · ')
+}
+
+function toggleRiskFilter() {
+  riskFilter.value = !riskFilter.value
+}
 
 // ===== Modo de visualização: kanban ⇄ lista =====
 const VIEW_MODE_KEY = 'crmia_deals_view'
@@ -226,7 +273,18 @@ watch(search, () => {
 })
 
 function dealsInStage(stageId: number): Deal[] {
-  return deals.value.filter((d) => d.stage_id === stageId && d.status === 'aberto')
+  return deals.value.filter(
+    (d) => d.stage_id === stageId && d.status === 'aberto' && (!riskFilter.value || emRisco(d))
+  )
+}
+
+function stagnantInStage(stageId: number): number {
+  return dealsInStage(stageId).filter(isEstagnado).length
+}
+
+/** Rótulo compacto para o cabeçalho da coluna: 3.180 -> "3,18 mil". */
+function compactMoney(value: number): string {
+  return `R$ ${formatCompact(value)}`
 }
 
 function closedInStage(stageId: number): Deal[] {
@@ -363,6 +421,7 @@ const hasActiveFilters = computed(
     !!createdFilter.value ||
     !!activityFilter.value ||
     !!closeWindowFilter.value ||
+    riskFilter.value ||
     advGroups.value.length > 0
 )
 
@@ -373,6 +432,7 @@ function applyFilters(filters: Record<string, any>) {
   createdFilter.value = Number(filters.criado_dias) || 0
   activityFilter.value = Number(filters.sem_atividade_dias) || 0
   closeWindowFilter.value = filters.fechamento ?? ''
+  riskFilter.value = filters.em_risco === true
   advGroups.value = Array.isArray(filters.af) ? filters.af : []
   if (filters.modo === 'lista' || filters.modo === 'kanban') {
     viewMode.value = filters.modo
@@ -407,6 +467,7 @@ async function saveCurrentView() {
         criado_dias: createdFilter.value,
         sem_atividade_dias: activityFilter.value,
         fechamento: closeWindowFilter.value,
+        em_risco: riskFilter.value,
         af: advGroups.value,
         modo: viewMode.value,
         pipeline_id: pipelineId.value
@@ -670,6 +731,16 @@ onMounted(async () => {
         <option value="fecham_mes">Fecham este mês</option>
         <option value="previsao_vencida">Previsão vencida</option>
       </select>
+      <button
+        class="btn btn-outline btn-sm risk-btn"
+        type="button"
+        :class="{ on: riskFilter }"
+        :aria-pressed="riskFilter"
+        title="Só negócios estagnados, sem atividade há mais de 7 dias ou com previsão vencida"
+        @click="toggleRiskFilter"
+      >
+        ⚠ Em risco
+      </button>
       <button class="btn btn-outline btn-sm adv-btn" type="button" :class="{ on: advCount }" @click="advOpen = true">
         ≡ Filtros avançados
         <span v-if="advCount" class="adv-count">{{ advCount }}</span>
@@ -703,6 +774,9 @@ onMounted(async () => {
             <td>
               <span class="badge" :class="statusBadge[d.status]">
                 {{ d.status === 'aberto' ? d.stage_name : d.status }}
+              </span>
+              <span v-if="d.status === 'aberto' && agingClass(d)" class="aging inline" :class="agingClass(d)" :title="agingTitle(d)">
+                {{ d.dias_na_etapa }} d
               </span>
             </td>
             <td>{{ formatMoney(d.amount) }}</td>
@@ -763,7 +837,16 @@ onMounted(async () => {
         @drop.prevent="onDrop(stage.id)"
       >
         <header>
-          <span class="stage-name">{{ stage.name }} <span class="stage-count">{{ dealsInStage(stage.id).length }}</span></span>
+          <span class="stage-name">
+            {{ stage.name }} <span class="stage-count">{{ dealsInStage(stage.id).length }}</span>
+            <span v-if="stagnantInStage(stage.id)" class="stage-stagnant" title="Negócios além do prazo saudável da etapa">
+              {{ stagnantInStage(stage.id) }} estagnado(s)
+            </span>
+          </span>
+          <span class="stage-totals">
+            {{ dealsInStage(stage.id).length }} · {{ compactMoney(stageTotal(stage.id)) }} ·
+            <span title="Valor ponderado pela probabilidade da etapa">{{ compactMoney(stageWeighted(stage)) }} pond.</span>
+          </span>
         </header>
 
         <div class="cards">
@@ -771,12 +854,15 @@ onMounted(async () => {
             v-for="deal in dealsInStage(stage.id)"
             :key="deal.id"
             class="deal-card"
-            :class="{ dragging: dragging === deal.id }"
+            :class="{ dragging: dragging === deal.id, atrasado: agingClass(deal) === 'vencido' }"
             draggable="true"
             @dragstart="onDragStart(deal, $event)"
             @dragend="onDragEnd"
             @click="router.push(`/negocios/${deal.id}`)"
           >
+            <span v-if="agingClass(deal)" class="aging" :class="agingClass(deal)" :title="agingTitle(deal)">
+              <template v-if="agingClass(deal) === 'vencido'">⚠ </template>{{ deal.dias_na_etapa }} d
+            </span>
             <strong>{{ deal.name }}</strong>
             <span class="muted small" v-if="deal.company_name || deal.contact_name">
               {{ deal.company_name || deal.contact_name }}
@@ -1172,6 +1258,74 @@ onMounted(async () => {
   font-size: 11px;
   font-weight: 700;
   color: var(--ci-text-2);
+}
+
+.stage-stagnant {
+  background: var(--ci-red-tint);
+  color: var(--ci-red);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.stage-totals {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--ci-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.risk-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.risk-btn.on {
+  border-color: var(--ci-red);
+  color: var(--ci-red);
+  background: var(--ci-red-tint);
+}
+
+/* Selo de envelhecimento: cinza → âmbar (70% do prazo) → vermelho (passou). */
+.aging {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--ci-bg);
+  color: var(--ci-text-3);
+  transition: opacity 0.15s;
+}
+
+.aging.inline {
+  position: static;
+  margin-left: 6px;
+}
+
+.aging.atencao {
+  background: var(--ci-amber-tint);
+  color: var(--ci-amber);
+}
+
+.aging.vencido {
+  background: var(--ci-red-tint);
+  color: var(--ci-red);
+}
+
+.deal-card:hover .aging:not(.inline) {
+  opacity: 0;
+}
+
+.deal-card.atrasado {
+  border-left-color: var(--ci-red);
 }
 
 .cards {

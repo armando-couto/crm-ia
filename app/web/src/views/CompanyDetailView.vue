@@ -8,7 +8,14 @@ import { useToastStore } from '../stores/toast'
 import CustomProperties from '../components/CustomProperties.vue'
 import AttachmentsPanel from '../components/AttachmentsPanel.vue'
 import ModalDialog from '../components/ModalDialog.vue'
+import CnpjField from '../components/intel/CnpjField.vue'
+import EnrichModal from '../components/intel/EnrichModal.vue'
+import IntelTab from '../components/intel/IntelTab.vue'
+import SourceBadge from '../components/intel/SourceBadge.vue'
+import { dataCurta, enderecoCompleto, preencherVazios } from '../components/intel/util'
+import { cnpjValido } from '../cnpj'
 import type { Activity, Company, Contact, Deal, Meeting, Paginated, Pipeline, Task, Ticket, User } from '../types'
+import type { ConsultaCnpj, IntelEmpresa } from '../types-intel'
 
 const route = useRoute()
 const router = useRouter()
@@ -59,7 +66,7 @@ const meetings = ref<Meeting[]>([])
 const users = ref<User[]>([])
 const pipelines = ref<Pipeline[]>([])
 
-const centerTab = ref<'visao' | 'atividades'>('visao')
+const centerTab = ref<'visao' | 'atividades' | 'inteligencia'>('visao')
 
 // ===== Central de atividades (sub-abas) =====
 type ActivityTab = 'todas' | 'nota' | 'email' | 'ligacao' | 'tarefas' | 'reunioes'
@@ -142,6 +149,8 @@ async function load() {
     company.value = await api.get<Company>(`/companies/${id}`)
     targetTier.value = company.value.target_tier || 2
     targetNotes.value = company.value.target_notes ?? ''
+    // Empresa já enriquecida: as fontes dos campos (✦) vêm na mesma chamada da aba Inteligência.
+    if (company.value.enriched_at) loadIntel()
     const [contactsResp, dealsResp, ticketsResp, tasksResp, meetingsResp] = await Promise.all([
       api.get<Paginated<Contact>>(`/contacts?company_id=${id}&per_page=100`),
       api.get<Paginated<Deal>>(`/deals?company_id=${id}&per_page=50`),
@@ -164,6 +173,73 @@ const openDeals = computed(() => deals.value.filter((d) => d.status === 'aberto'
 const pendingTasks = computed(() => tasks.value.filter((t) => !t.completed_at))
 const openTickets = computed(() => tickets.value.filter((t) => t.status === 'aberto' || t.status === 'pendente'))
 const emailContact = computed(() => contacts.value.find((c) => c.email))
+
+// ===== Inteligência de empresas (enriquecimento) =====
+const intelData = ref<IntelEmpresa | null>(null)
+const intelLoading = ref(false)
+const enrichOpen = ref(false)
+const cnpjOk = computed(() => cnpjValido(company.value?.cnpj))
+const fontes = computed(() => intelData.value?.fontes ?? {})
+const enderecoEmpresa = computed(() => (company.value ? enderecoCompleto({ ...company.value, city: '', state: '' }) : ''))
+
+/** Uma chamada só, reaproveitada pela aba e pelas marcas ✦ de "Sobre essa empresa". */
+async function loadIntel(force = false) {
+  if (intelLoading.value || (intelData.value && !force)) return
+  intelLoading.value = true
+  try {
+    intelData.value = await api.get<IntelEmpresa>(`/companies/${id}/intel`)
+  } catch (e: any) {
+    toast.error(e.message)
+  } finally {
+    intelLoading.value = false
+  }
+}
+
+watch(centerTab, (tab) => {
+  if (tab === 'inteligencia') loadIntel()
+})
+
+function openEnrich() {
+  if (!cnpjOk.value) return
+  enrichOpen.value = true
+}
+
+function onEnriched(updated: Company, aplicados: string[]) {
+  company.value = updated
+  toast.push(
+    aplicados.length ? `${aplicados.length} ${aplicados.length === 1 ? 'campo atualizado' : 'campos atualizados'} pelo enriquecimento` : 'Inteligência da empresa atualizada'
+  )
+  loadIntel(true)
+  loadActivities()
+}
+
+function onIntelUpdated(updated: Company) {
+  company.value = updated
+}
+
+function onIntelRemoved() {
+  intelData.value = null
+  loadIntel(true)
+}
+
+// Pré-preenchimento pelo CNPJ no modal de edição.
+const editPreenchido = ref(false)
+const editExistente = ref<{ id: number; name: string } | null>(null)
+const editConsultando = ref(false)
+
+async function lookupCnpjEdit(cnpj: string) {
+  editConsultando.value = true
+  editExistente.value = null
+  try {
+    const r = await api.get<ConsultaCnpj>(`/cnpj/${cnpj}`)
+    if (r.existente && r.existente.id !== id) editExistente.value = r.existente
+    if (preencherVazios(form.value, r.perfil?.campos).length) editPreenchido.value = true
+  } catch (e: any) {
+    toast.error(e.message)
+  } finally {
+    editConsultando.value = false
+  }
+}
 
 // ===== Modais =====
 const editOpen = ref(false)
@@ -195,6 +271,8 @@ function openEdit() {
     accredited_at: company.value.accredited_at ? company.value.accredited_at.slice(0, 10) : '',
     products_text: (company.value.products || []).join(', ')
   }
+  editPreenchido.value = false
+  editExistente.value = null
   editOpen.value = true
 }
 
@@ -366,6 +444,16 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
         <button type="button" :disabled="!contacts.length" @click="openCall"><span>☎</span>Chamada</button>
         <button type="button" @click="openTask"><span>✓</span>Tarefa</button>
         <button type="button" @click="openMeeting"><span>⚑</span>Reunião</button>
+        <button
+          v-if="auth.can('companies.enrich')"
+          type="button"
+          class="enrich"
+          :disabled="!cnpjOk"
+          :title="cnpjOk ? 'Buscar dados da Receita Federal e de provedores' : 'Informe o CNPJ para enriquecer'"
+          @click="openEnrich"
+        >
+          <span>✦</span>Enriquecer
+        </button>
       </div>
 
       <div class="about card">
@@ -381,16 +469,51 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
           <dd>{{ company.ec_number || '—' }}</dd>
           <dt>Grupo econômico</dt>
           <dd>{{ company.economic_group || '—' }}</dd>
-          <dt>CNPJ/CPF</dt>
+          <dt>CNPJ/CPF <SourceBadge v-if="fontes.cnpj" :provedor="fontes.cnpj.provedor" :data="fontes.cnpj.fetched_at" /></dt>
           <dd>{{ company.cnpj || '—' }}</dd>
+          <template v-if="company.legal_name">
+            <dt>Razão social <SourceBadge v-if="fontes.legal_name" :provedor="fontes.legal_name.provedor" :data="fontes.legal_name.fetched_at" /></dt>
+            <dd>{{ company.legal_name }}</dd>
+          </template>
+          <template v-if="company.registration_status">
+            <dt>Situação cadastral <SourceBadge v-if="fontes.registration_status" :provedor="fontes.registration_status.provedor" :data="fontes.registration_status.fetched_at" /></dt>
+            <dd>
+              <span class="badge" :class="company.registration_status.toUpperCase() === 'ATIVA' ? 'green' : 'red'">{{ company.registration_status }}</span>
+              <span v-if="company.registration_status_at" class="muted"> desde {{ dataCurta(company.registration_status_at) }}</span>
+            </dd>
+          </template>
+          <template v-if="company.founded_at">
+            <dt>Abertura <SourceBadge v-if="fontes.founded_at" :provedor="fontes.founded_at.provedor" :data="fontes.founded_at.fetched_at" /></dt>
+            <dd>{{ dataCurta(company.founded_at) }}</dd>
+          </template>
+          <template v-if="company.company_size">
+            <dt>Porte <SourceBadge v-if="fontes.company_size" :provedor="fontes.company_size.provedor" :data="fontes.company_size.fetched_at" /></dt>
+            <dd>{{ company.company_size }}</dd>
+          </template>
+          <template v-if="company.cnae_code || company.cnae_description">
+            <dt>CNAE <SourceBadge :fonte="fontes.cnae_code || fontes.cnae_description" /></dt>
+            <dd>{{ [company.cnae_code, company.cnae_description].filter(Boolean).join(' — ') }}</dd>
+          </template>
           <dt>Data do credenciamento</dt>
           <dd>{{ formatDate(company.accredited_at) }}</dd>
           <dt>Representante da empresa</dt>
           <dd>{{ company.representative || '—' }}</dd>
-          <dt>Telefone</dt>
+          <dt>Telefone <SourceBadge v-if="fontes.phone" :provedor="fontes.phone.provedor" :data="fontes.phone.fetched_at" /></dt>
           <dd>{{ company.phone || '—' }}</dd>
-          <dt>Cidade / Estado</dt>
+          <template v-if="company.email">
+            <dt>E-mail <SourceBadge v-if="fontes.email" :provedor="fontes.email.provedor" :data="fontes.email.fetched_at" /></dt>
+            <dd><a :href="`mailto:${company.email}`">{{ company.email }}</a></dd>
+          </template>
+          <template v-if="company.website">
+            <dt>Site <SourceBadge v-if="fontes.website" :provedor="fontes.website.provedor" :data="fontes.website.fetched_at" /></dt>
+            <dd><a :href="company.website.startsWith('http') ? company.website : `https://${company.website}`" target="_blank" rel="noopener">{{ company.website }}</a></dd>
+          </template>
+          <dt>Cidade / Estado <SourceBadge v-if="fontes.city" :provedor="fontes.city.provedor" :data="fontes.city.fetched_at" /></dt>
           <dd>{{ company.city ? `${company.city}${company.state ? '/' + company.state : ''}` : company.state || '—' }}</dd>
+          <template v-if="enderecoEmpresa">
+            <dt>Endereço <SourceBadge :fonte="fontes.street || fontes.zip" /></dt>
+            <dd>{{ enderecoEmpresa }}</dd>
+          </template>
           <dt>Instagram</dt>
           <dd>
             <a v-if="company.instagram" :href="`https://instagram.com/${company.instagram}`" target="_blank">@{{ company.instagram }}</a>
@@ -426,6 +549,9 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
       <div class="center-tabs">
         <button type="button" :class="{ active: centerTab === 'visao' }" @click="centerTab = 'visao'">Visão geral</button>
         <button type="button" :class="{ active: centerTab === 'atividades' }" @click="centerTab = 'atividades'">Atividades</button>
+        <button type="button" :class="{ active: centerTab === 'inteligencia' }" @click="centerTab = 'inteligencia'">
+          <span class="tab-star" aria-hidden="true">✦</span>Inteligência
+        </button>
       </div>
 
       <div v-if="centerTab === 'visao'" class="overview">
@@ -469,6 +595,17 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
           </ul>
         </div>
       </div>
+
+      <IntelTab
+        v-else-if="centerTab === 'inteligencia'"
+        :company="company"
+        :data="intelData"
+        :loading="intelLoading"
+        :can-enrich="auth.can('companies.enrich')"
+        @enrich="openEnrich"
+        @refresh="onIntelRemoved"
+        @updated="onIntelUpdated"
+      />
 
       <div v-else class="activity-center">
         <div class="sub-tabs">
@@ -612,7 +749,7 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
         <div class="form-row">
           <div class="field">
             <label>CNPJ/CPF</label>
-            <input v-model="form.cnpj" />
+            <CnpjField v-model="form.cnpj" :preenchido="editPreenchido" :existente="editExistente" :consultando="editConsultando" @lookup="lookupCnpjEdit" />
           </div>
           <div class="field">
             <label>Grupo econômico</label>
@@ -659,6 +796,49 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
             <input v-model="form.state" maxlength="2" />
           </div>
         </div>
+        <details class="more-fields" :open="editPreenchido">
+          <summary>Dados cadastrais e endereço</summary>
+          <div class="form-row">
+            <div class="field">
+              <label>Razão social</label>
+              <input v-model="form.legal_name" />
+            </div>
+            <div class="field">
+              <label>E-mail</label>
+              <input v-model="form.email" type="email" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label>Site</label>
+              <input v-model="form.website" placeholder="https://" />
+            </div>
+            <div class="field">
+              <label>CEP</label>
+              <input v-model="form.zip" maxlength="9" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label>Logradouro</label>
+              <input v-model="form.street" />
+            </div>
+            <div class="field">
+              <label>Número</label>
+              <input v-model="form.street_number" />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="field">
+              <label>Complemento</label>
+              <input v-model="form.complement" />
+            </div>
+            <div class="field">
+              <label>Bairro</label>
+              <input v-model="form.neighborhood" />
+            </div>
+          </div>
+        </details>
         <div class="field">
           <label>Produtos contratados (separados por vírgula)</label>
           <input v-model="form.products_text" placeholder="Pix, Link de pagamento, Safe Link" />
@@ -703,6 +883,8 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
         </button>
       </form>
     </ModalDialog>
+
+    <EnrichModal :open="enrichOpen" :company="company" :uso-mes="intelData?.uso_mes" @close="enrichOpen = false" @applied="onEnriched" />
 
     <ModalDialog title="Registrar chamada" :open="callOpen" @close="callOpen = false">
       <form @submit.prevent="saveCall">
@@ -1024,6 +1206,39 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
 .quick-actions button:hover:not(:disabled) span {
   background: var(--ci-purple);
   color: #fff;
+}
+
+.quick-actions button.enrich span {
+  background: var(--ci-purple);
+  color: #fff;
+}
+
+.quick-actions button.enrich:hover:not(:disabled) span {
+  background: var(--ci-purple-dark);
+}
+
+.tab-star {
+  color: var(--ci-purple);
+  margin-right: 5px;
+  font-size: 12px;
+}
+
+.more-fields {
+  border: 1px solid var(--ci-border);
+  border-radius: 10px;
+  padding: 10px 14px;
+  margin-bottom: 14px;
+}
+
+.more-fields summary {
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ci-purple);
+}
+
+.more-fields[open] summary {
+  margin-bottom: 10px;
 }
 
 .about {

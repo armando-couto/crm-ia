@@ -54,6 +54,14 @@ func testDB(t *testing.T) *sql.DB {
 	services.AutomationsEnabled = true
 	t.Cleanup(func() { services.AutomationsEnabled = false })
 
+	// As regras de disparo padrão só enviam em dia útil e horário comercial;
+	// o teste não pode depender do calendário, então libera a janela.
+	if err := models.SetSetting(db, models.SettingSending, models.SendingSettings{
+		WindowStart: 0, WindowEnd: 0, WeekdaysOnly: false, TrackOpens: true, TrackClicks: true,
+	}, nil); err != nil {
+		t.Fatalf("regras de disparo do teste: %v", err)
+	}
+
 	if _, err := db.Exec(`TRUNCATE automations, automation_runs, sequence_enrollments,
 		activities, tasks, email_messages, list_members, lists, contacts RESTART IDENTITY CASCADE`); err != nil {
 		t.Fatal(err)

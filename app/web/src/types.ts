@@ -435,6 +435,30 @@ export interface Company {
   anticipation_mode: string
   validator: boolean
   do_not_disturb: boolean
+  // Inteligência de empresas (enriquecimento) — opcionais, chegam quando preenchidos.
+  legal_name?: string
+  trade_name?: string
+  cnae_code?: string
+  cnae_description?: string
+  legal_nature?: string
+  founded_at?: string | null
+  capital?: number | null
+  company_size?: string
+  registration_status?: string
+  registration_status_at?: string | null
+  simples?: boolean | null
+  mei?: boolean | null
+  street?: string
+  street_number?: string
+  complement?: string
+  neighborhood?: string
+  zip?: string
+  email?: string
+  website?: string
+  employees_range?: string
+  revenue_range?: string
+  intel?: Record<string, unknown>
+  enriched_at?: string | null
 }
 
 export interface Contact {
@@ -484,6 +508,8 @@ export interface PipelineStage {
   is_won: boolean
   is_lost: boolean
   deals_count?: number
+  /** Prazo saudável nesta etapa, em dias (nulo = padrão do workspace, 14). */
+  prazo_dias?: number | null
 }
 
 export interface Pipeline {
@@ -517,6 +543,11 @@ export interface Deal {
   last_activity_at?: string | null
   created_at: string
   updated_at: string
+  /** Campos do board (/deals/board): envelhecimento na etapa atual. */
+  stage_entered_at?: string | null
+  dias_na_etapa?: number | null
+  prazo_dias?: number | null
+  dias_sem_atividade?: number | null
 }
 
 export interface Task {

@@ -100,6 +100,48 @@ describe('SettingsPipelinesView (editor de fases)', () => {
     wrapper.unmount()
   })
 
+  it('mostra o campo "Prazo saudável (dias)" por fase e envia prazo_dias ao alterar', async () => {
+    const fetchMock = stubFetch()
+    const wrapper = build(fetchMock)
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Prazo saudável (dias)')
+    expect(wrapper.text()).toContain('cards passam a vermelho ao ultrapassar')
+
+    const rows = wrapper.findAll('tbody tr')
+    // Fase de ganho não tem prazo (não envelhece).
+    expect(rows[2].find('.prazo-input').exists()).toBe(false)
+
+    await rows[0].find('.prazo-input').setValue('21')
+    await flushPromises()
+
+    const putCall = fetchMock.mock.calls.find((c: any[]) => c[1]?.method === 'PUT' && String(c[0]).includes('/stages/1'))
+    expect(putCall).toBeTruthy()
+    const payload = JSON.parse(putCall![1].body)
+    expect(payload.prazo_dias).toBe(21)
+    expect(payload.name).toBe('Prospecção')
+    expect(payload.probability).toBe(20)
+    wrapper.unmount()
+  })
+
+  it('limpar o prazo envia prazo_dias nulo (volta ao padrão do workspace)', async () => {
+    const fetchMock = stubFetch()
+    const wrapper = build(fetchMock)
+    await flushPromises()
+
+    const row = wrapper.findAll('tbody tr')[1]
+    await row.find('.prazo-input').setValue('9')
+    await flushPromises()
+    await row.find('.prazo-input').setValue('')
+    await flushPromises()
+
+    const puts = fetchMock.mock.calls.filter((c: any[]) => c[1]?.method === 'PUT' && String(c[0]).includes('/stages/2'))
+    expect(puts).toHaveLength(2)
+    expect(JSON.parse(puts[0][1].body).prazo_dias).toBe(9)
+    expect(JSON.parse(puts[1][1].body).prazo_dias).toBeNull()
+    wrapper.unmount()
+  })
+
   it('bloqueia excluir fase com negócios', async () => {
     const wrapper = build()
     await flushPromises()

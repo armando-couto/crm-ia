@@ -20,7 +20,10 @@ type PipelineStage struct {
 	Probability int    `json:"probability"`
 	IsWon       bool   `json:"is_won"`
 	IsLost      bool   `json:"is_lost"`
-	DealsCount  int    `json:"deals_count"`
+	// Prazo saudável nesta etapa, em dias: acima disso o negócio é "estagnado"
+	// no funil e no kanban. Nulo usa o padrão do workspace.
+	PrazoDias  *int `json:"prazo_dias"`
+	DealsCount int  `json:"deals_count"`
 }
 
 func ListPipelines(db *sql.DB) ([]Pipeline, error) {
@@ -47,7 +50,7 @@ func ListPipelines(db *sql.DB) ([]Pipeline, error) {
 	}
 
 	stageRows, err := db.Query(`
-		SELECT s.id, s.pipeline_id, s.name, s.position, s.probability, s.is_won, s.is_lost,
+		SELECT s.id, s.pipeline_id, s.name, s.position, s.probability, s.is_won, s.is_lost, s.prazo_dias,
 		       (SELECT COUNT(*) FROM deals d WHERE d.stage_id = s.id)
 		FROM pipeline_stages s ORDER BY s.position, s.id`)
 	if err != nil {
@@ -58,7 +61,7 @@ func ListPipelines(db *sql.DB) ([]Pipeline, error) {
 	for stageRows.Next() {
 		var s PipelineStage
 		if err := stageRows.Scan(&s.ID, &s.PipelineID, &s.Name, &s.Position, &s.Probability,
-			&s.IsWon, &s.IsLost, &s.DealsCount); err != nil {
+			&s.IsWon, &s.IsLost, &s.PrazoDias, &s.DealsCount); err != nil {
 			return nil, err
 		}
 		for i := range pipelines {
@@ -95,9 +98,9 @@ func ReorderStages(db *sql.DB, pipelineID int64, stageIDs []int64) error {
 func StageByID(db *sql.DB, id int64) (*PipelineStage, error) {
 	var s PipelineStage
 	err := db.QueryRow(`
-		SELECT id, pipeline_id, name, position, probability, is_won, is_lost
+		SELECT id, pipeline_id, name, position, probability, is_won, is_lost, prazo_dias
 		FROM pipeline_stages WHERE id = $1`, id,
-	).Scan(&s.ID, &s.PipelineID, &s.Name, &s.Position, &s.Probability, &s.IsWon, &s.IsLost)
+	).Scan(&s.ID, &s.PipelineID, &s.Name, &s.Position, &s.Probability, &s.IsWon, &s.IsLost, &s.PrazoDias)
 	if err != nil {
 		return nil, err
 	}
@@ -121,16 +124,17 @@ func DeletePipeline(db *sql.DB, id int64) error {
 
 func CreateStage(db *sql.DB, s *PipelineStage) error {
 	return db.QueryRow(`
-		INSERT INTO pipeline_stages (pipeline_id, name, position, probability, is_won, is_lost)
-		VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-		s.PipelineID, s.Name, s.Position, s.Probability, s.IsWon, s.IsLost).Scan(&s.ID)
+		INSERT INTO pipeline_stages (pipeline_id, name, position, probability, is_won, is_lost, prazo_dias)
+		VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+		s.PipelineID, s.Name, s.Position, s.Probability, s.IsWon, s.IsLost, s.PrazoDias).Scan(&s.ID)
 }
 
 func UpdateStage(db *sql.DB, s *PipelineStage) error {
 	_, err := db.Exec(`
-		UPDATE pipeline_stages SET name = $1, position = $2, probability = $3, is_won = $4, is_lost = $5
-		WHERE id = $6`,
-		s.Name, s.Position, s.Probability, s.IsWon, s.IsLost, s.ID)
+		UPDATE pipeline_stages SET name = $1, position = $2, probability = $3, is_won = $4, is_lost = $5,
+		       prazo_dias = $6
+		WHERE id = $7`,
+		s.Name, s.Position, s.Probability, s.IsWon, s.IsLost, s.PrazoDias, s.ID)
 	return err
 }
 

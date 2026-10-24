@@ -269,3 +269,280 @@ func CountActiveUsers(db *sql.DB) (int, error) {
 	err := db.QueryRow(`SELECT COUNT(*) FROM users WHERE active`).Scan(&total)
 	return total, err
 }
+
+// -----------------------------------------------------------------------------
+// Inteligência de empresas: fontes de enriquecimento (Receita Federal grátis,
+// BigDataCorp e Serasa pagos). Segredos cifrados; a API devolve has_secret.
+// -----------------------------------------------------------------------------
+
+const SettingEnrichment = "enrichment"
+
+// Códigos das fontes.
+const (
+	ProvedorReceita     = "receita"
+	ProvedorBigDataCorp = "bigdatacorp"
+	ProvedorSerasa      = "serasa"
+)
+
+// BigDataCorpDatasets são os conjuntos de dados vendidos por consulta, com o
+// preço de referência da 1ª faixa em centavos (só para estimativa).
+var BigDataCorpDatasets = []struct {
+	Codigo, Nome, Descricao string
+	PrecoCentavos           int
+}{
+	{"basic_data", "Dados básicos", "razão social, situação, abertura, natureza e CNAE", 3},
+	{"registration_data", "Dados cadastrais", "endereço, telefone e e-mail cadastrais", 14},
+	{"activity_indicators", "Indicadores de atividade", "faixa de funcionários, faturamento presumido, nível de atividade, domínio/SSL/e-mail corporativo", 6},
+	{"relationships", "Sócios e vínculos", "quadro societário com nível e datas", 4},
+	{"phones_extended", "Telefones validados", "telefones encontrados com validação", 6},
+	{"emails_extended", "E-mails validados", "e-mails encontrados com validação", 6},
+	{"addresses_extended", "Endereços", "endereços adicionais", 6},
+	{"domains_extended", "Domínios", "domínios da empresa, SSL e atividade", 6},
+	{"processes", "Processos", "processos judiciais (resumo e últimos)", 8},
+	{"kyc", "KYC e sanções", "pessoas politicamente expostas e listas de sanções", 6},
+	{"media_profile_and_exposure", "Mídia", "exposição na imprensa e notícias", 10},
+}
+
+// BigDataCorpDatasetsPadrao é o conjunto sugerido (≈ R$ 0,27).
+var BigDataCorpDatasetsPadrao = []string{"basic_data", "registration_data", "activity_indicators", "relationships"}
+
+// PrecosBigDataCorpPadrao devolve a tabela de preços de referência.
+func PrecosBigDataCorpPadrao() map[string]int {
+	m := map[string]int{}
+	for _, d := range BigDataCorpDatasets {
+		m[d.Codigo] = d.PrecoCentavos
+	}
+	return m
+}
+
+// BigDataCorpDatasetValido diz se o código é um dataset conhecido.
+func BigDataCorpDatasetValido(codigo string) bool {
+	for _, d := range BigDataCorpDatasets {
+		if d.Codigo == codigo {
+			return true
+		}
+	}
+	return false
+}
+
+// BigDataCorpSettings é a configuração do provedor BigDataCorp.
+type BigDataCorpSettings struct {
+	Habilitado bool   `json:"habilitado"`
+	Demo       bool   `json:"demo"`
+	TokenID    string `json:"token_id"`
+	// AccessToken é só de entrada (PUT): vazio mantém o já gravado.
+	AccessToken        string         `json:"access_token,omitempty"`
+	AccessTokenCifrado string         `json:"access_token_cifrado,omitempty"`
+	HasSecret          bool           `json:"has_secret"`
+	DatasetsPadrao     []string       `json:"datasets_padrao"`
+	PrecosCentavos     map[string]int `json:"precos_centavos"`
+	// BaseURL permite apontar para outro endereço (homologação, testes).
+	BaseURL string `json:"base_url,omitempty"`
+}
+
+// SerasaSettings é a configuração do provedor Serasa Experian.
+type SerasaSettings struct {
+	Habilitado bool   `json:"habilitado"`
+	Demo       bool   `json:"demo"`
+	Ambiente   string `json:"ambiente"` // uat|prod
+	ClientID   string `json:"client_id"`
+	// ClientSecret é só de entrada (PUT): vazio mantém o já gravado.
+	ClientSecret        string `json:"client_secret,omitempty"`
+	ClientSecretCifrado string `json:"client_secret_cifrado,omitempty"`
+	HasSecret           bool   `json:"has_secret"`
+	ReportName          string `json:"report_name"`
+	OptionalFeatures    string `json:"optional_features"`
+	PrecoCentavos       int    `json:"preco_centavos"`
+	// BaseURL substitui o endereço do ambiente; ReportPath é o template do
+	// caminho do relatório ({report}, {features}, {cnpj}) — o parâmetro exato
+	// do documento não é público e pode ser ajustado sem mexer no código.
+	BaseURL    string `json:"base_url,omitempty"`
+	ReportPath string `json:"report_path,omitempty"`
+}
+
+// SerasaReportPathPadrao é o template padrão do relatório.
+const SerasaReportPathPadrao = "/credit-services/business-information-report/v1/reports?reportName={report}&optionalFeatures={features}&documento={cnpj}"
+
+// EnrichmentSettings é a configuração de enriquecimento (chave "enrichment").
+type EnrichmentSettings struct {
+	AutoReceita          bool                `json:"auto_receita"`
+	Sobrescrever         string              `json:"sobrescrever"` // vazios|sempre
+	LimiteMensalCentavos int                 `json:"limite_mensal_centavos"`
+	PrazoCacheDias       int                 `json:"prazo_cache_dias"`
+	BigDataCorp          BigDataCorpSettings `json:"bigdatacorp"`
+	Serasa               SerasaSettings      `json:"serasa"`
+}
+
+func DefaultEnrichmentSettings() EnrichmentSettings {
+	return EnrichmentSettings{
+		AutoReceita:          true,
+		Sobrescrever:         "vazios",
+		LimiteMensalCentavos: 20000,
+		PrazoCacheDias:       30,
+		BigDataCorp: BigDataCorpSettings{
+			DatasetsPadrao: append([]string{}, BigDataCorpDatasetsPadrao...),
+			PrecosCentavos: PrecosBigDataCorpPadrao(),
+		},
+		Serasa: SerasaSettings{
+			Ambiente:      "uat",
+			ReportName:    "RELATORIO_AVANCADO_PJ_PME",
+			PrecoCentavos: 1500,
+		},
+	}
+}
+
+// LoadEnrichmentSettings lê a configuração, completando o que faltar com o padrão.
+func LoadEnrichmentSettings(db *sql.DB) EnrichmentSettings {
+	s := DefaultEnrichmentSettings()
+	if db != nil {
+		_, _ = GetSetting(db, SettingEnrichment, &s)
+	}
+	s.completar()
+	return s
+}
+
+func (s *EnrichmentSettings) completar() {
+	if s.Sobrescrever != "sempre" {
+		s.Sobrescrever = "vazios"
+	}
+	if s.PrazoCacheDias <= 0 {
+		s.PrazoCacheDias = 30
+	}
+	if s.LimiteMensalCentavos < 0 {
+		s.LimiteMensalCentavos = 0
+	}
+	if len(s.BigDataCorp.DatasetsPadrao) == 0 {
+		s.BigDataCorp.DatasetsPadrao = append([]string{}, BigDataCorpDatasetsPadrao...)
+	}
+	precos := PrecosBigDataCorpPadrao()
+	for k, v := range s.BigDataCorp.PrecosCentavos {
+		if v >= 0 {
+			precos[k] = v
+		}
+	}
+	s.BigDataCorp.PrecosCentavos = precos
+	s.BigDataCorp.HasSecret = s.BigDataCorp.AccessTokenCifrado != ""
+	if s.Serasa.Ambiente != "prod" {
+		s.Serasa.Ambiente = "uat"
+	}
+	if s.Serasa.ReportName == "" {
+		s.Serasa.ReportName = "RELATORIO_AVANCADO_PJ_PME"
+	}
+	if s.Serasa.PrecoCentavos < 0 {
+		s.Serasa.PrecoCentavos = 0
+	}
+	s.Serasa.HasSecret = s.Serasa.ClientSecretCifrado != ""
+}
+
+// Validate normaliza e confere a configuração recebida da tela.
+func (s *EnrichmentSettings) Validate() error {
+	s.Sobrescrever = strings.ToLower(strings.TrimSpace(s.Sobrescrever))
+	if s.Sobrescrever == "" {
+		s.Sobrescrever = "vazios"
+	}
+	if s.Sobrescrever != "vazios" && s.Sobrescrever != "sempre" {
+		return fmt.Errorf("regra de sobrescrita inválida (vazios ou sempre)")
+	}
+	if s.LimiteMensalCentavos < 0 {
+		return fmt.Errorf("o limite mensal não pode ser negativo")
+	}
+	if s.PrazoCacheDias < 1 || s.PrazoCacheDias > 365 {
+		return fmt.Errorf("o prazo do cache deve ficar entre 1 e 365 dias")
+	}
+	s.BigDataCorp.TokenID = strings.TrimSpace(s.BigDataCorp.TokenID)
+	s.BigDataCorp.BaseURL = strings.TrimRight(strings.TrimSpace(s.BigDataCorp.BaseURL), "/")
+	ds := []string{}
+	for _, d := range s.BigDataCorp.DatasetsPadrao {
+		d = strings.ToLower(strings.TrimSpace(d))
+		if d == "" {
+			continue
+		}
+		if !BigDataCorpDatasetValido(d) {
+			return fmt.Errorf("conjunto de dados desconhecido: %s", d)
+		}
+		ds = append(ds, d)
+	}
+	s.BigDataCorp.DatasetsPadrao = ds
+	for k, v := range s.BigDataCorp.PrecosCentavos {
+		if !BigDataCorpDatasetValido(k) {
+			return fmt.Errorf("conjunto de dados desconhecido na tabela de preços: %s", k)
+		}
+		if v < 0 {
+			return fmt.Errorf("preço inválido para %s", k)
+		}
+	}
+	s.Serasa.Ambiente = strings.ToLower(strings.TrimSpace(s.Serasa.Ambiente))
+	if s.Serasa.Ambiente == "" {
+		s.Serasa.Ambiente = "uat"
+	}
+	if s.Serasa.Ambiente != "uat" && s.Serasa.Ambiente != "prod" {
+		return fmt.Errorf("ambiente Serasa inválido (uat ou prod)")
+	}
+	s.Serasa.ClientID = strings.TrimSpace(s.Serasa.ClientID)
+	s.Serasa.ReportName = strings.TrimSpace(s.Serasa.ReportName)
+	s.Serasa.OptionalFeatures = strings.TrimSpace(s.Serasa.OptionalFeatures)
+	s.Serasa.BaseURL = strings.TrimRight(strings.TrimSpace(s.Serasa.BaseURL), "/")
+	s.Serasa.ReportPath = strings.TrimSpace(s.Serasa.ReportPath)
+	if s.Serasa.PrecoCentavos < 0 {
+		return fmt.Errorf("o preço da consulta Serasa não pode ser negativo")
+	}
+	for _, u := range []string{s.BigDataCorp.BaseURL, s.Serasa.BaseURL} {
+		if u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
+			return fmt.Errorf("endereço base inválido: %s", u)
+		}
+	}
+	s.completar()
+	return nil
+}
+
+// Publica devolve a cópia segura para a API: sem segredos, só has_secret.
+func (s EnrichmentSettings) Publica() EnrichmentSettings {
+	s.completar()
+	s.BigDataCorp.AccessToken = ""
+	s.BigDataCorp.AccessTokenCifrado = ""
+	s.Serasa.ClientSecret = ""
+	s.Serasa.ClientSecretCifrado = ""
+	return s
+}
+
+// ParaGravar limpa os campos só de entrada antes de ir ao banco.
+func (s EnrichmentSettings) ParaGravar() EnrichmentSettings {
+	s.BigDataCorp.AccessToken = ""
+	s.Serasa.ClientSecret = ""
+	s.completar()
+	return s
+}
+
+// CustoBigDataCorp estima o custo (centavos) dos datasets pedidos.
+func (s EnrichmentSettings) CustoBigDataCorp(datasets []string) int {
+	total := 0
+	for _, d := range datasets {
+		total += s.BigDataCorp.PrecosCentavos[d]
+	}
+	return total
+}
+
+// BigDataCorpPronto diz se o provedor pode ser usado (credenciais ou demo).
+func (s EnrichmentSettings) BigDataCorpPronto() bool {
+	b := s.BigDataCorp
+	return b.Habilitado && (b.Demo || (b.TokenID != "" && b.AccessTokenCifrado != ""))
+}
+
+// SerasaPronto diz se o provedor pode ser usado (credenciais ou demo).
+func (s EnrichmentSettings) SerasaPronto() bool {
+	r := s.Serasa
+	return r.Habilitado && (r.Demo || (r.ClientID != "" && r.ClientSecretCifrado != ""))
+}
+
+// NomeProvedor devolve o nome amigável da fonte.
+func NomeProvedor(codigo string) string {
+	switch codigo {
+	case ProvedorReceita:
+		return "Receita Federal"
+	case ProvedorBigDataCorp:
+		return "BigDataCorp"
+	case ProvedorSerasa:
+		return "Serasa Experian"
+	}
+	return codigo
+}

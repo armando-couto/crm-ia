@@ -42,8 +42,9 @@ watch([days, pipelineId], load)
 
 onMounted(async () => {
   try {
-    const resp = await api.get<{ data: Pipeline[] }>('/pipelines')
-    pipelines.value = resp.data ?? []
+    // /pipelines devolve um array puro; tolera o envelope { data } por segurança.
+    const resp = await api.get<Pipeline[] | { data: Pipeline[] }>('/pipelines')
+    pipelines.value = Array.isArray(resp) ? resp : resp?.data ?? []
   } catch {
     /* segue sem o filtro de pipeline */
   }

@@ -48,6 +48,9 @@ function logout() {
         <router-link v-if="auth.can('deals.view')" to="/negocios" active-class="active">
           <span class="icon">◈</span><span class="label">Negócios</span>
         </router-link>
+        <router-link v-if="auth.can('deals.view')" to="/funil" active-class="active">
+          <span class="icon">▽</span><span class="label">Funil</span>
+        </router-link>
         <router-link v-if="auth.can('tickets.view')" to="/tickets" active-class="active">
           <span class="icon">◎</span><span class="label">Tickets</span>
         </router-link>

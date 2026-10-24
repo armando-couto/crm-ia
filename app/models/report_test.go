@@ -299,6 +299,11 @@ func TestStageDuration(t *testing.T) {
 		WHERE id = $1`, deal.ID); err != nil {
 		t.Fatal(err)
 	}
+	// Fechar também grava a entrada na etapa de ganho: ela data do fechamento.
+	if _, err := db.Exec(`UPDATE deal_stage_history SET entered_at = NOW() - INTERVAL '4 days'
+		WHERE deal_id = $1 AND stage_id <> $2`, deal.ID, stageID); err != nil {
+		t.Fatal(err)
+	}
 
 	result, err := models.LoadStageDuration(db, pipelineID, 90)
 	if err != nil {

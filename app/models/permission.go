@@ -18,6 +18,7 @@ const (
 	PermCompaniesView   = "companies.view"
 	PermCompaniesEdit   = "companies.edit"
 	PermCompaniesDelete = "companies.delete"
+	PermCompaniesEnrich = "companies.enrich"
 
 	PermDealsView   = "deals.view"
 	PermDealsEdit   = "deals.edit"
@@ -62,12 +63,13 @@ const (
 	PermGoalsManage   = "goals.manage"
 	PermViewsManage   = "views.manage"
 
-	PermSettingsUsers       = "settings.users"
-	PermSettingsPipelines   = "settings.pipelines"
-	PermSettingsProperties  = "settings.properties"
-	PermSettingsForms       = "settings.forms"
-	PermSettingsPermissions = "settings.permissions"
-	PermSettingsAudit       = "settings.audit"
+	PermSettingsUsers        = "settings.users"
+	PermSettingsPipelines    = "settings.pipelines"
+	PermSettingsProperties   = "settings.properties"
+	PermSettingsForms        = "settings.forms"
+	PermSettingsPermissions  = "settings.permissions"
+	PermSettingsAudit        = "settings.audit"
+	PermSettingsIntegrations = "settings.integrations"
 )
 
 // Perfis de acesso.
@@ -117,6 +119,7 @@ var PermissionCatalog = []PermissionDef{
 	{PermCompaniesView, "Ver empresas", "Empresas"},
 	{PermCompaniesEdit, "Criar e editar empresas", "Empresas"},
 	{PermCompaniesDelete, "Excluir empresas", "Empresas"},
+	{PermCompaniesEnrich, "Enriquecer empresas (consultas externas)", "Empresas"},
 
 	{PermDealsView, "Ver negócios", "Negócios"},
 	{PermDealsEdit, "Criar, editar e mover negócios", "Negócios"},
@@ -166,6 +169,7 @@ var PermissionCatalog = []PermissionDef{
 	{PermSettingsProperties, "Gerenciar propriedades", "Configurações"},
 	{PermSettingsForms, "Personalizar formulários", "Configurações"},
 	{PermSettingsPermissions, "Gerenciar permissões", "Configurações"},
+	{PermSettingsIntegrations, "Configurar integrações de dados", "Configurações"},
 	{PermSettingsAudit, "Ver trilha de auditoria", "Configurações"},
 }
 
@@ -182,7 +186,7 @@ func ValidPermission(key string) bool {
 // sem excluir registros nem acessar configurações.
 var sellerDefaults = []string{
 	PermContactsView, PermContactsEdit, PermContactsExport,
-	PermCompaniesView, PermCompaniesEdit,
+	PermCompaniesView, PermCompaniesEdit, PermCompaniesEnrich,
 	PermDealsView, PermDealsEdit,
 	PermTicketsView, PermTicketsEdit,
 	PermTasksView, PermTasksEdit,
@@ -206,7 +210,7 @@ var managerDefaults = append(append([]string{}, sellerDefaults...),
 	PermProjectsEdit,
 	PermListsManage,
 	PermLibraryManage,
-	PermSettingsPipelines, PermSettingsProperties, PermSettingsForms,
+	PermSettingsPipelines, PermSettingsProperties, PermSettingsForms, PermSettingsIntegrations,
 	PermRecordsMerge,
 	PermAutomationsView, PermAutomationsManage,
 	PermReportsManage, PermGoalsManage,

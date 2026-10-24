@@ -99,12 +99,24 @@ async function saveStage(stage: PipelineStage) {
       position: stage.position,
       probability: stage.probability,
       is_won: stage.is_won,
-      is_lost: stage.is_lost
+      is_lost: stage.is_lost,
+      prazo_dias: stage.prazo_dias ?? null
     })
   } catch (e: any) {
     toast.error(e.message)
     await load()
   }
+}
+
+/** Prazo saudável em dias (vazio = padrão do workspace); os cards passam a vermelho ao ultrapassar. */
+async function changePrazo(stage: PipelineStage, event: Event) {
+  const raw = (event.target as HTMLInputElement).value.trim()
+  const novo = raw === '' ? null : Math.max(1, Math.round(Number(raw)))
+  if (raw !== '' && !Number.isFinite(Number(raw))) return
+  if ((stage.prazo_dias ?? null) === novo) return
+  stage.prazo_dias = novo
+  await saveStage(stage)
+  toast.push('Prazo da fase atualizado')
 }
 
 async function renameStage(stage: PipelineStage, event: Event) {
@@ -152,7 +164,8 @@ async function addStage() {
       position: stages.value.length,
       probability: 50,
       is_won: false,
-      is_lost: false
+      is_lost: false,
+      prazo_dias: null
     })
     toast.push('Fase adicionada — edite o nome na tabela')
     await load()
@@ -185,7 +198,7 @@ onMounted(() => load(false))
       <div>
         <h1>Pipelines</h1>
         <p class="muted" style="margin: 4px 0 0">
-          Defina as fases que os negócios percorrem e a probabilidade de fechamento de cada uma.
+          Defina as fases que os negócios percorrem, a probabilidade de fechamento e o prazo saudável de cada uma.
         </p>
       </div>
       <button class="btn btn-primary" type="button" @click="pipelineModal = true">+ Criar pipeline</button>
@@ -208,6 +221,10 @@ onMounted(() => load(false))
             <th style="width: 70px">Ordem</th>
             <th>Nome da fase</th>
             <th style="width: 220px">Probabilidade da fase</th>
+            <th style="width: 170px">
+              Prazo saudável (dias)
+              <small class="th-hint">cards passam a vermelho ao ultrapassar</small>
+            </th>
             <th style="width: 110px">Usado por</th>
             <th style="width: 60px"></th>
           </tr>
@@ -227,6 +244,20 @@ onMounted(() => load(false))
               <select class="prob-select" :value="stageProbabilityValue(s)" @change="changeProbability(s, $event)">
                 <option v-for="o in probabilityOptions" :key="o.value" :value="o.value">{{ o.label }}</option>
               </select>
+            </td>
+            <td>
+              <input
+                v-if="!s.is_won && !s.is_lost"
+                class="prazo-input"
+                type="number"
+                min="1"
+                step="1"
+                placeholder="14 (padrão)"
+                :value="s.prazo_dias ?? ''"
+                :aria-label="`Prazo saudável da fase ${s.name}, em dias`"
+                @change="changePrazo(s, $event)"
+              />
+              <span v-else class="muted">—</span>
             </td>
             <td>
               <span class="badge" :class="s.deals_count ? 'blue' : 'gray'">{{ s.deals_count ?? 0 }} negócio(s)</span>
@@ -320,6 +351,29 @@ onMounted(() => load(false))
   font-size: 13px;
   background: var(--ci-surface);
   outline: none;
+}
+
+.th-hint {
+  display: block;
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--ci-text-3);
+}
+
+.prazo-input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1px solid var(--ci-border);
+  border-radius: 7px;
+  font-size: 13px;
+  background: var(--ci-surface);
+  outline: none;
+}
+
+.prazo-input:focus {
+  border-color: var(--ci-purple);
 }
 
 .add-stage {

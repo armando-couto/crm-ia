@@ -3,6 +3,7 @@ package models
 import (
 	"database/sql"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -37,6 +38,13 @@ type Deal struct {
 	LastActivityAt   *time.Time `json:"last_activity_at"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
+	// Campos do kanban (preenchidos por BoardDeals): quando entrou na etapa
+	// atual, há quantos dias está nela, o prazo saudável da etapa e há quantos
+	// dias não tem atividade. Zerados nas demais consultas.
+	StageEnteredAt   *time.Time `json:"stage_entered_at"`
+	DiasNaEtapa      int        `json:"dias_na_etapa"`
+	PrazoDias        *int       `json:"prazo_dias"`
+	DiasSemAtividade int        `json:"dias_sem_atividade"`
 }
 
 func ValidDealTemperature(t string) bool {
@@ -81,20 +89,32 @@ func dealOrderBy(sortBy, sortDir string) string {
 	return column + " " + dir + " NULLS LAST"
 }
 
-const dealSelect = `
-	SELECT d.id, d.name, d.amount, d.currency, d.pipeline_id, d.stage_id, s.name,
+const dealColumns = `d.id, d.name, d.amount, d.currency, d.pipeline_id, d.stage_id, s.name,
 	       d.contact_id, COALESCE(ct.first_name || ' ' || COALESCE(ct.last_name,''), ''),
 	       d.company_id, COALESCE(co.name,''),
 	       d.owner_id, COALESCE(u.name,''),
 	       d.status, COALESCE(d.temperature,''), COALESCE(d.forecast_category,'pipeline'),
 	       d.close_date, d.position, d.closed_at,
 	       (SELECT MAX(a.created_at) FROM activities a WHERE a.deal_id = d.id) AS last_activity_at,
-	       d.created_at, d.updated_at
+	       d.created_at, d.updated_at`
+
+const dealFrom = `
 	FROM deals d
 	JOIN pipeline_stages s ON s.id = d.stage_id
 	LEFT JOIN contacts ct ON ct.id = d.contact_id
 	LEFT JOIN companies co ON co.id = d.company_id
 	LEFT JOIN users u ON u.id = d.owner_id`
+
+const dealSelect = `
+	SELECT ` + dealColumns + dealFrom
+
+// boardSelect acrescenta ao dealSelect o que o kanban precisa para o selo de
+// tempo na etapa: a última entrada na etapa atual e o prazo da etapa.
+const boardSelect = `
+	SELECT ` + dealColumns + `,
+	       (SELECT MAX(h.entered_at) FROM deal_stage_history h
+	         WHERE h.deal_id = d.id AND h.stage_id = d.stage_id) AS stage_entered_at,
+	       s.prazo_dias` + dealFrom
 
 func scanDeal(row interface{ Scan(...any) error }) (*Deal, error) {
 	var d Deal
@@ -242,22 +262,57 @@ func BoardDeals(db *sql.DB, f BoardFilter) ([]Deal, error) {
 		where = append(where, adv)
 	}
 
-	rows, err := db.Query(dealSelect+` WHERE `+strings.Join(where, " AND ")+`
+	rows, err := db.Query(boardSelect+` WHERE `+strings.Join(where, " AND ")+`
 		ORDER BY d.stage_id, d.position, d.id`, args...)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
+	now := time.Now()
 	list := []Deal{}
 	for rows.Next() {
-		d, err := scanDeal(rows)
+		d, err := scanBoardDeal(rows, now)
 		if err != nil {
 			return nil, err
 		}
 		list = append(list, *d)
 	}
 	return list, rows.Err()
+}
+
+// scanBoardDeal lê a linha do boardSelect e calcula os dias na etapa e sem
+// atividade a partir de "now" (parâmetro para os testes serem determinísticos).
+func scanBoardDeal(row interface{ Scan(...any) error }, now time.Time) (*Deal, error) {
+	var d Deal
+	err := row.Scan(&d.ID, &d.Name, &d.Amount, &d.Currency, &d.PipelineID, &d.StageID, &d.StageName,
+		&d.ContactID, &d.ContactName, &d.CompanyID, &d.CompanyName, &d.OwnerID, &d.OwnerName,
+		&d.Status, &d.Temperature, &d.ForecastCategory, &d.CloseDate, &d.Position, &d.ClosedAt, &d.LastActivityAt,
+		&d.CreatedAt, &d.UpdatedAt, &d.StageEnteredAt, &d.PrazoDias)
+	if err != nil {
+		return nil, err
+	}
+	d.ContactName = strings.TrimSpace(d.ContactName)
+	if d.StageEnteredAt == nil {
+		// Negócios anteriores ao histórico: a entrada na etapa é a criação.
+		entered := d.CreatedAt
+		d.StageEnteredAt = &entered
+	}
+	d.DiasNaEtapa = diasDesde(*d.StageEnteredAt, now)
+	ultima := d.CreatedAt
+	if d.LastActivityAt != nil && d.LastActivityAt.After(ultima) {
+		ultima = *d.LastActivityAt
+	}
+	d.DiasSemAtividade = diasDesde(ultima, now)
+	return &d, nil
+}
+
+// diasDesde conta dias corridos inteiros entre dois instantes (nunca negativo).
+func diasDesde(desde, ate time.Time) int {
+	if !ate.After(desde) {
+		return 0
+	}
+	return int(ate.Sub(desde).Hours() / 24)
 }
 
 func DealByID(db *sql.DB, id int64) (*Deal, error) {
@@ -289,22 +344,109 @@ func CreateDeal(db *sql.DB, d *Deal) error {
 	return err
 }
 
+// ===== Rastro de mudanças (deal_changes) =====
+
+// Campos rastreados em deal_changes: são os que o funil usa para reconstruir a
+// movimentação de um período (waterfall, adiamentos, variação em 7 dias).
+const (
+	DealChangeAmount    = "amount"
+	DealChangeCloseDate = "close_date"
+	DealChangeStage     = "stage_id"
+	DealChangeOwner     = "owner_id"
+	DealChangeStatus    = "status"
+)
+
+// DealChange é uma linha de deal_changes: o valor anterior e o novo como texto
+// (datas em AAAA-MM-DD, nulos como "").
+type DealChange struct {
+	ID        int64     `json:"id"`
+	DealID    int64     `json:"deal_id"`
+	Campo     string    `json:"campo"`
+	De        string    `json:"de"`
+	Para      string    `json:"para"`
+	UserID    *int64    `json:"user_id"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// Conversões para o texto gravado em deal_changes.
+func changeAmount(v float64) string { return strconv.FormatFloat(v, 'f', -1, 64) }
+func changeInt(v int64) string      { return strconv.FormatInt(v, 10) }
+func changeIntPtr(v *int64) string {
+	if v == nil {
+		return ""
+	}
+	return changeInt(*v)
+}
+func changeDate(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format("2006-01-02")
+}
+
+// recordDealChange grava uma linha em deal_changes quando o valor mudou.
+func recordDealChange(db *sql.DB, dealID int64, campo, de, para string, userID *int64) error {
+	if de == para {
+		return nil
+	}
+	_, err := db.Exec(`INSERT INTO deal_changes (deal_id, campo, de, para, user_id) VALUES ($1, $2, $3, $4, $5)`,
+		dealID, campo, de, para, userID)
+	return err
+}
+
 func UpdateDeal(db *sql.DB, d *Deal) error {
+	return UpdateDealBy(db, d, nil)
+}
+
+// UpdateDealBy grava a edição do negócio e registra em deal_changes o que
+// mudou em valor, previsão de fechamento e dono, atribuído a userID.
+func UpdateDealBy(db *sql.DB, d *Deal, userID *int64) error {
 	if d.ForecastCategory == "" {
 		d.ForecastCategory = ForecastPipeline
 	}
-	_, err := db.Exec(`
+	// Valores anteriores, para o rastro de mudanças.
+	var antes struct {
+		amount    float64
+		closeDate *time.Time
+		ownerID   *int64
+	}
+	err := db.QueryRow(`SELECT amount, close_date, owner_id FROM deals WHERE id = $1`, d.ID).
+		Scan(&antes.amount, &antes.closeDate, &antes.ownerID)
+	if err != nil {
+		return err
+	}
+
+	_, err = db.Exec(`
 		UPDATE deals SET name = $1, amount = $2, currency = $3, contact_id = $4, company_id = $5,
 		       owner_id = $6, temperature = $7, close_date = $8, forecast_category = $9, updated_at = NOW()
 		WHERE id = $10`,
 		d.Name, d.Amount, d.Currency, d.ContactID, d.CompanyID, d.OwnerID, d.Temperature,
 		d.CloseDate, d.ForecastCategory, d.ID)
-	return err
+	if err != nil {
+		return err
+	}
+
+	changes := []struct{ campo, de, para string }{
+		{DealChangeAmount, changeAmount(antes.amount), changeAmount(d.Amount)},
+		{DealChangeCloseDate, changeDate(antes.closeDate), changeDate(d.CloseDate)},
+		{DealChangeOwner, changeIntPtr(antes.ownerID), changeIntPtr(d.OwnerID)},
+	}
+	for _, c := range changes {
+		if err := recordDealChange(db, d.ID, c.campo, c.de, c.para, userID); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // MoveDealStage move o negócio para outra etapa/posição (drag & drop do kanban).
 // Se a etapa destino for de ganho/perda, o status é atualizado junto.
 func MoveDealStage(db *sql.DB, dealID, stageID int64, position int) error {
+	return MoveDealStageBy(db, dealID, stageID, position, nil)
+}
+
+// MoveDealStageBy é MoveDealStage atribuindo a mudança a userID em deal_changes.
+func MoveDealStageBy(db *sql.DB, dealID, stageID int64, position int, userID *int64) error {
 	stage, err := StageByID(db, stageID)
 	if err != nil {
 		return err
@@ -322,22 +464,41 @@ func MoveDealStage(db *sql.DB, dealID, stageID int64, position int) error {
 		closedAt = nil
 	}
 	var previousStage int64
-	_ = db.QueryRow(`SELECT stage_id FROM deals WHERE id = $1`, dealID).Scan(&previousStage)
+	var previousStatus string
+	err = db.QueryRow(`SELECT stage_id, status FROM deals WHERE id = $1`, dealID).
+		Scan(&previousStage, &previousStatus)
+	if err != nil {
+		return err
+	}
 
 	_, err = db.Exec(`
 		UPDATE deals SET stage_id = $1, position = $2, status = $3, closed_at = $4, updated_at = NOW()
 		WHERE id = $5`,
 		stageID, position, status, closedAt, dealID)
-	if err == nil && previousStage != stageID {
-		// A entrada na etapa nova entra no histórico do funil.
-		_, _ = db.Exec(`INSERT INTO deal_stage_history (deal_id, stage_id) VALUES ($1, $2)`,
-			dealID, stageID)
+	if err != nil {
+		return err
 	}
-	return err
+	if previousStage != stageID {
+		// A entrada na etapa nova entra no histórico do funil.
+		if _, err := db.Exec(`INSERT INTO deal_stage_history (deal_id, stage_id) VALUES ($1, $2)`,
+			dealID, stageID); err != nil {
+			return err
+		}
+		if err := recordDealChange(db, dealID, DealChangeStage,
+			changeInt(previousStage), changeInt(stageID), userID); err != nil {
+			return err
+		}
+	}
+	return recordDealChange(db, dealID, DealChangeStatus, previousStatus, status, userID)
 }
 
 // CloseDeal fecha um negócio como ganho ou perdido, movendo-o para a etapa correspondente do pipeline.
 func CloseDeal(db *sql.DB, dealID int64, won bool) error {
+	return CloseDealBy(db, dealID, won, nil)
+}
+
+// CloseDealBy é CloseDeal atribuindo a mudança a userID em deal_changes.
+func CloseDealBy(db *sql.DB, dealID int64, won bool, userID *int64) error {
 	deal, err := DealByID(db, dealID)
 	if err != nil {
 		return err
@@ -362,7 +523,21 @@ func CloseDeal(db *sql.DB, dealID int64, won bool) error {
 	_, err = db.Exec(`
 		UPDATE deals SET status = $1, stage_id = $2, closed_at = NOW(), updated_at = NOW() WHERE id = $3`,
 		status, stageID, dealID)
-	return err
+	if err != nil {
+		return err
+	}
+	if stageID != deal.StageID {
+		// Fechar também é mudar de etapa: entra no histórico como no kanban.
+		if _, err := db.Exec(`INSERT INTO deal_stage_history (deal_id, stage_id) VALUES ($1, $2)`,
+			dealID, stageID); err != nil {
+			return err
+		}
+		if err := recordDealChange(db, dealID, DealChangeStage,
+			changeInt(deal.StageID), changeInt(stageID), userID); err != nil {
+			return err
+		}
+	}
+	return recordDealChange(db, dealID, DealChangeStatus, deal.Status, status, userID)
 }
 
 func DeleteDeal(db *sql.DB, id int64) error {

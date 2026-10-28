@@ -44,6 +44,9 @@ func newTestApp(t *testing.T) (*httpexpect.Expect, sqlmock.Sqlmock, *fakeMailer)
 	mailer := &fakeMailer{}
 	services.Mail = mailer
 	t.Cleanup(func() { services.Mail = nil })
+	// Roda antes dos cleanups acima (ordem inversa): espera as notificações e
+	// gatilhos disparados pela requisição terminarem antes de trocar o mailer.
+	t.Cleanup(services.AguardarSegundoPlano)
 
 	// Estado global entre testes: cache de usuários e contador de tentativas.
 	middleware.ResetUserCache()

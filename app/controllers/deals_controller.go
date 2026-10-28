@@ -247,10 +247,12 @@ func CreateDeal(ctx iris.Context) {
 		CompanyID: deal.CompanyID,
 	})
 	if claims := middlewareClaims(ctx); claims != nil {
-		go services.NotifyAssignment(utils.DB, deal.OwnerID, claims.UserID,
-			services.NotifyDeal, deal.Name, fmt.Sprintf("/negocios/%d", deal.ID))
+		services.EmSegundoPlano(func() {
+			services.NotifyAssignment(utils.DB, deal.OwnerID, claims.UserID,
+				services.NotifyDeal, deal.Name, fmt.Sprintf("/negocios/%d", deal.ID))
+		})
 	}
-	go services.FireDealCreated(utils.DB, deal)
+	services.EmSegundoPlano(func() { services.FireDealCreated(utils.DB, deal) })
 
 	ctx.StatusCode(iris.StatusCreated)
 	ctx.JSON(deal)
@@ -342,7 +344,7 @@ func MoveDeal(ctx iris.Context) {
 		return
 	}
 	if deal.StageID != req.StageID {
-		go services.FireDealStage(utils.DB, updated)
+		services.EmSegundoPlano(func() { services.FireDealStage(utils.DB, updated) })
 	}
 	ctx.JSON(updated)
 }
@@ -379,7 +381,7 @@ func CloseDealHandler(ctx iris.Context) {
 		ContactID: deal.ContactID,
 		CompanyID: deal.CompanyID,
 	})
-	go services.FireDealClosed(utils.DB, deal)
+	services.EmSegundoPlano(func() { services.FireDealClosed(utils.DB, deal) })
 
 	ctx.JSON(deal)
 }

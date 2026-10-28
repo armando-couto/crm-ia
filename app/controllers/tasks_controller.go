@@ -123,8 +123,10 @@ func CreateTask(ctx iris.Context) {
 		return
 	}
 	if claims := middlewareClaims(ctx); claims != nil {
-		go services.NotifyAssignment(utils.DB, task.OwnerID, claims.UserID,
-			services.NotifyTask, task.Title, "/tarefas")
+		services.EmSegundoPlano(func() {
+			services.NotifyAssignment(utils.DB, task.OwnerID, claims.UserID,
+				services.NotifyTask, task.Title, "/tarefas")
+		})
 	}
 	ctx.StatusCode(iris.StatusCreated)
 	ctx.JSON(task)
@@ -179,7 +181,7 @@ func ToggleTask(ctx iris.Context) {
 	}
 	// Tarefa de sequência concluída solta a cadência para a próxima etapa.
 	if task.CompletedAt != nil {
-		go services.CompleteSequenceTask(utils.DB, id)
+		services.EmSegundoPlano(func() { services.CompleteSequenceTask(utils.DB, id) })
 	}
 	ctx.JSON(task)
 }

@@ -121,7 +121,7 @@ func CreateMeeting(ctx iris.Context) {
 			CompanyID: meeting.CompanyID,
 			DealID:    meeting.DealID,
 		})
-		go services.SequenceExitOnMeeting(utils.DB, *meeting.ContactID)
+		services.EmSegundoPlano(func() { services.SequenceExitOnMeeting(utils.DB, *meeting.ContactID) })
 	}
 	ctx.StatusCode(iris.StatusCreated)
 	ctx.JSON(meeting)

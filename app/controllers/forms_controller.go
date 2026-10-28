@@ -273,12 +273,14 @@ func SubmitPublicFormHandler(ctx iris.Context) {
 		ctx.Application().Logger().Errorf("falha ao registrar atividade do formulário: %v", err)
 	}
 
-	go services.FireFormSubmitted(utils.DB, contact, form.ID)
+	services.EmSegundoPlano(func() { services.FireFormSubmitted(utils.DB, contact, form.ID) })
 
 	// Avisa o dono do formulário que chegou lead novo.
 	if form.OwnerID != nil && !existed {
-		go services.NotifyNewLead(utils.DB, *form.OwnerID, form.Name,
-			strings.TrimSpace(contact.FirstName+" "+contact.LastName), contact.Email, contact.ID)
+		services.EmSegundoPlano(func() {
+			services.NotifyNewLead(utils.DB, *form.OwnerID, form.Name,
+				strings.TrimSpace(contact.FirstName+" "+contact.LastName), contact.Email, contact.ID)
+		})
 	}
 
 	ctx.JSON(iris.Map{

@@ -284,7 +284,7 @@ func BookPublicSlot(ctx iris.Context) {
 	}
 
 	// Confirmação para quem agendou e aviso para quem vai atender.
-	go services.NotifyBooking(utils.DB, page, contact, start)
+	services.EmSegundoPlano(func() { services.NotifyBooking(utils.DB, page, contact, start) })
 
 	ctx.JSON(iris.Map{
 		"message":    "Agendamento confirmado! Você vai receber a confirmação por e-mail.",

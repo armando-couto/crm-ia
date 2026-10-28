@@ -36,6 +36,16 @@ make dev-tenant
 
 Cria o cliente de exemplo **acme** pelo painel e provisiona o ambiente dele em `https://crmia.localhost/acme`. A cobrança roda em modo simulado: o cartão `4111 1111 1111 1111` aprova e qualquer cartão terminado em `0002` recusa.
 
+## Servidor próprio (rede local)
+
+Com o projeto clonado no servidor e o PostgreSQL rodando nele mesmo:
+
+```bash
+./atualiza_projeto.sh
+```
+
+Na primeira vez cria o `.env`, prepara o banco `crmia_painel` no PostgreSQL do servidor e sobe tudo em `https://<ip-do-servidor>` (porta 443, certificado autoassinado). Nas seguintes faz `git pull`, reconstrói, sobe e publica a nova versão do app para os clientes com auto-atualizar. Opções: `--sem-pull`, `--sem-clientes`.
+
 ## Produção
 
 1. `bash infra/scripts/gerar-env.sh .env.production` e preencha domínio, e-mail do Let's Encrypt, credenciais da recorrência e do Mandrill.

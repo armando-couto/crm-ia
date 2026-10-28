@@ -99,5 +99,5 @@ jobs:
             docker compose up -d --remove-orphans --no-build
             # registra a versão no painel; os clientes com auto-atualizar recebem-na
             TOKEN=$(grep '^PROVISIONER_TOKEN=' .env | cut -d= -f2-)
-            docker exec crmia-painel wget -qO- --method=POST --header="Authorization: Bearer $TOKEN" --header='Content-Type: application/json' \
-              --body-data="{\"tag\":\"$VERSAO\",\"descricao\":\"publicada pela pipeline\",\"estavel\":true,\"padrao\":true,\"aplicar\":true}" http://127.0.0.1:7894/painel/api/interno/versoes || echo "aviso: cadastre a versão $VERSAO no painel"
+            docker run --rm --network crmia_interna curlimages/curl:8.10.1 -sS -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+              -d "{\"tag\":\"$VERSAO\",\"descricao\":\"publicada pela pipeline\",\"estavel\":true,\"padrao\":true,\"aplicar\":true}" http://painel:7894/painel/api/interno/versoes || echo "aviso: cadastre a versão $VERSAO no painel"

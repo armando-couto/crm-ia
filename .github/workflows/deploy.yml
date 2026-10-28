@@ -60,12 +60,19 @@ jobs:
   plataforma:
     name: Atualizar plataforma
     needs: imagens
-    if: ${{ secrets.DEPLOY_HOST != '' }}
     runs-on: ubuntu-latest
     environment: production
+    # `secrets` não pode ser usado no `if` de um job: o teste vai nos passos.
+    env:
+      TEM_HOST: ${{ secrets.DEPLOY_HOST != '' }}
     steps:
+      - name: sem servidor configurado
+        if: env.TEM_HOST != 'true'
+        run: echo "DEPLOY_HOST não definido; imagens publicadas, atualização da plataforma pulada."
       - uses: actions/checkout@v4
+        if: env.TEM_HOST == 'true'
       - name: enviar compose e .env
+        if: env.TEM_HOST == 'true'
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.DEPLOY_HOST }}
@@ -74,6 +81,7 @@ jobs:
           source: "docker-compose.yml,infra/traefik/dynamic,infra/tenant"
           target: /opt/crmia
       - name: subir
+        if: env.TEM_HOST == 'true'
         uses: appleboy/ssh-action@v1.0.3
         env:
           ENV_PRODUCTION: ${{ secrets.ENV_PRODUCTION }}

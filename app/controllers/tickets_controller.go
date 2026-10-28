@@ -102,10 +102,12 @@ func CreateTicket(ctx iris.Context) {
 		CompanyID: ticket.CompanyID,
 	})
 	if claims := middlewareClaims(ctx); claims != nil {
-		go services.NotifyAssignment(utils.DB, ticket.OwnerID, claims.UserID,
-			services.NotifyTicket, ticket.Subject, fmt.Sprintf("/tickets/%d", ticket.ID))
+		services.EmSegundoPlano(func() {
+			services.NotifyAssignment(utils.DB, ticket.OwnerID, claims.UserID,
+				services.NotifyTicket, ticket.Subject, fmt.Sprintf("/tickets/%d", ticket.ID))
+		})
 	}
-	go services.FireTicketCreated(utils.DB, ticket)
+	services.EmSegundoPlano(func() { services.FireTicketCreated(utils.DB, ticket) })
 
 	ctx.StatusCode(iris.StatusCreated)
 	ctx.JSON(ticket)

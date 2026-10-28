@@ -192,7 +192,7 @@ func CreateContact(ctx iris.Context) {
 		ContactID: &contact.ID,
 	})
 	// As automações rodam em segundo plano: nunca seguram a resposta.
-	go services.FireContactCreated(utils.DB, contact)
+	services.EmSegundoPlano(func() { services.FireContactCreated(utils.DB, contact) })
 
 	ctx.StatusCode(iris.StatusCreated)
 	ctx.JSON(contact)
@@ -222,7 +222,7 @@ func UpdateContact(ctx iris.Context) {
 		return
 	}
 	if stageBefore != contact.LifecycleStage {
-		go services.FireContactStage(utils.DB, contact)
+		services.EmSegundoPlano(func() { services.FireContactStage(utils.DB, contact) })
 	}
 	ctx.JSON(contact)
 }

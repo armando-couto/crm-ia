@@ -41,9 +41,10 @@ echo "   versão: $VERSAO"
 if [ ! -f .env ]; then
   passo "primeira execução: criando o .env"
   ENDERECO="${ENDERECO:-$(hostname -I 2>/dev/null | awk '{print $1}')}"
+  [ -n "$ENDERECO" ] || ENDERECO="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
   : "${ENDERECO:?não descobri o IP; rode com ENDERECO=192.168.1.134 ./atualiza_projeto.sh}"
   bash infra/scripts/gerar-env.sh .env >/dev/null
-  sed -i \
+  sed -i.bak \
     -e "s|^DOMAIN=.*|DOMAIN=$ENDERECO|" \
     -e "s|^ACME_EMAIL=.*|ACME_EMAIL=ti@crmia.local|" \
     -e "s|^PGHOST=.*|PGHOST=host.docker.internal|" \
@@ -51,6 +52,7 @@ if [ ! -f .env ]; then
     -e "s|^FIXPAY_SIMULADO=.*|FIXPAY_SIMULADO=true|" \
     -e "s|^PGADMIN_USER=.*|PGADMIN_USER=${PGADMIN_USER:-postgres}|" \
     -e "s|^PGADMIN_PASSWORD=.*|PGADMIN_PASSWORD=${PGADMIN_PASSWORD:-postgres}|" .env
+  rm -f .env.bak
   echo "   endereço: https://$ENDERECO  (edite o .env para trocar)"
 else
   bash infra/scripts/gerar-env.sh .env --completar >/dev/null   # acrescenta chaves novas
@@ -63,6 +65,21 @@ passo "construindo as imagens"
 docker build -q -t crmia/suspenso:latest ./infra/suspenso >/dev/null
 docker build -q --build-arg VERSAO="$VERSAO" -t "crmia/app:$VERSAO" -t crmia/app:latest ./app >/dev/null
 "${COMPOSE[@]}" build -q
+
+# Portas do host: se a 80/443 já estiver ocupada, avisa antes de subir.
+porta_ocupada() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1 || ss -ltn 2>/dev/null | grep -q ":$1 "; }
+P80="$(valor HTTP_PORT)"; P80="${P80:-80}"; P443="$(valor HTTPS_PORT)"; P443="${P443:-443}"
+if ! docker ps --format '{{.Names}}' | grep -qx crmia-traefik; then
+  for p in "$P80" "$P443"; do
+    if porta_ocupada "$p"; then
+      echo "✗ a porta $p já está em uso neste servidor:"
+      docker ps --filter "publish=$p" --format '   container {{.Names}} ({{.Image}})' 2>/dev/null
+      lsof -nP -iTCP:"$p" -sTCP:LISTEN 2>/dev/null | awk 'NR>1{print "   processo "$1" (pid "$2")"}' | sort -u
+      echo "  Libere a porta ou troque HTTP_PORT/HTTPS_PORT no .env e rode de novo."
+      exit 1
+    fi
+  done
+fi
 
 passo "subindo a plataforma"
 "${COMPOSE[@]}" up -d --remove-orphans

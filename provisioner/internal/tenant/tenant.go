@@ -191,6 +191,9 @@ func (s *Servico) versaoOuPadrao(v string) string {
 }
 
 func (s *Servico) urlPublica(slug string) string {
+	if s.cfg.URLBase != "" {
+		return s.cfg.URLBase + "/" + slug
+	}
 	dominio := s.cfg.Dominio
 	if strings.HasPrefix(dominio, "http://") || strings.HasPrefix(dominio, "https://") {
 		return strings.TrimRight(dominio, "/") + "/" + slug

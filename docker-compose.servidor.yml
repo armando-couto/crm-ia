@@ -16,8 +16,6 @@ services:
       - --accesslog.filters.statuscodes=400-599
       - --ping=true
       - --entrypoints.web.address=:80
-      - --entrypoints.web.http.redirections.entrypoint.to=websecure
-      - --entrypoints.web.http.redirections.entrypoint.scheme=https
       - --entrypoints.websecure.address=:443
       - --entrypoints.websecure.http.tls=true
       - --entrypoints.websecure.transport.respondingtimeouts.writetimeout=10m

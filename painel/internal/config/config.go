@@ -13,6 +13,9 @@ type Config struct {
 	Porta    string
 	BasePath string
 	Dominio  string
+	// URLBase é o endereço público usado nos links (com porta, se houver).
+	// Vazio = https://<Dominio>.
+	URLBase string
 	// SiteURL: para onde a marca do painel leva (a landing, na raiz do domínio).
 	SiteURL string
 
@@ -52,6 +55,12 @@ func (c Config) EmDesenvolvimento() bool { return c.Ambiente == "development" }
 
 // URLPublica monta um endereço absoluto do painel.
 func (c Config) URLPublica(caminho string) string {
+	if !strings.HasPrefix(caminho, "/") {
+		caminho = "/" + caminho
+	}
+	if c.URLBase != "" {
+		return c.URLBase + c.BasePath + caminho
+	}
 	esquema := "https://"
 	if strings.HasPrefix(c.Dominio, "http://") || strings.HasPrefix(c.Dominio, "https://") {
 		esquema = ""
@@ -68,6 +77,7 @@ func Carregar() (Config, error) {
 		Porta:    texto("PORT", "7894"),
 		BasePath: texto("BASE_PATH", "/painel"),
 		Dominio:  texto("DOMAIN", "localhost"),
+		URLBase:  strings.TrimRight(os.Getenv("URL_PUBLICA"), "/"),
 		SiteURL:  texto("SITE_URL", "/"),
 
 		URLBanco:    os.Getenv("DATABASE_URL"),

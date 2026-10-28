@@ -9,7 +9,8 @@
 #
 # Na primeira execução cria o .env (segredos sorteados), usa o IP do servidor
 # como endereço e prepara o banco crmia_painel no PostgreSQL deste servidor.
-# Variáveis opcionais na primeira vez: ENDERECO (IP ou domínio),
+# Variáveis opcionais na primeira vez: ENDERECO (IP ou domínio), PORTA_HTTPS
+# (padrão 443; ex.: PORTA_HTTPS=8345),
 # PGADMIN_USER / PGADMIN_PASSWORD (superusuário do PostgreSQL, padrão postgres).
 # =============================================================================
 set -euo pipefail
@@ -44,7 +45,9 @@ if [ ! -f .env ]; then
   [ -n "$ENDERECO" ] || ENDERECO="$(ipconfig getifaddr en0 2>/dev/null || ipconfig getifaddr en1 2>/dev/null || true)"
   : "${ENDERECO:?não descobri o IP; rode com ENDERECO=192.168.1.134 ./atualiza_projeto.sh}"
   bash infra/scripts/gerar-env.sh .env >/dev/null
+  PORTA="${PORTA_HTTPS:-443}"
   sed -i.bak \
+    -e "s|^HTTPS_PORT=.*|HTTPS_PORT=$PORTA|" \
     -e "s|^DOMAIN=.*|DOMAIN=$ENDERECO|" \
     -e "s|^ACME_EMAIL=.*|ACME_EMAIL=ti@crmia.local|" \
     -e "s|^PGHOST=.*|PGHOST=host.docker.internal|" \
@@ -53,6 +56,9 @@ if [ ! -f .env ]; then
     -e "s|^PGADMIN_USER=.*|PGADMIN_USER=${PGADMIN_USER:-postgres}|" \
     -e "s|^PGADMIN_PASSWORD=.*|PGADMIN_PASSWORD=${PGADMIN_PASSWORD:-postgres}|" .env
   rm -f .env.bak
+  if [ "$PORTA" != 443 ]; then
+    sed -i.bak -e "s|^URL_PUBLICA=.*|URL_PUBLICA=https://$ENDERECO:$PORTA|" -e "s|^HTTP_PORT=.*|HTTP_PORT=$((PORTA-1))|" .env && rm -f .env.bak
+  fi
   echo "   endereço: https://$ENDERECO  (edite o .env para trocar)"
 else
   bash infra/scripts/gerar-env.sh .env --completar >/dev/null   # acrescenta chaves novas
@@ -105,9 +111,9 @@ if [ "$CLIENTES" = 1 ]; then
 fi
 
 docker image prune -f >/dev/null 2>&1 || true
-END="$(valor DOMAIN)"
+BASE="$(valor URL_PUBLICA)"; BASE="${BASE:-https://$(valor DOMAIN)}"
 echo
 echo "✓ CRM IA $VERSAO no ar"
-echo "  site:    https://$END/"
-echo "  painel:  https://$END/painel   ($(valor PAINEL_ADMIN_EMAIL) / $(valor PAINEL_ADMIN_SENHA))"
-echo "  clientes: https://$END/<slug>"
+echo "  site:     $BASE/"
+echo "  painel:   $BASE/painel   ($(valor PAINEL_ADMIN_EMAIL) / $(valor PAINEL_ADMIN_SENHA))"
+echo "  clientes: $BASE/<slug>"

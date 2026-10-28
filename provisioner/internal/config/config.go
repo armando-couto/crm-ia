@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -14,7 +15,9 @@ type Config struct {
 	Porta    string
 	Token    string
 
-	Dominio      string
+	Dominio string
+	// URLBase é o endereço público usado nos links (com porta, se houver).
+	URLBase      string
 	RedePublica  string
 	TenantsDir   string
 	TemplatePath string
@@ -57,6 +60,7 @@ func Carregar() (Config, error) {
 		Porta:        texto("PORT", "7898"),
 		Token:        os.Getenv("PROVISIONER_TOKEN"),
 		Dominio:      texto("DOMAIN", "localhost"),
+		URLBase:      strings.TrimRight(os.Getenv("URL_PUBLICA"), "/"),
 		RedePublica:  texto("REDE_PUBLICA", "crmia_public"),
 		TenantsDir:   texto("TENANTS_DIR", "/tenants"),
 		TemplatePath: texto("TEMPLATE_PATH", "/templates/docker-compose.tenant.tmpl"),

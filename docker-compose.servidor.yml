@@ -1,0 +1,35 @@
+# Sobreposição para servidor próprio na rede local (ex.: 192.168.1.134), sem
+# domínio público. Use com:
+#   docker compose -f docker-compose.yml -f docker-compose.servidor.yml up -d --build
+#   - HTTPS na 443 com certificado autoassinado do Traefik (Let's Encrypt não
+#     emite para IP); a 80 redireciona para a 443;
+#   - o banco do painel é o PostgreSQL que já roda no próprio servidor
+#     (alcançado por host.docker.internal);
+#   - os ambientes de clientes continuam com PostgreSQL próprio em container.
+services:
+  traefik:
+    command:
+      - --global.checkNewVersion=false
+      - --global.sendAnonymousUsage=false
+      - --log.level=INFO
+      - --accesslog=true
+      - --accesslog.filters.statuscodes=400-599
+      - --ping=true
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entrypoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      - --entrypoints.websecure.address=:443
+      - --entrypoints.websecure.http.tls=true
+      - --entrypoints.websecure.transport.respondingtimeouts.writetimeout=10m
+      - --providers.docker=true
+      - --providers.docker.endpoint=unix:///var/run/docker.sock
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=crmia_public
+      - --providers.docker.constraints=Label(`crmia.roteado`,`sim`) || LabelRegex(`crmia.tenant`,`.+`)
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+  painel:
+    environment:
+      DATABASE_URL: postgres://${PAINEL_DB_USER:-crmia_painel}:${PAINEL_DB_PASSWORD}@${PGHOST:-host.docker.internal}:${PGPORT:-5432}/${PAINEL_DB_NAME:-crmia_painel}?sslmode=${PGSSLMODE:-disable}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

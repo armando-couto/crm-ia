@@ -46,6 +46,13 @@ Com o projeto clonado no servidor e o PostgreSQL rodando nele mesmo:
 
 Na primeira vez cria o `.env`, prepara o banco `crmia_painel` no PostgreSQL do servidor e sobe tudo em `https://<ip-do-servidor>` (porta 443, certificado autoassinado). Nas seguintes faz `git pull`, reconstrói, sobe e publica a nova versão do app para os clientes com auto-atualizar. Opções: `--sem-pull`, `--sem-clientes`.
 
+### Endereço fixo pela Cloudflare (sem abrir portas)
+
+1. Na Cloudflare: **Zero Trust → Networks → Tunnels → Create a tunnel** (tipo *Cloudflared*), dê um nome (ex.: `crm-ia`) e copie o **token** mostrado no comando de instalação (a parte depois de `--token`). Não instale nada no Mac: o projeto sobe o conector.
+2. Em **Public Hostname**, adicione `crm.seudominio.com.br` apontando para **HTTPS** `crmia-traefik:443`. Em *Additional application settings → TLS*: ligue **No TLS Verify** e preencha **Origin Server Name** com `crm.seudominio.com.br`; em *HTTP Settings*, **HTTP Host Header** = `crm.seudominio.com.br`.
+3. No `.env` do servidor: `CLOUDFLARE_TUNNEL_TOKEN=<token>`, `DOMAIN=crm.seudominio.com.br` e `URL_PUBLICA=https://crm.seudominio.com.br`.
+4. `./atualiza_projeto.sh --sem-pull`. O túnel sobe como `crmia-tunel-fixo`, reinicia sozinho e o endereço nunca muda.
+
 ## Produção
 
 1. `bash infra/scripts/gerar-env.sh .env.production` e preencha domínio, e-mail do Let's Encrypt, credenciais da recorrência e do Mandrill.

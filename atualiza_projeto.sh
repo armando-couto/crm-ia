@@ -24,6 +24,7 @@ for a in "$@"; do case "$a" in
 esac; done
 
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.servidor.yml)
+[ -f .env ] && grep -qE '^CLOUDFLARE_TUNNEL_TOKEN=.+' .env && COMPOSE+=(--profile tunel)
 valor() { { grep -E "^$1=" .env || true; } | head -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//'; }
 passo() { echo; echo "→ $*"; }
 
@@ -89,6 +90,11 @@ fi
 
 passo "subindo a plataforma"
 "${COMPOSE[@]}" up -d --remove-orphans
+
+if [[ " ${COMPOSE[*]} " == *" tunel "* ]]; then
+  # O túnel temporário (trycloudflare) deixa de ser necessário.
+  docker rm -f crmia-tunel >/dev/null 2>&1 && echo "   túnel temporário removido; usando o túnel fixo" || true
+fi
 
 passo "aguardando o painel"
 for i in $(seq 1 40); do

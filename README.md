@@ -46,6 +46,10 @@ Com o projeto clonado no servidor e o PostgreSQL rodando nele mesmo:
 
 Na primeira vez cria o `.env`, prepara o banco `crmia_painel` no PostgreSQL do servidor e sobe tudo em `https://<ip-do-servidor>` (porta 443, certificado autoassinado). Nas seguintes faz `git pull`, reconstrói, sobe e publica a nova versão do app para os clientes com auto-atualizar. Opções: `--sem-pull`, `--sem-clientes`.
 
+### Endereço temporário (sem domínio)
+
+`./tunel.sh` cria um endereço `https://….trycloudflare.com`, atualiza os links do sistema e mostra o endereço. Ele muda quando o Mac ou o túnel reiniciam; basta rodar de novo.
+
 ### Endereço fixo pela Cloudflare (sem abrir portas)
 
 1. Na Cloudflare: **Zero Trust → Networks → Tunnels → Create a tunnel** (tipo *Cloudflared*), dê um nome (ex.: `crm-ia`) e copie o **token** mostrado no comando de instalação (a parte depois de `--token`). Não instale nada no Mac: o projeto sobe o conector.

@@ -117,6 +117,13 @@ if [ "$CLIENTES" = 1 ]; then
 fi
 
 docker image prune -f >/dev/null 2>&1 || true
+
+if ! grep -qE '^CLOUDFLARE_TUNNEL_TOKEN=.+' .env; then
+  passo "túnel de acesso externo"
+  # Mantém o endereço atual se ele estiver respondendo; senão cria um novo.
+  ./tunel.sh --verificar || ./tunel.sh
+  ./tunel.sh --agendar
+fi
 BASE="$(valor URL_PUBLICA)"; BASE="${BASE:-https://$(valor DOMAIN)}"
 echo
 echo "✓ CRM IA $VERSAO no ar"

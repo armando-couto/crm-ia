@@ -16,3 +16,4 @@ provisioner/.env.production
 painel/.env.production
 infra/postgres/.env.production
 backups/
+tunel.log

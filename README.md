@@ -48,7 +48,7 @@ Na primeira vez cria o `.env`, prepara o banco `crmia_painel` no PostgreSQL do s
 
 ### Endereço temporário (sem domínio)
 
-`./tunel.sh` cria um endereço `https://….trycloudflare.com`, atualiza os links do sistema e mostra o endereço. Ele muda quando o Mac ou o túnel reiniciam; basta rodar de novo.
+O `atualiza_projeto.sh` cuida disso: sobe o túnel `https://….trycloudflare.com`, atualiza os links do sistema e instala uma verificação a cada 10 minutos que só renova o endereço quando ele cai. Manualmente: `./tunel.sh` (renova agora), `./tunel.sh --verificar`, `./tunel.sh --agendar` / `--desagendar`. Log em `tunel.log`.
 
 ### Endereço fixo pela Cloudflare (sem abrir portas)
 

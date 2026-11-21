@@ -23,6 +23,25 @@ for a in "$@"; do case "$a" in
   *) echo "opção desconhecida: $a"; exit 1 ;;
 esac; done
 
+# No macOS o Docker guarda credenciais no Chaveiro, que fica bloqueado em
+# sessões SSH ("keychain cannot be accessed"). As imagens usadas aqui são
+# públicas: usa uma configuração do Docker sem o Chaveiro, só nesta execução,
+# mantendo contexto, plugins (compose) e logins sem credsStore.
+sem_chaveiro() {
+  local orig="${DOCKER_CONFIG:-$HOME/.docker}"
+  [ -f "$orig/config.json" ] && grep -qE '"(credsStore|credHelpers)"' "$orig/config.json" || return 0
+  local tmp; tmp="$(mktemp -d)"
+  python3 - "$orig/config.json" "$tmp/config.json" <<'PYJ' || return 0
+import json,sys
+c=json.load(open(sys.argv[1])); c.pop("credsStore",None); c.pop("credHelpers",None)
+json.dump(c,open(sys.argv[2],"w"))
+PYJ
+  for d in cli-plugins contexts buildx; do [ -e "$orig/$d" ] && ln -s "$orig/$d" "$tmp/$d"; done
+  export DOCKER_CONFIG="$tmp"
+  trap 'rm -rf "$tmp"' EXIT
+}
+sem_chaveiro
+
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.servidor.yml)
 [ -f .env ] && grep -qE '^CLOUDFLARE_TUNNEL_TOKEN=.+' .env && COMPOSE+=(--profile tunel)
 valor() { { grep -E "^$1=" .env || true; } | head -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//'; }

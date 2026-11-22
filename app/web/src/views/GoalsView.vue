@@ -88,8 +88,8 @@ async function load() {
 async function loadRefs() {
   try {
     users.value = await api.get<User[]>('/users')
-    const resp = await api.get<{ data: Pipeline[] }>('/pipelines')
-    pipelines.value = resp.data ?? []
+    // /pipelines devolve um array puro (sem envelope { data }).
+    pipelines.value = (await api.get<Pipeline[]>('/pipelines')) ?? []
   } catch {
     /* o formulário funciona sem as referências */
   }

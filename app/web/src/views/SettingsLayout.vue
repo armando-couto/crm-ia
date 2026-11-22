@@ -22,6 +22,7 @@ const auth = useAuthStore()
         <router-link v-if="auth.can('settings.users')" to="/configuracoes/email" active-class="active">Envio de e-mails</router-link>
         <router-link v-if="auth.can('settings.users')" to="/configuracoes/disparo" active-class="active">Disparo</router-link>
         <router-link v-if="auth.can('settings.integrations')" to="/configuracoes/integracoes" active-class="active">Integrações de dados</router-link>
+        <router-link v-if="auth.can('prospecting.manage')" to="/configuracoes/prospeccao" active-class="active">Prospecção</router-link>
         <router-link v-if="auth.can('settings.users') && auth.workspace?.plan_enabled" to="/configuracoes/plano" active-class="active">Meu plano</router-link>
         <router-link v-if="auth.can('settings.users')" to="/configurar" active-class="active">Assistente inicial</router-link>
 

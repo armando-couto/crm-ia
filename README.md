@@ -14,9 +14,10 @@ https://crmia.com.br/outra       CRM da empresa "outra" (…)
 | `app/` | O CRM entregue a cada cliente: API Go (Iris) + SPA Vue 3. Imagem `crmia/app:<versão>`. |
 | `painel/` | Painel administrativo: grupos de CNPJ, clientes, planos, licenças, faturas, cobrança recorrente no cartão, versões, leads, auditoria. |
 | `provisioner/` | Serviço interno que cria, atualiza, suspende, faz backup e remove os ambientes dos clientes (Docker Compose via socket). |
+| `dados/` | Serviço interno com a base pública de empresas da prospecção (CNPJ da Receita Federal e dívida ativa da PGFN), consultado só pelo painel. |
 | `landing/` | Site comercial, estático e pré-renderizado, com planos e formulário de contato lidos do painel. |
 | `infra/` | Traefik, página de suspensão, imagens de PostgreSQL, template da stack de cada cliente e scripts de operação. |
-| `docs/` | [Arquitetura](docs/ARQUITETURA.md), [cobrança](docs/COBRANCA.md), [desenvolvimento](docs/DESENVOLVIMENTO.md), [Swarm/Portainer](docs/swarm.md). |
+| `docs/` | [Arquitetura](docs/ARQUITETURA.md), [cobrança](docs/COBRANCA.md), [desenvolvimento](docs/DESENVOLVIMENTO.md), [Swarm/Portainer](docs/swarm.md), [prospecção](docs/PROSPECCAO.md). |
 
 ## Subir em desenvolvimento
 

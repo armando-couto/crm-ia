@@ -44,13 +44,13 @@ async function load() {
     const [resp, userList, listResp] = await Promise.all([
       api.get<{ data: PublicForm[]; default_fields: PublicFormField[]; embed_base: string }>('/forms'),
       api.get<User[]>('/users'),
-      api.get<{ data: ContactList[] }>('/lists')
+      api.get<ContactList[]>('/lists')
     ])
     forms.value = resp.data ?? []
     defaultFields.value = resp.default_fields ?? []
     embedBase.value = resp.embed_base ?? window.location.origin
     users.value = userList
-    lists.value = listResp.data ?? []
+    lists.value = listResp ?? []
   } catch (e: any) {
     toast.error(e.message)
   } finally {

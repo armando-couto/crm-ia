@@ -3,7 +3,7 @@
 // consulta à Receita quando o CNPJ fica completo — o pai faz o GET /cnpj e
 // informa `preenchido` / `existente` para os avisos abaixo do campo.
 import { computed, ref, watch } from 'vue'
-import { cnpjValido, cpfValido, formatarCNPJ, formatarDocumento, somenteDigitos } from '../../cnpj'
+import { cnpjValido, cpfValido, formatarCNPJ, formatarDocumento, normalizarCNPJ, somenteDigitos } from '../../cnpj'
 
 const props = withDefaults(
   defineProps<{
@@ -26,7 +26,16 @@ const emit = defineEmits<{ 'update:modelValue': [valor: string]; lookup: [cnpj: 
 const tocado = ref(false)
 const ultimoConsultado = ref('')
 
-const digitos = computed(() => somenteDigitos(props.modelValue))
+/**
+ * O CNPJ é alfanumérico desde julho de 2026: guarda [0-9A-Z]. Só o CPF (campo
+ * com aceitaCpf e nenhuma letra digitada) continua sendo só dígitos.
+ */
+function normalizar(valor: string | null | undefined): string {
+  if (props.aceitaCpf && !/[A-Za-z]/.test(valor ?? '')) return somenteDigitos(valor).slice(0, 14)
+  return normalizarCNPJ(valor)
+}
+
+const digitos = computed(() => normalizar(props.modelValue))
 const exibido = computed(() => (props.aceitaCpf ? formatarDocumento(props.modelValue) : formatarCNPJ(props.modelValue)))
 const cnpjOk = computed(() => digitos.value.length === 14 && cnpjValido(digitos.value))
 
@@ -34,7 +43,7 @@ const erro = computed(() => {
   const d = digitos.value
   if (!d) return ''
   if (d.length === 14) return cnpjValido(d) ? '' : 'CNPJ inválido — confira os dígitos'
-  if (d.length === 11 && props.aceitaCpf) return cpfValido(d) ? '' : 'CPF inválido — confira os dígitos'
+  if (d.length === 11 && props.aceitaCpf && /^\d+$/.test(d)) return cpfValido(d) ? '' : 'CPF inválido — confira os dígitos'
   if (tocado.value) return props.aceitaCpf ? 'Documento incompleto' : 'CNPJ incompleto'
   return ''
 })
@@ -48,9 +57,9 @@ function consultarSePossivel(d: string) {
 
 function onInput(event: Event) {
   const el = event.target as HTMLInputElement
-  const d = somenteDigitos(el.value).slice(0, 14)
+  const d = normalizar(el.value)
   const formatado = props.aceitaCpf ? formatarDocumento(d) : formatarCNPJ(d)
-  // O v-bind não repinta quando o valor formatado não muda (ex.: letra digitada), então ajusta na mão.
+  // O v-bind não repinta quando o valor formatado não muda (ex.: símbolo digitado), então ajusta na mão.
   el.value = formatado
   emit('update:modelValue', formatado)
   consultarSePossivel(d)
@@ -73,7 +82,8 @@ watch(digitos, (d) => {
       <input
         :value="exibido"
         type="text"
-        inputmode="numeric"
+        inputmode="text"
+        autocapitalize="characters"
         autocomplete="off"
         maxlength="18"
         :placeholder="placeholder"

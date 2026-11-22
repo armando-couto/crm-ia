@@ -3,7 +3,12 @@
 // ficha da empresa mostra e o vendedor escolhe aplicar.
 package enriquecimento
 
-import "strings"
+import (
+	"context"
+	"strings"
+
+	"github.com/armando-couto/crm-ia/app/models"
+)
 
 // SomenteDigitos remove tudo que não é número.
 func SomenteDigitos(s string) string {
@@ -16,46 +21,32 @@ func SomenteDigitos(s string) string {
 	return b.String()
 }
 
-// ValidarCNPJ confere tamanho, sequência repetida e os dois dígitos verificadores.
-func ValidarCNPJ(s string) bool {
-	d := SomenteDigitos(s)
-	if len(d) != 14 {
-		return false
-	}
-	repetido := true
-	for i := 1; i < 14; i++ {
-		if d[i] != d[0] {
-			repetido = false
-			break
-		}
-	}
-	if repetido {
-		return false
-	}
-	calc := func(n int, pesos []int) int {
-		soma := 0
-		for i := 0; i < n; i++ {
-			soma += int(d[i]-'0') * pesos[i]
-		}
-		resto := soma % 11
-		if resto < 2 {
-			return 0
-		}
-		return 11 - resto
-	}
-	p1 := []int{5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2}
-	p2 := []int{6, 5, 4, 3, 2, 9, 8, 7, 6, 5, 4, 3, 2}
-	return calc(12, p1) == int(d[12]-'0') && calc(13, p2) == int(d[13]-'0')
+// NormalizarCNPJ deixa o CNPJ com 14 caracteres maiúsculos, sem pontuação,
+// aceitando letras (CNPJ alfanumérico). É a forma usada para consultar
+// provedores, montar a chave de cache e comparar com o cadastro.
+// SomenteDigitos continua valendo para CEP e telefone.
+func NormalizarCNPJ(s string) string { return models.NormalizarCNPJ(s) }
+
+// ValidarCNPJ confere tamanho, sequência repetida e os dois dígitos
+// verificadores, pela regra alfanumérica (models.CNPJValido).
+func ValidarCNPJ(s string) bool { return models.CNPJValido(s) }
+
+// CNPJSoNumeros informa se o CNPJ normalizado tem só dígitos. Provedor que
+// não aceita CNPJ com letras deve responder FalhaSemResultado quando for falso.
+func CNPJSoNumeros(s string) bool {
+	c := models.NormalizarCNPJ(s)
+	return c != "" && c == SomenteDigitos(c)
 }
 
-// FormatarCNPJ devolve 00.000.000/0000-00 (ou a entrada, se não tiver 14 dígitos).
-func FormatarCNPJ(s string) string {
-	d := SomenteDigitos(s)
-	if len(d) != 14 {
-		return s
-	}
-	return d[0:2] + "." + d[2:5] + "." + d[5:8] + "/" + d[8:12] + "-" + d[12:14]
-}
+// FormatarCNPJ devolve 00.000.000/0000-00 (ou a entrada, se não tiver 14 caracteres).
+func FormatarCNPJ(s string) string { return models.FormatarCNPJ(s) }
+
+// FichaDaPlataforma consulta um CNPJ na base própria da plataforma (painel →
+// serviço de dados). É preenchida na subida da aplicação (application.go) com
+// services.PlataformaCNPJ; fica nil quando o ambiente não tem painel, e o
+// provedor "receita" segue direto para a cadeia de APIs públicas. Existe como
+// variável porque este pacote não pode importar services (ciclo).
+var FichaDaPlataforma func(ctx context.Context, cnpj string) (*models.ProspEmpresa, error)
 
 // FormatarTelefone transforma dígitos em (DD) 0000-0000 / (DD) 90000-0000.
 func FormatarTelefone(s string) string {

@@ -51,3 +51,30 @@ func TestDominioDoEmail(t *testing.T) {
 		}
 	}
 }
+
+// O CNPJ alfanumérico (em produção desde julho de 2026) passa pelas mesmas
+// funções: validar, normalizar e formatar delegam a models.
+func TestCNPJAlfanumerico(t *testing.T) {
+	if !ValidarCNPJ("12.ABC.345/01DE-35") || !ValidarCNPJ("12abc34501de35") {
+		t.Error("o exemplo oficial do CNPJ alfanumérico deveria ser válido")
+	}
+	if ValidarCNPJ("12ABC34501DE36") || ValidarCNPJ("12ABC34501DEX5") {
+		t.Error("dígito verificador errado ou com letra deveria ser inválido")
+	}
+	if got := NormalizarCNPJ(" 12.abc.345/01de-35 "); got != "12ABC34501DE35" {
+		t.Errorf("NormalizarCNPJ = %q", got)
+	}
+	if got := NormalizarCNPJ("11.222.333/0001-81"); got != "11222333000181" {
+		t.Errorf("NormalizarCNPJ numérico = %q", got)
+	}
+	// SomenteDigitos não serve para CNPJ: comeria as letras e viraria outro número.
+	if SomenteDigitos("12ABC34501DE35") == NormalizarCNPJ("12ABC34501DE35") {
+		t.Error("SomenteDigitos e NormalizarCNPJ deveriam divergir num CNPJ com letras")
+	}
+	if got := FormatarCNPJ("12abc34501de35"); got != "12.ABC.345/01DE-35" {
+		t.Errorf("FormatarCNPJ alfanumérico = %q", got)
+	}
+	if !CNPJSoNumeros("11.222.333/0001-81") || CNPJSoNumeros("12ABC34501DE35") || CNPJSoNumeros("") {
+		t.Error("CNPJSoNumeros distingue o CNPJ que provedores antigos aceitam")
+	}
+}

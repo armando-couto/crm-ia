@@ -199,6 +199,32 @@ const routes = [
     meta: { permission: 'reports.view' }
   },
   {
+    path: '/prospeccao',
+    name: 'prospecting',
+    component: () => import('./views/ProspectingView.vue'),
+    meta: { permission: 'prospecting.view' }
+  },
+  {
+    path: '/prospeccao/listas/:id',
+    name: 'prospect-list',
+    component: () => import('./views/ProspectListDetailView.vue'),
+    meta: { permission: 'prospecting.view' }
+  },
+  {
+    // Caixa de leads; o painel de um lead é endereçável por /leads?lead=<id>.
+    path: '/leads',
+    name: 'leads',
+    component: () => import('./views/LeadsInboxView.vue'),
+    meta: { permission: 'leads.view' }
+  },
+  {
+    // Fila de ligações (modo foco); a lista escolhida vem em ?lista=<id>.
+    path: '/fila-de-ligacoes',
+    name: 'call-queue',
+    component: () => import('./views/CallQueueView.vue'),
+    meta: { permission: 'leads.edit' }
+  },
+  {
     path: '/sequencias',
     name: 'sequences',
     component: () => import('./views/SequencesPage.vue'),
@@ -252,6 +278,12 @@ const routes = [
         name: 'settings-integrations',
         component: () => import('./views/SettingsIntegrationsView.vue'),
         meta: { permission: 'settings.integrations' }
+      },
+      {
+        path: 'prospeccao',
+        name: 'settings-prospecting',
+        component: () => import('./views/SettingsProspectingView.vue'),
+        meta: { permission: 'prospecting.manage' }
       },
       {
         path: 'disparo',

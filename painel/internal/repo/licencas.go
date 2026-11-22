@@ -12,12 +12,12 @@ import (
 // Planos
 // ---------------------------------------------------------------------------
 
-const colunasPlano = `id, codigo, nome, descricao, usuarios_min, usuarios_max, preco_mensal_centavos, preco_anual_centavos, destaque, recursos::text, ordem, ativo`
+const colunasPlano = `id, codigo, nome, descricao, usuarios_min, usuarios_max, preco_mensal_centavos, preco_anual_centavos, destaque, recursos::text, ordem, ativo, prospeccao_leads_mes`
 
 func lerPlano(s interface{ Scan(...any) error }) (modelo.Plano, error) {
 	var p modelo.Plano
 	var recursos string
-	err := s.Scan(&p.ID, &p.Codigo, &p.Nome, &p.Descricao, &p.UsuariosMin, &p.UsuariosMax, &p.PrecoMensalCentavos, &p.PrecoAnualCentavos, &p.Destaque, &recursos, &p.Ordem, &p.Ativo)
+	err := s.Scan(&p.ID, &p.Codigo, &p.Nome, &p.Descricao, &p.UsuariosMin, &p.UsuariosMax, &p.PrecoMensalCentavos, &p.PrecoAnualCentavos, &p.Destaque, &recursos, &p.Ordem, &p.Ativo, &p.ProspeccaoLeadsMes)
 	if err == nil {
 		_ = json.Unmarshal([]byte(recursos), &p.Recursos)
 	}
@@ -63,14 +63,14 @@ func (r *Repo) SalvarPlano(ctx context.Context, p modelo.Plano) (int64, error) {
 	recursos, _ := json.Marshal(p.Recursos)
 	if p.ID == 0 {
 		var id int64
-		err := r.pool.QueryRow(ctx, `INSERT INTO planos (codigo, nome, descricao, usuarios_min, usuarios_max, preco_mensal_centavos, preco_anual_centavos, destaque, recursos, ordem, ativo)
-			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-			p.Codigo, p.Nome, p.Descricao, p.UsuariosMin, p.UsuariosMax, p.PrecoMensalCentavos, p.PrecoAnualCentavos, p.Destaque, recursos, p.Ordem, p.Ativo).Scan(&id)
+		err := r.pool.QueryRow(ctx, `INSERT INTO planos (codigo, nome, descricao, usuarios_min, usuarios_max, preco_mensal_centavos, preco_anual_centavos, destaque, recursos, ordem, ativo, prospeccao_leads_mes)
+			VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+			p.Codigo, p.Nome, p.Descricao, p.UsuariosMin, p.UsuariosMax, p.PrecoMensalCentavos, p.PrecoAnualCentavos, p.Destaque, recursos, p.Ordem, p.Ativo, p.ProspeccaoLeadsMes).Scan(&id)
 		return id, err
 	}
 	_, err := r.pool.Exec(ctx, `UPDATE planos SET codigo=$2, nome=$3, descricao=$4, usuarios_min=$5, usuarios_max=$6, preco_mensal_centavos=$7,
-		preco_anual_centavos=$8, destaque=$9, recursos=$10, ordem=$11, ativo=$12, atualizado_em=now() WHERE id=$1`,
-		p.ID, p.Codigo, p.Nome, p.Descricao, p.UsuariosMin, p.UsuariosMax, p.PrecoMensalCentavos, p.PrecoAnualCentavos, p.Destaque, recursos, p.Ordem, p.Ativo)
+		preco_anual_centavos=$8, destaque=$9, recursos=$10, ordem=$11, ativo=$12, prospeccao_leads_mes=$13, atualizado_em=now() WHERE id=$1`,
+		p.ID, p.Codigo, p.Nome, p.Descricao, p.UsuariosMin, p.UsuariosMax, p.PrecoMensalCentavos, p.PrecoAnualCentavos, p.Destaque, recursos, p.Ordem, p.Ativo, p.ProspeccaoLeadsMes)
 	return p.ID, err
 }
 

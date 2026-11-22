@@ -123,7 +123,7 @@ function toggle(key: string) {
 
 async function completeTask(id: number) {
   try {
-    await api.patch(`/tasks/${id}/toggle`)
+    await api.patch(`/tasks/${id}/toggle`, { done: true })
     toast.push('Tarefa concluída')
     await loadResumo()
   } catch (e: any) {

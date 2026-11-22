@@ -5,6 +5,7 @@
 #   landing      site comercial                https://$DOMAIN/
 #   painel       painel administrativo (Go)    https://$DOMAIN/painel
 #   provisioner  sobe/atualiza/suspende os ambientes dos clientes (rede interna)
+#   dados        base pública de empresas da prospecção (rede interna + saída)
 #
 # Os ambientes dos clientes NÃO ficam aqui: cada um é uma stack própria
 # (PostgreSQL + Redis + app), gerada em tempo de execução pelo provisionador a
@@ -111,6 +112,10 @@ services:
       DIAS_ATRASO_SUSPENSAO: ${DIAS_ATRASO_SUSPENSAO:-10}
       PROVISIONER_URL: http://provisioner:7898
       PROVISIONER_TOKEN: ${PROVISIONER_TOKEN:?defina PROVISIONER_TOKEN}
+      # Base pública da prospecção (serviço `dados`). O painel funciona sem
+      # ele: token vazio ou serviço fora do ar só desabilita a prospecção.
+      DADOS_URL: ${DADOS_URL:-http://dados:7896}
+      DADOS_TOKEN: ${DADOS_TOKEN:-}
       # Cobrança recorrente das licenças (credenciais da PRÓPRIA CRM IA; o
       # cliente final nunca as vê).
       FIXPAY_TOKEN_API: ${FIXPAY_TOKEN_API}
@@ -126,7 +131,10 @@ services:
       - traefik.enable=true
       - crmia.roteado=sim
       - traefik.docker.network=crmia_public
-      - traefik.http.routers.ci-painel.rule=Host(`${DOMAIN}`) && PathPrefix(`/painel`)
+      # /painel/api/empresas é a API dos ambientes dos clientes (plano e
+      # prospecção): só existe na rede interna (http://painel:7894), nunca
+      # pela internet.
+      - traefik.http.routers.ci-painel.rule=Host(`${DOMAIN}`) && PathPrefix(`/painel`) && !PathPrefix(`/painel/api/empresas`)
       - traefik.http.routers.ci-painel.entrypoints=websecure
       - traefik.http.routers.ci-painel.priority=40
       - traefik.http.routers.ci-painel.middlewares=chain-painel@file
@@ -182,12 +190,54 @@ services:
       timeout: 5s
       retries: 3
 
+  # Base pública de empresas da prospecção (CNPJ da Receita e dívida ativa da
+  # PGFN). Só o painel fala com ele (http://dados:7896, rede interna); não tem
+  # rota no Traefik. A rede `saida` existe porque a interna não tem caminho
+  # para a internet (download das fontes) nem para o PostgreSQL do host.
+  # O serviço fica neste arquivo-base, e não numa sobreposição, para o
+  # `up --remove-orphans` não removê-lo.
+  dados:
+    build:
+      context: ./dados
+    image: crmia/dados:latest
+    container_name: crmia-dados
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      PORT: "7896"
+      DATABASE_URL: postgres://${DADOS_DB_USER:-crmia_dados}:${DADOS_DB_PASSWORD:?defina DADOS_DB_PASSWORD}@${PGHOST:?defina PGHOST}:${PGPORT:-5432}/${DADOS_DB_NAME:-crmia_dados}?sslmode=${PGSSLMODE:-require}
+      DADOS_TOKEN: ${DADOS_TOKEN:?defina DADOS_TOKEN}
+      DADOS_CNPJ_URL: ${DADOS_CNPJ_URL:-}
+      DADOS_PGFN_URL: ${DADOS_PGFN_URL:-}
+      DADOS_DIR_TRABALHO: /trabalho
+      DADOS_CARGA_AUTOMATICA: ${DADOS_CARGA_AUTOMATICA:-true}
+      DADOS_AMOSTRA: ${DADOS_AMOSTRA:-false}
+      DADOS_UFS: ${DADOS_UFS:-}
+      DADOS_CONEXOES: ${DADOS_CONEXOES:-2}
+      DADOS_DISCO_MINIMO_GB: ${DADOS_DISCO_MINIMO_GB:-70}
+    volumes:
+      - dados-trabalho:/trabalho
+    networks: [interna, saida]
+    mem_limit: ${DADOS_MEM_LIMIT:-512m}
+    # A carga encerra de forma limpa no SIGTERM e retoma na próxima subida.
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "/dados", "-healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
 networks:
   public:
     name: crmia_public
   interna:
     name: crmia_interna
     internal: true
+  # Ponte comum, só do serviço `dados`: saída para a internet e para o host.
+  saida:
+    name: crmia_saida
 
 volumes:
   traefik-acme:
@@ -196,3 +246,6 @@ volumes:
     name: crmia_tenants_config
   backups:
     name: crmia_backups
+  # Zips das fontes públicas em download (apagados ao fim de cada carga).
+  dados-trabalho:
+    name: crmia_dados_trabalho

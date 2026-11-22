@@ -10,7 +10,7 @@ command -v gh >/dev/null || { echo "precisa do gh (brew install gh)"; exit 1; }
 [ -f "$ARQUIVO" ] || { echo "não achei $ARQUIVO — gere com: bash infra/scripts/gerar-env.sh $ARQUIVO"; exit 1; }
 valor() { { grep -E "^$1=" "$ARQUIVO" || true; } | head -1 | cut -d= -f2- | sed -e 's/^"//' -e 's/"$//'; }
 faltando=()
-for chave in DOMAIN ACME_EMAIL PGADMIN_PASSWORD PAINEL_DB_PASSWORD PAINEL_SESSION_KEY PAINEL_CSRF_KEY PROVISIONER_TOKEN; do
+for chave in DOMAIN ACME_EMAIL PGADMIN_PASSWORD PAINEL_DB_PASSWORD PAINEL_SESSION_KEY PAINEL_CSRF_KEY PROVISIONER_TOKEN DADOS_DB_PASSWORD DADOS_TOKEN; do
   [ -n "$(valor "$chave")" ] || faltando+=("$chave")
 done
 if [ ${#faltando[@]} -gt 0 ]; then echo "✗ vazias: ${faltando[*]}"; exit 1; fi

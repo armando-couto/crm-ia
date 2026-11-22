@@ -162,6 +162,8 @@ describe('SalesWorkspaceView', () => {
 
     const patch = fetchMock.mock.calls.find((c: any[]) => c[1]?.method === 'PATCH')
     expect(String(patch![0])).toContain('/tasks/1/toggle')
+    // O backend lê { done } do corpo: PATCH sem corpo respondia 400 "dados inválidos".
+    expect(JSON.parse(patch![1].body)).toEqual({ done: true })
   })
 
   it('carrega a carteira ao abrir a aba Empresas', async () => {
@@ -404,12 +406,20 @@ describe('ForecastView', () => {
         if (options?.method === 'PUT') body = { submission: { id: 1, user_id: 1, period: '2026-08', amount: 7500, note: 'ok', updated_at: '' } }
         else if (path.includes('/forecast/categories')) body = { forecast: categoryForecast }
         else if (path.includes('/forecast/submission')) body = { submission: null }
-        else if (path.includes('/pipelines')) body = { data: [] }
+        // /pipelines devolve array puro, como a API de verdade.
+        else if (path.includes('/pipelines')) body = [{ id: 3, name: 'Funil Comercial', stages: [] }]
         else if (path.includes('/users')) body = [{ id: 1, name: 'Ana' }]
         else if (path.includes('/goals')) body = { data: [] }
         return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body)) })
       })
     )
+  })
+
+  it('preenche o seletor de pipeline com a rota que devolve array puro', async () => {
+    const wrapper = mount(ForecastView, { global: { stubs: routerStubs } })
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('Funil Comercial')
   })
 
   it('separa ganho, comprometido e projeção', async () => {

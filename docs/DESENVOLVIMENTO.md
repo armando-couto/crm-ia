@@ -41,7 +41,21 @@ cd painel && DATABASE_URL=postgres://postgres:postgres@localhost:5432/crmia_pain
   PROVISIONER_URL=http://localhost:7998 PROVISIONER_TOKEN=dev FIXPAY_SIMULADO=true BASE_PATH=/painel go run .
 ```
 
-Abre em `http://localhost:7894/painel`. Testes: `CRMIA_TEST_PG=postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable go test ./...` (cria e destrói o banco `crmia_test_painel`).
+Abre em `http://localhost:7894/painel`. Testes: `CRMIA_TEST_PG=postgres://postgres:postgres@localhost:5432/postgres?sslmode=disable go test ./...` (cria e destrói os bancos `crmia_test_painel` e `crmia_test_painel_web`; o serviço `dados` é simulado por `httptest`).
+
+Para a prospecção, acrescente `DADOS_URL=http://localhost:7996 DADOS_TOKEN=<o do .env>`. Sem as duas, o painel sobe normalmente e a prospecção aparece desabilitada.
+
+### Dados (`dados/`)
+
+Base pública de empresas da prospecção. Em `make dev` roda em **modo amostra** (`DADOS_AMOSTRA=true`): empresas fictícias, sem baixar nada, no banco `crmia_dados` do PostgreSQL da máquina, com a porta publicada em `localhost:7996`.
+
+```bash
+make dev-logs          # painel, provisionador e dados
+make dados-situacao    # GET /v1/situacao pela rede interna
+make dados-carga       # confere as fontes e carrega (FONTE=cnpj|pgfn|tudo); em modo amostra responde 409
+```
+
+O banco e o papel `crmia_dados` são criados por `infra/scripts/preparar-postgres-dev.sh`, junto com os do painel.
 
 ### Provisionador (`provisioner/`)
 
@@ -61,8 +75,9 @@ A landing lê planos e textos de `GET /painel/api/planos` em tempo real e envia 
 * Código, comentários, nomes de tabelas e mensagens em **português**; identificadores herdados do CRM original ficaram em inglês onde mudar não valia a pena.
 * Nada de credencial no código: tudo por ambiente (`utils.Config` no app, `internal/config` no painel e no provisionador).
 * Nunca mencionar o processador de pagamento em tela, e-mail ou documento voltado ao cliente. Há testes para a página de checkout e para a landing.
-* Migrations do app em `app/migrations` (embutidas, numeradas); do painel em `painel/internal/banco/migracoes`.
+* Migrations do app em `app/migrations` (embutidas, numeradas); do painel em `painel/internal/banco/migracoes`; do serviço de dados em `dados/internal/banco`.
 * `gofmt` e `go vet` limpos; a CI falha se não.
+* Variável obrigatória nova no `docker-compose.yml` (`${VAR:?…}`) precisa entrar também no `sed` do passo "compose válido" de `.github/workflows/ci.yml` e na lista de `infra/scripts/pipe-env.sh`.
 
 ## Release do app dos clientes
 

@@ -1,10 +1,8 @@
 package controllers
 
 import (
-	"bytes"
 	"crypto/subtle"
-	"encoding/json"
-	"io"
+	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -57,9 +55,9 @@ func InternoDesempenho(ctx iris.Context) {
 	)
 	_ = utils.DB.QueryRow(`
 		SELECT
-		  (SELECT COUNT(*) FROM deals WHERE status = 'won' AND closed_at >= $1 AND closed_at < $2),
-		  (SELECT COALESCE(SUM(amount),0) FROM deals WHERE status = 'won' AND closed_at >= $1 AND closed_at < $2),
-		  (SELECT COUNT(*) FROM deals WHERE status = 'lost' AND closed_at >= $1 AND closed_at < $2),
+		  (SELECT COUNT(*) FROM deals WHERE status = 'ganho' AND closed_at >= $1 AND closed_at < $2),
+		  (SELECT COALESCE(SUM(amount),0) FROM deals WHERE status = 'ganho' AND closed_at >= $1 AND closed_at < $2),
+		  (SELECT COUNT(*) FROM deals WHERE status = 'perdido' AND closed_at >= $1 AND closed_at < $2),
 		  (SELECT COUNT(*) FROM deals WHERE created_at >= $1 AND created_at < $2),
 		  (SELECT COUNT(*) FROM contacts WHERE created_at >= $1 AND created_at < $2),
 		  (SELECT COUNT(*) FROM email_messages WHERE sent_at >= $1 AND sent_at < $2)`,
@@ -147,42 +145,29 @@ func InternoRedefinirSenhaAdmin(ctx iris.Context) {
 // vê plano, faturas e o link para atualizar o cartão — nunca quem processa.
 // -----------------------------------------------------------------------------
 
-var clientePainel = &http.Client{Timeout: 20 * time.Second}
-
-func painelConfigurado() bool { return utils.Cfg.PainelURL != "" && utils.Cfg.TokenInterno != "" }
-
+// repassarAoPainel copia status e corpo da resposta do painel para a tela. O
+// transporte é o cliente da plataforma (services.ChamarPainelBruto), o mesmo
+// que os jobs usam fora dos controllers.
 func repassarAoPainel(ctx iris.Context, metodo, caminho string, corpo any) {
-	if !painelConfigurado() {
+	resp, err := services.ChamarPainelBruto(ctx.Request().Context(), metodo, caminho, nil, corpo)
+	switch {
+	case errors.Is(err, services.ErrPlataformaNaoConfigurada):
 		ctx.StopWithJSON(iris.StatusServiceUnavailable, iris.Map{"error": "a gestão do plano ainda não está disponível neste ambiente"})
 		return
-	}
-	var leitor io.Reader
-	if corpo != nil {
-		b, _ := json.Marshal(corpo)
-		leitor = bytes.NewReader(b)
-	}
-	req, err := http.NewRequestWithContext(ctx.Request().Context(), metodo,
-		utils.Cfg.PainelURL+"/api/empresas/"+utils.Cfg.TenantSlug+caminho, leitor)
-	if err != nil {
+	case errors.Is(err, services.ErrPlataformaInacessivel):
+		ctx.StopWithJSON(iris.StatusBadGateway, iris.Map{"error": services.ErrPlataformaInacessivel.Error()})
+		return
+	case err != nil:
 		serverError(ctx, err)
 		return
 	}
-	req.Header.Set("Authorization", "Bearer "+utils.Cfg.TokenInterno)
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := clientePainel.Do(req)
-	if err != nil {
-		ctx.StopWithJSON(iris.StatusBadGateway, iris.Map{"error": "não foi possível falar com a plataforma, tente de novo em instantes"})
-		return
-	}
-	defer resp.Body.Close()
-	b, _ := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+	if resp.Status == http.StatusUnauthorized || resp.Status == http.StatusForbidden {
 		ctx.StopWithJSON(iris.StatusBadGateway, iris.Map{"error": "a plataforma não reconheceu este ambiente"})
 		return
 	}
-	ctx.StatusCode(resp.StatusCode)
+	ctx.StatusCode(resp.Status)
 	ctx.ContentType("application/json; charset=utf-8")
-	_, _ = ctx.Write(b)
+	_, _ = ctx.Write(resp.Corpo)
 }
 
 // MeuPlano devolve plano, faturas, planos disponíveis e o link de pagamento.

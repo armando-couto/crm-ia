@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Implanta a plataforma num servidor Docker da rede local, com o banco do
-# painel no PostgreSQL do próprio servidor.
+# painel e o da base pública (serviço `dados`) no PostgreSQL do próprio servidor.
 #   SERVIDOR=usuario@192.168.1.134 bash infra/scripts/implantar-servidor.sh
 # Variáveis opcionais: DESTINO (/opt/crmia), PGADMIN_USER/PGADMIN_PASSWORD
 # (superusuário do PostgreSQL do servidor, padrão postgres/postgres).
@@ -15,12 +15,14 @@ rsync -az --delete --exclude .git --exclude node_modules --exclude dist --exclud
   --exclude .env --exclude 'backups' ./ "$SERVIDOR:$DESTINO/"
 ssh -t "$SERVIDOR" "cd $DESTINO && IP=$IP PGADMIN_USER=${PGADMIN_USER:-postgres} PGADMIN_PASSWORD=${PGADMIN_PASSWORD:-postgres} bash -s" <<'REMOTO'
 set -euo pipefail
-if [ ! -f .env ]; then
+if [ -f .env ]; then
+  bash infra/scripts/gerar-env.sh .env --completar >/dev/null   # acrescenta chaves novas (ex.: DADOS_*)
+else
   bash infra/scripts/gerar-env.sh .env >/dev/null
   sed -i "s|^DOMAIN=.*|DOMAIN=$IP|;s|^ACME_EMAIL=.*|ACME_EMAIL=ti@crmia.local|;s|^PGHOST=.*|PGHOST=host.docker.internal|;s|^PGSSLMODE=.*|PGSSLMODE=disable|;s|^FIXPAY_SIMULADO=.*|FIXPAY_SIMULADO=true|;s|^PGADMIN_USER=.*|PGADMIN_USER=$PGADMIN_USER|" .env
   sed -i "s|^PGADMIN_PASSWORD=.*|PGADMIN_PASSWORD=$PGADMIN_PASSWORD|" .env
 fi
-echo "→ preparando o banco crmia_painel no PostgreSQL do servidor"
+echo "→ preparando os bancos crmia_painel e crmia_dados no PostgreSQL do servidor"
 PGADMIN_USER=$PGADMIN_USER PGADMIN_PASSWORD=$PGADMIN_PASSWORD bash infra/scripts/preparar-postgres-dev.sh
 echo "→ construindo imagens e subindo"
 docker build -q -t crmia/suspenso:latest ./infra/suspenso >/dev/null

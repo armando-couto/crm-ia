@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, getToken } from '../api'
+import { api } from '../api'
 import { formatCompact, formatDate, formatMoney, relativeDate } from '../format'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
@@ -498,17 +498,7 @@ async function exportCSV() {
     const params = new URLSearchParams({ pipeline_id: String(pipelineId.value) })
     if (search.value.trim()) params.set('q', search.value.trim())
     if (ownerFilter.value) params.set('owner_id', String(ownerFilter.value))
-    const resp = await fetch(`/api/v1/deals/export?${params}`, {
-      headers: { Authorization: `Bearer ${getToken()}` }
-    })
-    if (!resp.ok) throw new Error('falha na exportação')
-    const blob = await resp.blob()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `negocios-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    await api.download(`/deals/export?${params}`, `negocios-${new Date().toISOString().slice(0, 10)}.csv`)
   } catch (e: any) {
     toast.error(e.message)
   }

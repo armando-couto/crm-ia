@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { api, getToken } from '../api'
+import { api } from '../api'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import { relativeDate } from '../format'
@@ -95,17 +95,7 @@ async function remove(file: Attachment) {
  */
 async function download(file: Attachment) {
   try {
-    const resp = await fetch(`/api/v1/attachments/${file.id}/download`, {
-      headers: { Authorization: `Bearer ${getToken()}` }
-    })
-    if (!resp.ok) throw new Error('não foi possível baixar o arquivo')
-    const blob = await resp.blob()
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.download = file.filename
-    link.click()
-    URL.revokeObjectURL(url)
+    await api.download(`/attachments/${file.id}/download`, file.filename)
   } catch (e: any) {
     toast.error(e.message)
   }

@@ -10,6 +10,7 @@
       <div class="campo"><label>Usuários (máx.) — 999 = “a partir de”</label><input type="number" name="usuarios_max" min="1" value="{{ $p.UsuariosMax }}"></div>
       <div class="campo"><label>Mensal (R$) — 0 = sob consulta</label><input type="text" name="preco_mensal" value="{{ reais $p.PrecoMensalCentavos }}"></div>
       <div class="campo"><label>Anual (R$) — 0 = sem opção anual</label><input type="text" name="preco_anual" value="{{ reais $p.PrecoAnualCentavos }}"></div>
+      <div class="campo"><label>Leads de prospecção por mês — 0 = sem prospecção</label><input type="number" name="prospeccao_leads_mes" min="0" step="1" value="{{ $p.ProspeccaoLeadsMes }}"></div>
       <div class="campo"><label>Ordem na landing</label><input type="number" name="ordem" value="{{ $p.Ordem }}"></div>
       <div class="campo"><label>&nbsp;</label><label class="marcacao"><input type="checkbox" name="destaque" {{ if $p.Destaque }}checked{{ end }}> Destaque (“mais escolhido”)</label><label class="marcacao"><input type="checkbox" name="ativo" {{ if $p.Ativo }}checked{{ end }}> Ativo</label></div>
     </div>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { publicApiBase } from '../api'
 
 interface DaySlots {
   date: string
@@ -42,7 +43,7 @@ function dayLabel(date: string): string {
 
 async function load() {
   try {
-    const resp = await fetch(`/api/public/booking/${route.params.slug}`)
+    const resp = await fetch(`${publicApiBase()}/booking/${route.params.slug}`)
     if (!resp.ok) throw new Error('não encontrada')
     page.value = await resp.json()
     selectedDate.value = page.value!.days[0]?.date ?? ''
@@ -62,7 +63,7 @@ async function submit() {
   error.value = ''
   sending.value = true
   try {
-    const resp = await fetch(`/api/public/booking/${page.value.slug}`, {
+    const resp = await fetch(`${publicApiBase()}/booking/${page.value.slug}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({

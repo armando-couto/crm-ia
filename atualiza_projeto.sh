@@ -8,7 +8,8 @@
 #   ./atualiza_projeto.sh --sem-clientes  # atualiza só a plataforma
 #
 # Na primeira execução cria o .env (segredos sorteados), usa o IP do servidor
-# como endereço e prepara o banco crmia_painel no PostgreSQL deste servidor.
+# como endereço e prepara os bancos crmia_painel e crmia_dados (base pública
+# da prospecção) no PostgreSQL deste servidor.
 # Variáveis opcionais na primeira vez: ENDERECO (IP ou domínio), PORTA_HTTPS
 # (padrão 443; ex.: PORTA_HTTPS=8345),
 # PGADMIN_USER / PGADMIN_PASSWORD (superusuário do PostgreSQL, padrão postgres).
@@ -84,7 +85,7 @@ else
   bash infra/scripts/gerar-env.sh .env --completar >/dev/null   # acrescenta chaves novas
 fi
 
-passo "garantindo o banco crmia_painel no PostgreSQL do servidor"
+passo "garantindo os bancos crmia_painel e crmia_dados no PostgreSQL do servidor"
 bash infra/scripts/preparar-postgres-dev.sh
 
 passo "construindo as imagens (quando o código muda, o app leva alguns minutos)"
@@ -148,6 +149,30 @@ for i in $(seq 1 40); do
 done
 echo "   ok"
 
+passo "aguardando o serviço de dados (base pública da prospecção)"
+# Não bloqueia a implantação: sem ele o painel segue e só a prospecção fica
+# desabilitada. A carga da base roda em segundo plano e retoma sozinha se o
+# container for recriado no meio.
+DADOS_OK=0
+for i in $(seq 1 20); do
+  if docker exec crmia-dados /dados -healthcheck >/dev/null 2>&1; then DADOS_OK=1; break; fi
+  sleep 3
+done
+if [ "$DADOS_OK" = 1 ]; then
+  echo "   ok"
+  if [ "$(valor DADOS_AMOSTRA)" = "true" ]; then
+    echo "   modo amostra: empresas fictícias (DADOS_AMOSTRA=true no .env)"
+  elif [ "$(valor DADOS_CARGA_AUTOMATICA)" != "false" ]; then
+    UFS_DADOS="$(valor DADOS_UFS)"
+    echo "   carga automática ligada (${UFS_DADOS:-Brasil inteiro}): a primeira carga baixa cerca de 8 GB e"
+    echo "   pede dezenas de GB livres no PostgreSQL. Acompanhe em Painel → Base de dados;"
+    echo "   para reduzir, defina DADOS_UFS no .env (ex.: DADOS_UFS=CE) e rode de novo."
+  fi
+else
+  echo "   aviso: o serviço de dados não respondeu; a prospecção fica desabilitada."
+  echo "   veja: docker logs crmia-dados"
+fi
+
 if [ "$CLIENTES" = 1 ]; then
   passo "registrando a versão $VERSAO e atualizando os clientes com auto-atualizar"
   TOKEN="$(valor PROVISIONER_TOKEN)"
@@ -174,3 +199,4 @@ echo "✓ CRM IA $VERSAO no ar"
 echo "  site:     $BASE/"
 echo "  painel:   $BASE/painel   ($(valor PAINEL_ADMIN_EMAIL) / $(valor PAINEL_ADMIN_SENHA))"
 echo "  clientes: $BASE/<slug>"
+if [ "$DADOS_OK" = 1 ]; then echo "  base de dados: $BASE/painel/base-de-dados"; else echo "  base de dados: fora do ar (docker logs crmia-dados)"; fi

@@ -2,7 +2,7 @@
 // Configurações → Integrações de dados: fontes de enriquecimento, regras e uso do mês.
 import { computed, onMounted, ref } from 'vue'
 import { api } from '../api'
-import { somenteDigitos } from '../cnpj'
+import { normalizarCNPJ } from '../cnpj'
 import { centavos, datasetsSugeridos, nomeProvedor, nomesDatasets } from '../components/intel/util'
 import { useToastStore } from '../stores/toast'
 import type {
@@ -98,7 +98,7 @@ async function testar(provedor: Provedor) {
   testes.value = { ...testes.value, [provedor]: null }
   try {
     const body: Record<string, unknown> = { provedor }
-    const cnpj = somenteDigitos(testCnpj.value[provedor])
+    const cnpj = normalizarCNPJ(testCnpj.value[provedor])
     if (cnpj) body.cnpj = cnpj
     const r = await api.post<TesteFonte>('/settings/enrichment/test', body)
     testes.value = { ...testes.value, [provedor]: r }

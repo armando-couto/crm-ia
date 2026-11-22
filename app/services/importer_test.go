@@ -150,6 +150,26 @@ func TestRunImportEmpresas(t *testing.T) {
 	if updated.Name != "Padaria Doce Ltda" || updated.City != "Osasco" || updated.State != "SP" {
 		t.Fatalf("atualização errada: %+v", updated)
 	}
+
+	// CNPJ alfanumérico: a comparação ignora pontuação e caixa e não confunde
+	// com um CNPJ numérico que tenha os mesmos dígitos (12.345.01-35 ≠ 12ABC34501DE35).
+	alfa := &models.Company{Name: "Alfa Serviços", CNPJ: "12.ABC.345/01DE-35"}
+	if err := models.CreateCompany(db, alfa); err != nil {
+		t.Fatal(err)
+	}
+	record, err = services.RunImport(db, "empresas", "alfa.csv", []string{"Razão Social", "CNPJ", "Cidade"}, [][]string{
+		{"Alfa Serviços Ltda", "12abc34501de35", "Sobral"}, // atualiza a alfanumérica
+		{"Outra Empresa", "1234501350001", "Sobral"},       // só os dígitos da alfanumérica: é outra empresa
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if record.NewRecords != 1 || record.UpdatedRecords != 1 || record.ErrorCount != 0 {
+		t.Fatalf("contadores com CNPJ alfanumérico errados: %+v", record)
+	}
+	if lida, _ := models.CompanyByID(db, alfa.ID); lida.Name != "Alfa Serviços Ltda" || lida.City != "Sobral" {
+		t.Fatalf("a empresa de CNPJ alfanumérico deveria ter sido atualizada: %+v", lida)
+	}
 }
 
 func TestRunImportContatosSemColunaDeEmail(t *testing.T) {

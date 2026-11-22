@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { api, getToken } from '../api'
+import { api } from '../api'
 import { formatCompact, formatDate, initials, lifecycleLabels, relativeDate } from '../format'
 import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
@@ -461,17 +461,7 @@ async function importCSV(event: Event) {
 
 async function exportCSV() {
   try {
-    const resp = await fetch(`/api/v1/contacts/export?${query()}`, {
-      headers: { Authorization: `Bearer ${getToken()}` }
-    })
-    if (!resp.ok) throw new Error('falha na exportação')
-    const blob = await resp.blob()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `contatos-${new Date().toISOString().slice(0, 10)}.csv`
-    a.click()
-    URL.revokeObjectURL(url)
+    await api.download(`/contacts/export?${query()}`, `contatos-${new Date().toISOString().slice(0, 10)}.csv`)
   } catch (e: any) {
     toast.error(e.message)
   }

@@ -69,9 +69,9 @@ async function load() {
         pending: Record<number, number>
       }>('/automations'),
       api.get<User[]>('/users'),
-      api.get<{ data: ContactList[] }>('/lists'),
+      api.get<ContactList[]>('/lists'),
       api.get<MessageTemplate[]>('/templates'),
-      api.get<{ data: Pipeline[] }>('/pipelines')
+      api.get<Pipeline[]>('/pipelines')
     ])
     automations.value = resp.data ?? []
     triggers.value = resp.triggers ?? {}
@@ -79,9 +79,9 @@ async function load() {
     timeTriggers.value = resp.time_triggers ?? []
     pending.value = resp.pending ?? {}
     users.value = userList
-    lists.value = listResp.data ?? []
+    lists.value = listResp ?? []
     templates.value = tplList
-    pipelines.value = pipeResp.data ?? []
+    pipelines.value = pipeResp ?? []
   } catch (e: any) {
     toast.error(e.message)
   } finally {

@@ -33,6 +33,7 @@
       <a href="{{ url "/ambientes" }}" {{ if eq .Secao "ambientes" }}class="ativo"{{ end }}>Ambientes</a>
       <a href="{{ url "/versoes" }}" {{ if eq .Secao "versoes" }}class="ativo"{{ end }}>Versões</a>
       <a href="{{ url "/planos" }}" {{ if eq .Secao "planos" }}class="ativo"{{ end }}>Planos e preços</a>
+      <a href="{{ url "/base-de-dados" }}" {{ if eq .Secao "dados" }}class="ativo"{{ end }}>Base de dados</a>
     </div>
     {{ if .Sessao.PodeGerenciarUsuarios }}
     <div class="menu__grupo">

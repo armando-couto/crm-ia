@@ -68,7 +68,8 @@ function stubFetch() {
     else if (path.includes('/tracked-goals')) body = { data: goals }
     else if (path.includes('/users')) body = [{ id: 1, name: 'Eliseu' }]
     else if (path.includes('/pipelines')) {
-      body = { data: [{ id: 1, name: 'Vendas', stages: [{ id: 10, name: 'Proposta', is_won: false, is_lost: false }] }] }
+      // /pipelines devolve array puro, como a API de verdade.
+      body = [{ id: 1, name: 'Vendas', stages: [{ id: 10, name: 'Proposta', is_won: false, is_lost: false }] }]
     }
     return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body)) })
   })
@@ -101,6 +102,13 @@ describe('GoalsView', () => {
     expect(text).toContain('R$ 90.000,00')
     expect(text).toContain('de R$ 200.000,00 neste mês')
     expect(text).toContain('45%')
+  })
+
+  it('carrega os funis da rota que devolve array puro', async () => {
+    const wrapper = mount(GoalsView)
+    await flushPromises()
+
+    expect((wrapper.vm as any).pipelines.map((p: any) => p.name)).toEqual(['Vendas'])
   })
 
   it('separa ativas de passadas', async () => {

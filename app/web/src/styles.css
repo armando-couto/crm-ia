@@ -363,3 +363,122 @@ table.data tbody tr:hover {
     opacity: 1;
   }
 }
+
+/* ===== Modo foco =====
+   Esconde a AppShell (menu lateral e barra do topo) para telas que pedem a
+   tela inteira: fila de ligações (`modo-foco`) e reunião do funil
+   (`modo-reuniao`). A regra mora aqui, e não no chunk de uma view, para valer
+   mesmo que o usuário entre direto na tela. Use o composable useModoFoco(). */
+body.modo-foco .sidebar,
+body.modo-foco .topbar,
+body.modo-reuniao .sidebar,
+body.modo-reuniao .topbar {
+  display: none !important;
+}
+
+body.modo-reuniao .content {
+  overflow: hidden !important;
+}
+
+/* ===== Prospecção: peças compartilhadas ===== */
+
+/* Semáforo de urgência (lead) e de próxima atividade (negócio):
+   vermelho = atrasado, verde = hoje, cinza = futuro, amarelo = nenhuma. */
+.semaforo {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--ci-text-3);
+  flex-shrink: 0;
+}
+
+.semaforo.red {
+  background: var(--ci-red);
+}
+
+.semaforo.green {
+  background: var(--ci-green);
+}
+
+.semaforo.amber {
+  background: var(--ci-amber);
+}
+
+.semaforo.gray {
+  background: #c4c4c4;
+}
+
+/* Faixa de aviso no topo da tela ("dados de demonstração", "atualização em andamento"). */
+.faixa {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--ci-blue-tint);
+  color: var(--ci-blue);
+}
+
+.faixa.amber {
+  background: var(--ci-amber-tint);
+  color: var(--ci-amber);
+}
+
+.faixa.red {
+  background: var(--ci-red-tint);
+  color: var(--ci-red);
+}
+
+/* Chip de seleção múltipla e de filtro rápido com contador. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--ci-border);
+  background: var(--ci-surface);
+  color: var(--ci-text-2);
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.chip.active {
+  border-color: var(--ci-purple);
+  background: var(--ci-purple-tint);
+  color: var(--ci-purple-dark);
+  font-weight: 500;
+}
+
+.chip .chip-x {
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* Tecla de atalho ao lado de um botão ("1", "J", "Esc"). */
+.tecla {
+  display: inline-block;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid var(--ci-border);
+  background: var(--ci-bg);
+  color: var(--ci-text-3);
+  font-size: 11px;
+  font-weight: 600;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.telefone-invalido {
+  text-decoration: line-through;
+  color: var(--ci-text-3);
+}

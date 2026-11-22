@@ -87,10 +87,35 @@ fi
 passo "garantindo o banco crmia_painel no PostgreSQL do servidor"
 bash infra/scripts/preparar-postgres-dev.sh
 
-passo "construindo as imagens"
-docker build -q -t crmia/suspenso:latest ./infra/suspenso >/dev/null
-docker build -q --build-arg VERSAO="$VERSAO" -t "crmia/app:$VERSAO" -t crmia/app:latest ./app >/dev/null
-"${COMPOSE[@]}" build -q
+passo "construindo as imagens (quando o código muda, o app leva alguns minutos)"
+# Cada construção mostra um ponto a cada 5 s e o tempo total; a saída completa
+# vai para um arquivo e só aparece se algo falhar.
+LOG_BUILD="$(mktemp -t crmia-build.XXXXXX)"
+construir() { # construir "<rótulo>" <comando...>
+  local rotulo="$1"; shift
+  local inicio=$SECONDS
+  printf '   %-22s' "$rotulo"
+  ( "$@" >"$LOG_BUILD" 2>&1 ) &
+  local pid=$!
+  local n=0
+  while kill -0 "$pid" 2>/dev/null; do
+    sleep 1
+    n=$((n + 1))
+    if [ $((n % 5)) -eq 0 ]; then printf '.'; fi
+  done
+  if wait "$pid"; then
+    printf ' ok (%ss)\n' "$((SECONDS - inicio))"
+  else
+    printf ' FALHOU\n\n'
+    tail -n 40 "$LOG_BUILD"
+    rm -f "$LOG_BUILD"
+    exit 1
+  fi
+}
+construir "página de suspensão" docker build -t crmia/suspenso:latest ./infra/suspenso
+construir "app dos clientes" docker build --build-arg VERSAO="$VERSAO" -t "crmia/app:$VERSAO" -t crmia/app:latest ./app
+construir "plataforma" "${COMPOSE[@]}" build
+rm -f "$LOG_BUILD"
 
 # Portas do host: se a 80/443 já estiver ocupada, avisa antes de subir.
 porta_ocupada() { lsof -nP -iTCP:"$1" -sTCP:LISTEN >/dev/null 2>&1 || ss -ltn 2>/dev/null | grep -q ":$1 "; }

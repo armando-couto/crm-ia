@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"encoding/csv"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -297,17 +298,36 @@ func UpdateDeal(ctx iris.Context) {
 	ctx.JSON(deal)
 }
 
-// MoveDeal troca a etapa/posição do negócio (drag & drop do kanban).
+// perdaDoPedido aplica a regra do motivo de perda (GET /settings/motivos-perda):
+// com "exigir", perder sem motivo responde 422 com codigo "motivo_obrigatorio";
+// motivo fora da lista configurada também é 422. Devolve false se já respondeu.
+func perdaDoPedido(ctx iris.Context, motivo, observacao string) (models.PerdaDeal, bool) {
+	motivo, err := models.LoadMotivosPerda(utils.DB).ValidarPerda(motivo)
+	if err != nil {
+		corpo := iris.Map{"error": err.Error(), "codigo": "motivo_invalido"}
+		if errors.Is(err, models.ErrMotivoPerdaObrigatorio) {
+			corpo["codigo"] = "motivo_obrigatorio"
+		}
+		ctx.StopWithJSON(iris.StatusUnprocessableEntity, corpo)
+		return models.PerdaDeal{}, false
+	}
+	return models.PerdaDeal{Motivo: motivo, Observacao: strings.TrimSpace(observacao)}, true
+}
+
+// MoveDeal troca a etapa/posição do negócio (drag & drop do kanban). Soltar o
+// cartão numa etapa de perda segue a mesma regra do fechamento: aceita motivo
+// e observacao e, com o motivo obrigatório e sem ele, responde 422 sem mover.
 func MoveDeal(ctx iris.Context) {
 	var req struct {
-		StageID  int64 `json:"stage_id"`
-		Position int   `json:"position"`
+		StageID    int64  `json:"stage_id"`
+		Position   int    `json:"position"`
+		Motivo     string `json:"motivo"`
+		Observacao string `json:"observacao"`
 	}
 	if err := ctx.ReadJSON(&req); err != nil || req.StageID == 0 {
 		badRequest(ctx, "informe a etapa de destino")
 		return
 	}
-
 	id := paramID(ctx)
 	deal, err := models.DealByID(utils.DB, id)
 	if err != nil {
@@ -323,21 +343,33 @@ func MoveDeal(ctx iris.Context) {
 		badRequest(ctx, "a etapa não pertence ao pipeline do negócio")
 		return
 	}
-
-	if err := models.MoveDealStageBy(utils.DB, id, req.StageID, req.Position, userIDPtr(ctx)); err != nil {
+	// Etapa de perda: o motivo passa pela regra, menos quando o negócio já
+	// estava perdido e nada veio (reordenar o cartão mantém o motivo gravado).
+	var perda *models.PerdaDeal
+	if stage.IsLost && (deal.Status != models.DealPerdido || strings.TrimSpace(req.Motivo) != "") {
+		p, ok := perdaDoPedido(ctx, req.Motivo, req.Observacao)
+		if !ok {
+			return
+		}
+		perda = &p
+	}
+	if err := models.MoveDealStagePerda(utils.DB, id, req.StageID, req.Position, perda, userIDPtr(ctx)); err != nil {
 		serverError(ctx, err)
 		return
 	}
 	if deal.StageID != req.StageID {
+		content := fmt.Sprintf("Negócio movido de %s para %s", deal.StageName, stage.Name)
+		if perda != nil && perda.Motivo != "" {
+			content += " (motivo da perda: " + perda.Motivo + ")"
+		}
 		logActivity(ctx, models.Activity{
 			Kind:      models.ActivitySistema,
-			Content:   fmt.Sprintf("Negócio movido de %s para %s", deal.StageName, stage.Name),
+			Content:   content,
 			DealID:    &deal.ID,
 			ContactID: deal.ContactID,
 			CompanyID: deal.CompanyID,
 		})
 	}
-
 	updated, err := models.DealByID(utils.DB, id)
 	if err != nil {
 		handleDBError(ctx, err)
@@ -349,22 +381,36 @@ func MoveDeal(ctx iris.Context) {
 	ctx.JSON(updated)
 }
 
-// CloseDealHandler fecha o negócio como ganho ou perdido.
+// CloseDealHandler fecha o negócio como ganho ou perdido. Como perdido aceita
+// { motivo, observacao } e grava lost_reason e lost_note; com o motivo
+// obrigatório nas configurações, perder sem motivo responde 422.
 func CloseDealHandler(ctx iris.Context) {
 	var req struct {
-		Won bool `json:"won"`
+		Won        bool   `json:"won"`
+		Motivo     string `json:"motivo"`
+		Observacao string `json:"observacao"`
 	}
 	if err := ctx.ReadJSON(&req); err != nil {
 		badRequest(ctx, "dados inválidos")
 		return
 	}
-
 	id := paramID(ctx)
-	if err := models.CloseDealBy(utils.DB, id, req.Won, userIDPtr(ctx)); err != nil {
+	var perda models.PerdaDeal
+	if !req.Won {
+		if _, err := models.DealByID(utils.DB, id); err != nil {
+			handleDBError(ctx, err)
+			return
+		}
+		p, ok := perdaDoPedido(ctx, req.Motivo, req.Observacao)
+		if !ok {
+			return
+		}
+		perda = p
+	}
+	if err := models.CloseDealPerda(utils.DB, id, req.Won, perda, userIDPtr(ctx)); err != nil {
 		handleDBError(ctx, err)
 		return
 	}
-
 	deal, err := models.DealByID(utils.DB, id)
 	if err != nil {
 		handleDBError(ctx, err)
@@ -373,6 +419,8 @@ func CloseDealHandler(ctx iris.Context) {
 	result := "perdido"
 	if req.Won {
 		result = "ganho"
+	} else if perda.Motivo != "" {
+		result += " (motivo: " + perda.Motivo + ")"
 	}
 	logActivity(ctx, models.Activity{
 		Kind:      models.ActivitySistema,
@@ -382,7 +430,6 @@ func CloseDealHandler(ctx iris.Context) {
 		CompanyID: deal.CompanyID,
 	})
 	services.EmSegundoPlano(func() { services.FireDealClosed(utils.DB, deal) })
-
 	ctx.JSON(deal)
 }
 

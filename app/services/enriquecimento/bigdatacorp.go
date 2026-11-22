@@ -64,9 +64,12 @@ func (b *BigDataCorp) datasetsOuPadrao(pedidos []string) []string {
 }
 
 func (b *BigDataCorp) Consultar(ctx context.Context, cnpj string, opts Opcoes) (*Perfil, *Bruto, error) {
-	digits := SomenteDigitos(cnpj)
+	digits := NormalizarCNPJ(cnpj)
 	if !ValidarCNPJ(digits) {
 		return nil, nil, falha(FalhaEntrada, "CNPJ inválido")
+	}
+	if !CNPJSoNumeros(digits) {
+		return nil, nil, falha(FalhaSemResultado, "o BigDataCorp ainda não consulta CNPJ com letras")
 	}
 	datasets := b.datasetsOuPadrao(opts.Datasets)
 	timeout := opts.Timeout

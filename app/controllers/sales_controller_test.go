@@ -283,6 +283,8 @@ func dealRowForecast(id int64) *sqlmock.Rows {
 		"contact_id", "contact_name", "company_id", "company_name", "owner_id", "owner_name",
 		"status", "temperature", "forecast_category", "close_date", "position", "closed_at",
 		"last_activity_at", "created_at", "updated_at",
+		"lost_reason", "lost_note", "lead_id", "origem",
 	}).AddRow(id, "Negócio", 1000.0, "BRL", int64(1), int64(1), "Proposta",
-		nil, "", nil, "", nil, "", "aberto", "", "pipeline", nil, 0, nil, nil, now, now)
+		nil, "", nil, "", nil, "", "aberto", "", "pipeline", nil, 0, nil, nil, now, now,
+		"", "", nil, "")
 }

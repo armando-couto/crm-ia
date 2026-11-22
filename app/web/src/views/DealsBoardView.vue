@@ -7,6 +7,10 @@ import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import AdvancedFilters from '../components/AdvancedFilters.vue'
 import ModalDialog from '../components/ModalDialog.vue'
+import LostReasonDialog from '../components/deals/LostReasonDialog.vue'
+import NextActivityLight from '../components/deals/NextActivityLight.vue'
+import { faltouMotivo } from '../components/deals/perda'
+import type { PerdaRequest } from '../types-prospeccao'
 import type {
   Company,
   Contact,
@@ -40,6 +44,8 @@ const activityFilter = ref(0)
 const closeWindowFilter = ref('')
 /** Filtro rápido "Em risco": estagnado, sem atividade há mais de 7 dias ou previsão vencida. */
 const riskFilter = ref(false)
+/** Filtro rápido "Sem próxima atividade": negócios abertos sem nenhuma tarefa pendente. */
+const semProximaFilter = ref(false)
 
 // ===== Envelhecimento na etapa (dias_na_etapa × prazo_dias) =====
 const PRAZO_PADRAO_DIAS = 14
@@ -81,6 +87,17 @@ function agingTitle(deal: Deal): string {
   if (isVencido(deal)) partes.push('previsão de fechamento vencida')
   return partes.join(' · ')
 }
+
+/** O quadro novo manda `proxima_atividade_em` em todo negócio (nulo = nenhuma); sem a chave não há semáforo. */
+function temSemaforo(deal: Deal): boolean {
+  return deal.proxima_atividade_em !== undefined
+}
+
+function semProxima(deal: Deal): boolean {
+  return deal.status === 'aberto' && deal.proxima_atividade_em === null
+}
+
+const totalSemProxima = computed(() => deals.value.filter(semProxima).length)
 
 function toggleRiskFilter() {
   riskFilter.value = !riskFilter.value
@@ -274,7 +291,11 @@ watch(search, () => {
 
 function dealsInStage(stageId: number): Deal[] {
   return deals.value.filter(
-    (d) => d.stage_id === stageId && d.status === 'aberto' && (!riskFilter.value || emRisco(d))
+    (d) =>
+      d.stage_id === stageId &&
+      d.status === 'aberto' &&
+      (!riskFilter.value || emRisco(d)) &&
+      (!semProximaFilter.value || semProxima(d))
   )
 }
 
@@ -422,6 +443,7 @@ const hasActiveFilters = computed(
     !!activityFilter.value ||
     !!closeWindowFilter.value ||
     riskFilter.value ||
+    semProximaFilter.value ||
     advGroups.value.length > 0
 )
 
@@ -433,6 +455,7 @@ function applyFilters(filters: Record<string, any>) {
   activityFilter.value = Number(filters.sem_atividade_dias) || 0
   closeWindowFilter.value = filters.fechamento ?? ''
   riskFilter.value = filters.em_risco === true
+  semProximaFilter.value = filters.sem_proxima_atividade === true
   advGroups.value = Array.isArray(filters.af) ? filters.af : []
   if (filters.modo === 'lista' || filters.modo === 'kanban') {
     viewMode.value = filters.modo
@@ -468,6 +491,7 @@ async function saveCurrentView() {
         sem_atividade_dias: activityFilter.value,
         fechamento: closeWindowFilter.value,
         em_risco: riskFilter.value,
+        sem_proxima_atividade: semProximaFilter.value,
         af: advGroups.value,
         modo: viewMode.value,
         pipeline_id: pipelineId.value
@@ -525,30 +549,83 @@ async function onDrop(stageId: number) {
   const deal = deals.value.find((d) => d.id === dealId)
   if (!deal || deal.stage_id === stageId) return
 
+  // Etapa de perda: o cartão fica na coluna de origem até o motivo ser confirmado.
+  if (pipeline.value?.stages.find((s) => s.id === stageId)?.is_lost) {
+    pedirMotivo(deal, stageId)
+    return
+  }
+  await moverParaEtapa(deal, stageId)
+}
+
+async function moverParaEtapa(deal: Deal, stageId: number, perda?: PerdaRequest): Promise<boolean> {
+  const dealId = deal.id
   const previousStage = deal.stage_id
-  deal.stage_id = stageId
+  const position = perda ? closedInStage(stageId).length : dealsInStage(stageId).length
+  if (!perda) deal.stage_id = stageId
   try {
-    const updated = await api.patch<Deal>(`/deals/${dealId}/stage`, {
-      stage_id: stageId,
-      position: dealsInStage(stageId).length
-    })
+    const updated = await api.patch<Deal>(`/deals/${dealId}/stage`, { stage_id: stageId, position, ...(perda ?? {}) })
     deals.value = deals.value.map((d) => (d.id === dealId ? updated : d))
     if (updated.status !== 'aberto') {
       toast.push(`Negócio ${updated.status === 'ganho' ? 'ganho! 🎉' : 'marcado como perdido'}`)
     }
+    return true
   } catch (e: any) {
     deal.stage_id = previousStage
-    toast.error(e.message)
+    // O servidor trata a etapa como de perda e exige motivo: abre o mesmo diálogo.
+    if (!perda && faltouMotivo(e)) {
+      pedirMotivo(deal, stageId)
+      return false
+    }
+    if (perda) perdaErro.value = e.message
+    else toast.error(e.message)
+    return false
   }
 }
 
-async function closeDeal(deal: Deal, won: boolean) {
+async function closeDeal(deal: Deal, won: boolean, perda?: PerdaRequest): Promise<boolean> {
+  if (!won && !perda) {
+    pedirMotivo(deal, null)
+    return false
+  }
   try {
-    const updated = await api.patch<Deal>(`/deals/${deal.id}/close`, { won })
+    const updated = await api.patch<Deal>(`/deals/${deal.id}/close`, won ? { won } : { won, ...perda })
     deals.value = deals.value.map((d) => (d.id === deal.id ? updated : d))
     toast.push(won ? 'Negócio ganho! 🎉' : 'Negócio marcado como perdido')
+    return true
   } catch (e: any) {
-    toast.error(e.message)
+    if (perda) perdaErro.value = e.message
+    else toast.error(e.message)
+    return false
+  }
+}
+
+// ===== Motivo de perda (botão "Perdido" e cartão solto em etapa de perda) =====
+const perdaPendente = ref<{ deal: Deal; stageId: number | null } | null>(null)
+const perdaSalvando = ref(false)
+const perdaErro = ref('')
+
+function pedirMotivo(deal: Deal, stageId: number | null) {
+  perdaErro.value = ''
+  perdaPendente.value = { deal, stageId }
+}
+
+/** Cancelar não chama a API: o cartão continua na coluna de origem. */
+function cancelarPerda() {
+  perdaPendente.value = null
+  perdaErro.value = ''
+}
+
+async function confirmarPerda(perda: PerdaRequest) {
+  const pendente = perdaPendente.value
+  if (!pendente || perdaSalvando.value) return
+  perdaSalvando.value = true
+  perdaErro.value = ''
+  try {
+    const ok =
+      pendente.stageId === null ? await closeDeal(pendente.deal, false, perda) : await moverParaEtapa(pendente.deal, pendente.stageId, perda)
+    if (ok) perdaPendente.value = null
+  } finally {
+    perdaSalvando.value = false
   }
 }
 
@@ -731,6 +808,18 @@ onMounted(async () => {
       >
         ⚠ Em risco
       </button>
+      <button
+        v-if="viewMode === 'kanban'"
+        class="btn btn-outline btn-sm no-next-btn"
+        type="button"
+        :class="{ on: semProximaFilter }"
+        :aria-pressed="semProximaFilter"
+        title="Só negócios abertos sem nenhuma atividade agendada"
+        @click="semProximaFilter = !semProximaFilter"
+      >
+        <span class="semaforo amber" aria-hidden="true"></span> Sem próxima atividade
+        <span v-if="totalSemProxima" class="no-next-count">{{ totalSemProxima }}</span>
+      </button>
       <button class="btn btn-outline btn-sm adv-btn" type="button" :class="{ on: advCount }" @click="advOpen = true">
         ≡ Filtros avançados
         <span v-if="advCount" class="adv-count">{{ advCount }}</span>
@@ -868,6 +957,7 @@ onMounted(async () => {
             <span class="muted small activity" v-if="deal.last_activity_at">
               Atividade {{ relativeDate(deal.last_activity_at) }}
             </span>
+            <NextActivityLight v-if="temSemaforo(deal)" class="next-activity" :em="deal.proxima_atividade_em" :tipo="deal.proxima_atividade_tipo" />
             <div class="deal-actions" @click.stop>
               <button type="button" class="win" title="Marcar como ganho" @click="closeDeal(deal, true)">✓</button>
               <button type="button" class="lose" title="Marcar como perdido" @click="closeDeal(deal, false)">✕</button>
@@ -907,6 +997,9 @@ onMounted(async () => {
           >
             <strong>{{ deal.name }}</strong>
             <span class="amount">{{ formatMoney(deal.amount) }}</span>
+            <span v-if="deal.status === 'perdido' && deal.lost_reason" class="muted small lost-reason" :title="deal.lost_note || undefined">
+              {{ deal.lost_reason }}
+            </span>
           </article>
         </div>
         <footer class="column-foot">
@@ -920,6 +1013,15 @@ onMounted(async () => {
         {{ viewMode === 'lista' ? `${listTotal} negócio(s)` : `${totalDeals} negócio(s) no quadro` }}
       </span>
     </div>
+
+    <LostReasonDialog
+      :open="!!perdaPendente"
+      :nome="perdaPendente?.deal.name"
+      :salvando="perdaSalvando"
+      :erro="perdaErro"
+      @confirm="confirmarPerda"
+      @cancel="cancelarPerda"
+    />
 
     <AdvancedFilters
       :open="advOpen"
@@ -1279,6 +1381,35 @@ onMounted(async () => {
   border-color: var(--ci-red);
   color: var(--ci-red);
   background: var(--ci-red-tint);
+}
+
+.no-next-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.no-next-btn.on {
+  border-color: var(--ci-amber);
+  color: var(--ci-amber);
+  background: var(--ci-amber-tint);
+}
+
+.no-next-count {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--ci-amber-tint);
+  color: var(--ci-amber);
+}
+
+.no-next-btn.on .no-next-count {
+  background: var(--ci-surface);
+}
+
+.next-activity {
+  margin-top: 2px;
 }
 
 /* Selo de envelhecimento: cinza → âmbar (70% do prazo) → vermelho (passou). */

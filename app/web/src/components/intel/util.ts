@@ -6,7 +6,8 @@ export const nomesProvedores: Record<string, string> = {
   receita: 'Receita Federal',
   cep: 'BrasilAPI CEP',
   bigdatacorp: 'BigDataCorp',
-  serasa: 'Serasa Experian'
+  serasa: 'Serasa Experian',
+  wholead: 'Who Lead (Plus Soluções)'
 }
 
 export function nomeProvedor(codigo: Provedor | string | undefined | null): string {

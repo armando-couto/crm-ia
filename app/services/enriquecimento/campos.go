@@ -9,12 +9,13 @@ import (
 
 // AtribuirCampo grava o valor do perfil no struct da empresa (em memória),
 // com a mesma lista branca de ApplyEnrichedFields. Devolve false para campo
-// desconhecido ou valor incompatível.
+// desconhecido ou valor incompatível. Texto é cortado ao tamanho da coluna.
 func AtribuirCampo(c *models.Company, campo string, v any) bool {
 	if c == nil || Vazio(v) {
 		return false
 	}
-	texto := func() string { return strings.TrimSpace(fmt.Sprint(v)) }
+	// Texto maior que a coluna é cortado (a gravação inteira falharia).
+	texto := func() string { return TruncarTexto(fmt.Sprint(v), TamanhoColuna[campo]) }
 	switch campo {
 	case "name":
 		c.Name = texto()

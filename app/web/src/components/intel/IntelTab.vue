@@ -9,6 +9,8 @@ import type { Company } from '../../types'
 import type { IntelEmpresa, Perfil, Provedor } from '../../types-intel'
 import ScoreArc from './ScoreArc.vue'
 import SignalChips from './SignalChips.vue'
+import { formatarTelefone } from '../../telefone'
+import { papelPessoaLabels } from '../../types-prospeccao'
 import { centavos, dataCurta, enderecoCompleto, formatarCEP, nomeProvedor } from './util'
 
 const props = defineProps<{
@@ -33,6 +35,8 @@ const temIntel = computed(() => {
     Object.keys(campos.value).length > 0 ||
     (p.sinais?.length ?? 0) > 0 ||
     (p.socios?.length ?? 0) > 0 ||
+    (p.pessoas?.length ?? 0) > 0 ||
+    (p.contatos?.telefones?.length ?? 0) > 0 ||
     !!p.risco ||
     !!p.indicadores ||
     !!p.processos ||
@@ -53,11 +57,13 @@ const fontePadrao = computed(() =>
   perfil.value?.provedor || perfil.value?.consultado_em ? { provedor: perfil.value?.provedor ?? 'receita', data: perfil.value?.consultado_em ?? '' } : null
 )
 
-type Secao = 'cadastro' | 'endereco' | 'socios' | 'contatos' | 'atividade' | 'presenca' | 'processos' | 'conformidade' | 'midia' | 'risco'
+type Secao = 'cadastro' | 'endereco' | 'socios' | 'contatos' | 'pessoas' | 'atividade' | 'presenca' | 'processos' | 'conformidade' | 'midia' | 'risco'
 
 function fonte(secao: Secao): string {
   let f: { provedor: string; data: string } | null = null
   if (secao === 'cadastro' || secao === 'endereco' || secao === 'socios') f = ultimaOk('receita')
+  else if (secao === 'pessoas') f = ultimaOk('wholead')
+  else if (secao === 'contatos' && contatosDoWhoLead.value) f = ultimaOk('wholead') ?? ultimaOk('bigdatacorp') ?? ultimaOk('receita')
   else if (secao === 'risco') f = ultimaOk('serasa') ?? ultimaOk('bigdatacorp')
   else f = ultimaOk('bigdatacorp') ?? ultimaOk('receita')
   f = f ?? fontePadrao.value
@@ -83,6 +89,14 @@ const emails = computed(() => perfil.value?.contatos?.emails ?? [])
 const mostraContatos = computed(() => telefones.value.length > 0 || emails.value.length > 0)
 
 const socios = computed(() => perfil.value?.socios ?? [])
+
+// Pessoas com contato (Who Lead): sócios, representantes e funcionários.
+const pessoas = computed(() => perfil.value?.pessoas ?? [])
+const contatosDoWhoLead = computed(() => telefones.value.some((t) => t.origem === 'wholead' || t.whatsapp != null || t.nao_perturbe != null))
+
+function rotuloPapel(papel: string): string {
+  return (papelPessoaLabels as Record<string, string>)[papel] ?? papel
+}
 
 const indicadores = computed(() => perfil.value?.indicadores ?? null)
 const mostraAtividade = computed(() => {
@@ -275,6 +289,8 @@ async function remover() {
               <span v-if="t.tipo" class="muted small">{{ t.tipo }}</span>
               <span v-if="t.principal" class="badge">principal</span>
               <span v-if="t.validado" class="valid" title="Validado pela fonte">✓</span>
+              <span v-if="t.whatsapp" class="badge green" data-marca="whatsapp" title="A fonte informa que o número tem WhatsApp">WhatsApp</span>
+              <span v-if="t.nao_perturbe" class="badge red" data-marca="nao-perturbe" title="Número em cadastro de bloqueio de telemarketing">não perturbe</span>
               <span class="spacer"></span>
               <button
                 v-if="canEnrich && company.phone !== t.numero"
@@ -325,6 +341,36 @@ async function remover() {
             </tbody>
           </table>
           <footer>Fonte · {{ fonte('socios') }}</footer>
+        </article>
+
+        <!-- Pessoas com contato (Who Lead) -->
+        <article v-if="pessoas.length" class="intel-card card" data-card="pessoas">
+          <h3>Pessoas e contatos</h3>
+          <ul class="people">
+            <li v-for="(p, i) in pessoas" :key="`${p.nome}-${i}`">
+              <div class="person-head">
+                <strong>{{ p.nome }}</strong>
+                <span class="badge gray">{{ rotuloPapel(p.papel) }}</span>
+                <span v-if="p.cargo" class="muted small">{{ p.cargo }}</span>
+                <span v-if="p.documento" class="mono muted small">{{ p.documento }}</span>
+              </div>
+              <ul v-if="(p.telefones?.length ?? 0) > 0 || (p.emails?.length ?? 0) > 0" class="found">
+                <li v-for="t in p.telefones ?? []" :key="t.numero" :class="{ 'telefone-invalido': t.invalido }">
+                  <span class="ico">☎</span>
+                  <span class="value">{{ formatarTelefone(t.numero) || t.numero }}</span>
+                  <span v-if="t.whatsapp" class="badge green" data-marca="whatsapp">WhatsApp</span>
+                  <span v-if="t.nao_perturbe" class="badge red" data-marca="nao-perturbe">não perturbe</span>
+                </li>
+                <li v-for="e in p.emails ?? []" :key="e">
+                  <span class="ico">✉</span>
+                  <span class="value">{{ e }}</span>
+                </li>
+              </ul>
+              <p v-else class="muted small">Sem contato encontrado.</p>
+            </li>
+          </ul>
+          <p class="muted small">Contato de pessoa física: a LGPD se aplica. Confira a lista de bloqueios antes de ligar.</p>
+          <footer>Fonte · {{ fonte('pessoas') || 'Who Lead (Plus Soluções)' }}</footer>
         </article>
 
         <!-- Atividade e porte -->
@@ -820,5 +866,21 @@ async function remover() {
 
 .history-table tbody tr:hover {
   background: transparent;
+}
+.people {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.person-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
 }
 </style>

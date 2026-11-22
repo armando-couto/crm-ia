@@ -7,6 +7,8 @@ import { useToastStore } from '../stores/toast'
 import CustomProperties from '../components/CustomProperties.vue'
 import AttachmentsPanel from '../components/AttachmentsPanel.vue'
 import ModalDialog from '../components/ModalDialog.vue'
+import LostReasonDialog from '../components/deals/LostReasonDialog.vue'
+import type { PerdaRequest } from '../types-prospeccao'
 import type { Activity, Company, Contact, Deal, Meeting, Paginated, Pipeline, Task, User } from '../types'
 
 const route = useRoute()
@@ -167,13 +169,38 @@ async function moveTo(stageId: number) {
   }
 }
 
-async function close(won: boolean) {
+async function close(won: boolean, perda?: PerdaRequest): Promise<boolean> {
+  // "Perdido" sempre passa pelo diálogo de motivo (docs/PROSPECCAO.md, seção 9).
+  if (!won && !perda) {
+    perdaErro.value = ''
+    perdaOpen.value = true
+    return false
+  }
   try {
-    deal.value = await api.patch<Deal>(`/deals/${id}/close`, { won })
+    deal.value = await api.patch<Deal>(`/deals/${id}/close`, won ? { won } : { won, ...perda })
     toast.push(won ? 'Negócio ganho! 🎉' : 'Negócio marcado como perdido')
     await loadActivities()
+    return true
   } catch (e: any) {
-    toast.error(e.message)
+    if (perda) perdaErro.value = e.message
+    else toast.error(e.message)
+    return false
+  }
+}
+
+// ===== Motivo de perda =====
+const perdaOpen = ref(false)
+const perdaSalvando = ref(false)
+const perdaErro = ref('')
+
+async function confirmarPerda(perda: PerdaRequest) {
+  if (perdaSalvando.value) return
+  perdaSalvando.value = true
+  perdaErro.value = ''
+  try {
+    if (await close(false, perda)) perdaOpen.value = false
+  } finally {
+    perdaSalvando.value = false
   }
 }
 
@@ -377,7 +404,7 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
             >
               <option v-for="(label, key) in forecastLabels" :key="key" :value="key">{{ label }}</option>
             </select>
-            <span v-else class="badge green">Fechado</span>
+            <span v-else class="badge" :class="deal.status === 'perdido' ? 'red' : 'green'">{{ deal.status === 'perdido' ? 'Perdido' : 'Fechado' }}</span>
           </dd>
           <dt>Proprietário do negócio</dt>
           <dd :class="{ muted: !deal.owner_name }">{{ deal.owner_name || 'Nenhum proprietário' }}</dd>
@@ -389,6 +416,14 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
           <dd>{{ formatDate(deal.created_at) }}</dd>
           <dt>Fechado em</dt>
           <dd>{{ formatDate(deal.closed_at) }}</dd>
+          <template v-if="deal.status === 'perdido'">
+            <dt>Motivo da perda</dt>
+            <dd data-campo="motivo-perda" :class="{ muted: !deal.lost_reason }">{{ deal.lost_reason || 'Sem motivo informado' }}</dd>
+            <template v-if="deal.lost_note">
+              <dt>Observação da perda</dt>
+              <dd data-campo="observacao-perda">{{ deal.lost_note }}</dd>
+            </template>
+          </template>
         </dl>
       </div>
 
@@ -606,6 +641,15 @@ const meetingBadge: Record<string, string> = { agendada: 'blue', realizada: 'gre
     </aside>
 
     <!-- ===== Modais ===== -->
+    <LostReasonDialog
+      :open="perdaOpen"
+      :nome="deal?.name"
+      :salvando="perdaSalvando"
+      :erro="perdaErro"
+      @confirm="confirmarPerda"
+      @cancel="perdaOpen = false"
+    />
+
     <ModalDialog title="Editar negócio" :open="editOpen" wide @close="editOpen = false">
       <form @submit.prevent="saveEdit">
         <div class="form-row">

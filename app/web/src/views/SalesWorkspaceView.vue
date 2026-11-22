@@ -5,6 +5,7 @@ import { useAuthStore } from '../stores/auth'
 import { useToastStore } from '../stores/toast'
 import { formatDate, formatDateTime, formatMoney, relativeDate } from '../format'
 import ReportChart from '../components/ReportChart.vue'
+import type { ResumoFila } from '../types-prospeccao'
 import type {
   Company,
   Deal,
@@ -35,6 +36,9 @@ const loading = ref(true)
 
 // Resumo
 const data = ref<Workspace | null>(null)
+/** Atalho da fila de ligações (GET /leads/fila/resumo, chamada separada e opcional). */
+const filaLigacoes = ref<Partial<ResumoFila> | null>(null)
+const naFila = computed(() => filaLigacoes.value?.na_fila ?? 0)
 const collapsed = ref<Record<string, boolean>>({})
 
 // Demais abas (carregadas sob demanda)
@@ -93,7 +97,7 @@ const queues = computed(() => {
     },
     {
       key: 'leads',
-      title: 'Leads sem contato',
+      title: 'Contatos novos sem atividade',
       items: data.value.untouched_leads,
       empty: 'Todo lead da sua carteira já recebeu alguma interação.',
       tone: 'purple'
@@ -132,7 +136,22 @@ async function completeTask(id: number) {
 }
 
 async function loadResumo() {
+  void loadFilaLigacoes()
   data.value = await api.get<Workspace>('/workspace')
+}
+
+/** Tolerante a falha e a resposta sem as chaves: o atalho só some. */
+async function loadFilaLigacoes() {
+  if (!auth.can('leads.edit')) {
+    filaLigacoes.value = null
+    return
+  }
+  try {
+    const r = await api.get<Partial<ResumoFila> | null>('/leads/fila/resumo')
+    filaLigacoes.value = r && typeof r === 'object' ? r : null
+  } catch {
+    filaLigacoes.value = null
+  }
 }
 
 /** Cada aba busca só o que precisa, filtrado pela carteira de quem está logado. */
@@ -252,6 +271,17 @@ onMounted(loadTab)
           <strong>{{ data.target_accounts }}</strong>
         </div>
       </div>
+
+      <router-link v-if="filaLigacoes" to="/fila-de-ligacoes" class="card fila-atalho">
+        <span class="fila-texto">
+          <strong>Sua fila de ligações: {{ naFila }} {{ naFila === 1 ? 'lead' : 'leads' }}</strong>
+          <span class="muted small">
+            <template v-if="filaLigacoes.retornos_vencidos">{{ filaLigacoes.retornos_vencidos }} retorno(s) vencido(s) · </template>
+            {{ filaLigacoes.feitas_hoje ?? 0 }}<template v-if="filaLigacoes.meta_dia"> de {{ filaLigacoes.meta_dia }}</template> ligações hoje
+          </span>
+        </span>
+        <span class="btn btn-primary btn-sm">Começar a ligar</span>
+      </router-link>
 
       <p class="muted count">
         {{ pendencias ? `${pendencias} item(ns) na sua fila` : 'Nada pendente: seu dia está em dia.' }}
@@ -513,6 +543,25 @@ onMounted(loadTab)
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--ci-text-3);
+}
+
+.fila-atalho {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px 16px;
+  text-decoration: none;
+  color: inherit;
+  border-left: 4px solid var(--ci-purple);
+  flex-wrap: wrap;
+}
+
+.fila-texto {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
 }
 
 .ws-tabs {

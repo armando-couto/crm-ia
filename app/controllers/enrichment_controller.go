@@ -45,6 +45,11 @@ func responderFalhaExterna(ctx iris.Context, err error) {
 		ctx.StopWithJSON(iris.StatusNotFound, iris.Map{"error": msg})
 	case enriquecimento.FalhaLimite:
 		ctx.StopWithJSON(iris.StatusTooManyRequests, iris.Map{"error": msg})
+	case enriquecimento.FalhaSaldo:
+		// Saldo ou franquia do provedor esgotados: estado de negócio.
+		ctx.StopWithJSON(iris.StatusPaymentRequired, iris.Map{"error": msg})
+	case enriquecimento.FalhaOcupado:
+		ctx.StopWithJSON(iris.StatusConflict, iris.Map{"error": msg})
 	case enriquecimento.FalhaEntrada, enriquecimento.FalhaConfig:
 		unprocessable(ctx, msg)
 	default:
@@ -80,12 +85,12 @@ type consultaResultado struct {
 func executarConsulta(ctx context.Context, reg *enriquecimento.Registro, company *models.Company,
 	provedor string, opts enriquecimento.Opcoes, userID *int64) consultaResultado {
 	res := consultaResultado{Provedor: provedor, Status: models.EnrichmentErro}
-	cnpj := enriquecimento.SomenteDigitos(company.CNPJ)
+	cnpj := enriquecimento.NormalizarCNPJ(company.CNPJ)
 
 	if provedor == models.ProvedorReceita && !opts.Forcar {
 		prazo := time.Duration(reg.Cfg.PrazoCacheDias) * 24 * time.Hour
 		if row, err := models.LastOkEnrichment(utils.DB, company.ID, provedor, prazo); err == nil && row != nil {
-			if p := enriquecimento.PerfilDeJSON(row.Perfil); p != nil && enriquecimento.SomenteDigitos(p.Texto("cnpj")) == cnpj {
+			if p := enriquecimento.PerfilDeJSON(row.Perfil); p != nil && enriquecimento.NormalizarCNPJ(p.Texto("cnpj")) == cnpj {
 				res.Status, res.Cache, res.EnrichmentID, res.perfil = models.EnrichmentOK, true, row.ID, p
 				return res
 			}
@@ -185,7 +190,7 @@ func fraseEnriquecimento(provedores []string, n int) string {
 		switch provedores[0] {
 		case models.ProvedorReceita, models.ProvedorSerasa:
 			prep = "pela"
-		case models.ProvedorBigDataCorp:
+		case models.ProvedorBigDataCorp, models.ProvedorWhoLead:
 			prep = "pelo"
 		}
 		return fmt.Sprintf("Dados enriquecidos %s %s: %d %s", prep, nomes[0], n, campos)
@@ -209,7 +214,8 @@ func aplicarCampos(company *models.Company, diff []enriquecimento.CampoDiff, esc
 		if !models.EnrichableColumns[d.Campo] {
 			continue
 		}
-		valores[d.Campo] = d.Proposto
+		// Texto maior que a coluna é cortado: senão o UPDATE inteiro falha.
+		valores[d.Campo] = enriquecimento.TruncarCampo(d.Campo, d.Proposto)
 		aplicados = append(aplicados, d.Campo)
 		fs := models.FieldSource{Campo: d.Campo, Provedor: d.Provedor}
 		if id, ok := idPorProvedor[d.Provedor]; ok {
@@ -242,7 +248,7 @@ func aplicarCampos(company *models.Company, diff []enriquecimento.CampoDiff, esc
 
 // LookupCNPJ consulta a Receita (grátis) para pré-preencher o formulário.
 func LookupCNPJ(ctx iris.Context) {
-	cnpj := enriquecimento.SomenteDigitos(ctx.Params().GetString("cnpj"))
+	cnpj := enriquecimento.NormalizarCNPJ(ctx.Params().GetString("cnpj"))
 	if !enriquecimento.ValidarCNPJ(cnpj) {
 		unprocessable(ctx, "CNPJ inválido")
 		return
@@ -651,8 +657,14 @@ func GetEnrichmentSettings(ctx iris.Context) {
 
 // UpdateEnrichmentSettings grava a configuração; segredos vazios mantêm os atuais.
 func UpdateEnrichmentSettings(ctx iris.Context) {
+	corpo, err := ctx.GetBody()
+	if err != nil {
+		badRequest(ctx, "dados inválidos")
+		return
+	}
 	var cfg models.EnrichmentSettings
-	if err := ctx.ReadJSON(&cfg); err != nil {
+	var chaves map[string]json.RawMessage
+	if err := json.Unmarshal(corpo, &cfg); err != nil || json.Unmarshal(corpo, &chaves) != nil {
 		badRequest(ctx, "dados inválidos")
 		return
 	}
@@ -661,6 +673,10 @@ func UpdateEnrichmentSettings(ctx iris.Context) {
 		return
 	}
 	atual := models.LoadEnrichmentSettings(utils.DB)
+	// Tela que ainda não conhece o Who Lead (sem a chave): mantém o gravado.
+	if _, veio := chaves["wholead"]; !veio {
+		cfg.WhoLead = atual.WhoLead
+	}
 
 	if tok := strings.TrimSpace(cfg.BigDataCorp.AccessToken); tok != "" {
 		cifrado, err := utils.Cifrar(tok)
@@ -682,12 +698,26 @@ func UpdateEnrichmentSettings(ctx iris.Context) {
 	} else {
 		cfg.Serasa.ClientSecretCifrado = atual.Serasa.ClientSecretCifrado
 	}
+	if sec := strings.TrimSpace(cfg.WhoLead.ClientSecret); sec != "" {
+		cifrado, err := utils.Cifrar(sec)
+		if err != nil {
+			serverError(ctx, err)
+			return
+		}
+		cfg.WhoLead.ClientSecretCifrado = cifrado
+	} else {
+		cfg.WhoLead.ClientSecretCifrado = atual.WhoLead.ClientSecretCifrado
+	}
 	if cfg.BigDataCorp.Habilitado && !cfg.BigDataCorp.Demo && (cfg.BigDataCorp.TokenID == "" || cfg.BigDataCorp.AccessTokenCifrado == "") {
 		badRequest(ctx, "informe Token ID e Access Token do BigDataCorp (ou ative o modo demonstração)")
 		return
 	}
 	if cfg.Serasa.Habilitado && !cfg.Serasa.Demo && (cfg.Serasa.ClientID == "" || cfg.Serasa.ClientSecretCifrado == "") {
 		badRequest(ctx, "informe client_id e client_secret do Serasa (ou ative o modo demonstração)")
+		return
+	}
+	if cfg.WhoLead.Habilitado && !cfg.WhoLead.Demo && (cfg.WhoLead.ClientID == "" || cfg.WhoLead.ClientSecretCifrado == "") {
+		badRequest(ctx, "informe o Client ID e o Client Secret do Who Lead (ou ative o modo demonstração)")
 		return
 	}
 	gravar := cfg.ParaGravar()
@@ -698,6 +728,7 @@ func UpdateEnrichmentSettings(ctx iris.Context) {
 	}
 	// Tokens Serasa em cache valem para as credenciais antigas.
 	utils.Cache.DelPrefixo("enriq:serasa:token:")
+	utils.Cache.DelPrefixo(enriquecimento.PrefixoCacheTokenWhoLead)
 	audit(ctx, models.AuditUpdate, "configuracao", 0, "integrações de dados atualizadas")
 	ctx.JSON(iris.Map{"settings": gravar.Publica()})
 }
@@ -717,7 +748,7 @@ func TestEnrichmentProvider(ctx iris.Context) {
 		badRequest(ctx, "fonte desconhecida")
 		return
 	}
-	cnpj := enriquecimento.SomenteDigitos(req.CNPJ)
+	cnpj := enriquecimento.NormalizarCNPJ(req.CNPJ)
 	if cnpj == "" {
 		cnpj = cnpjBancoDoBrasil
 	}
@@ -744,6 +775,26 @@ func TestEnrichmentProvider(ctx iris.Context) {
 			return
 		}
 		resposta(true, fmt.Sprintf("Login no Serasa Experian (%s) realizado com sucesso", s.Ambiente), 0, false)
+		return
+	}
+	// Who Lead real: só a conta (plano e franquia), que não tem custo.
+	if w, ok := prov.(*enriquecimento.WhoLead); ok {
+		conta, err := w.Conta(reqCtx)
+		if err != nil {
+			resposta(false, enriquecimento.MensagemDaFalha(err), 0, false)
+			return
+		}
+		msg := "Conexão com o Who Lead realizada com sucesso"
+		if conta.Plano != "" {
+			msg += ": plano " + conta.Plano
+		}
+		if conta.FranquiaRestante != nil {
+			msg += fmt.Sprintf(", franquia restante %d", *conta.FranquiaRestante)
+			if conta.FranquiaTotal != nil {
+				msg += fmt.Sprintf(" de %d", *conta.FranquiaTotal)
+			}
+		}
+		resposta(true, msg, 0, false)
 		return
 	}
 	opts := enriquecimento.Opcoes{Forcar: true}

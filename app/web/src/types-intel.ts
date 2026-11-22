@@ -1,8 +1,11 @@
 // Tipos da inteligência de empresas (enriquecimento) — contrato em
 // docs/FUNIL-E-INTELIGENCIA.md, Parte 2.
 import type { Company } from './types'
+import type { Pessoa, WhoLeadSettings } from './types-prospeccao'
 
-export type Provedor = 'receita' | 'bigdatacorp' | 'serasa'
+export type { Pessoa, WhoLeadSettings }
+
+export type Provedor = 'receita' | 'bigdatacorp' | 'serasa' | 'wholead'
 export type NivelSinal = 'ok' | 'atencao' | 'risco'
 
 export interface Sinal {
@@ -70,6 +73,12 @@ export interface TelefoneEncontrado {
   tipo?: string
   principal?: boolean
   validado?: boolean
+  /** Who Lead: o número tem WhatsApp (nulo ou ausente = não informado). */
+  whatsapp?: boolean | null
+  /** Who Lead: o número está em cadastro de "não perturbe". */
+  nao_perturbe?: boolean | null
+  origem?: string
+  pessoa?: string
 }
 
 export interface EmailEncontrado {
@@ -159,6 +168,8 @@ export interface Perfil {
   processos?: Processos
   conformidade?: Conformidade
   midia?: Midia
+  /** Sócios, representantes e funcionários com contato (Who Lead); CPF sempre mascarado. */
+  pessoas?: Pessoa[]
   sinais?: Sinal[]
   custo_centavos?: number
 }
@@ -273,6 +284,8 @@ export interface EnrichmentSettings {
   prazo_cache_dias: number
   bigdatacorp: BigDataCorpSettings
   serasa: SerasaSettings
+  /** Ausente em ambientes anteriores à prospecção. */
+  wholead?: WhoLeadSettings
 }
 
 export interface DatasetCatalogo {

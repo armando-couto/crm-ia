@@ -140,4 +140,68 @@ describe('SettingsIntegrationsView', () => {
     expect(card.text()).toContain('conexão ok')
     wrapper.unmount()
   })
+
+  it('Who Lead: cartão aparece mesmo sem a chave na resposta; habilitar e salvar manda o bloco sem segredo vazio', async () => {
+    vi.stubGlobal('fetch', stubFetch())
+    const wrapper = mount(SettingsIntegrationsView)
+    await flushPromises()
+
+    const card = wrapper.find('[data-source="wholead"]')
+    expect(card.exists()).toBe(true)
+    expect(card.text()).toContain('Who Lead (Plus Soluções)')
+    expect(card.text()).toContain('desativada')
+
+    await card.find('input[type="checkbox"]').setValue(true)
+    const ativo = wrapper.find('[data-source="wholead"]')
+    await ativo.find('input[autocomplete="off"]').setValue('cliente-123')
+    await ativo.find('[data-campo="preco_wholead"]').setValue('1,25')
+    await ativo.find('[data-campo="lote_tamanho"]').setValue(5000)
+    await ativo.find('[data-opcao="incluir_portabilidade"]').setValue(true)
+    await wrapper.find('form').trigger('submit')
+    await flushPromises()
+
+    const put = chamadas.find((c) => c.method === 'PUT')!
+    expect(put.body.wholead).toEqual({
+      habilitado: true,
+      demo: false,
+      client_id: 'cliente-123',
+      incluir_socios: true,
+      incluir_responsavel_legal: true,
+      incluir_portabilidade: true,
+      preco_centavos: 125,
+      lote_tamanho: 1000
+    })
+    wrapper.unmount()
+  })
+
+  it('Who Lead: segredo guardado vira "guardado", digitado vai em claro, e o teste usa o provedor wholead', async () => {
+    const original = settings as any
+    original.wholead = { habilitado: true, demo: true, client_id: 'cid-wl', has_secret: true, incluir_socios: true, incluir_responsavel_legal: false, incluir_portabilidade: false, preco_centavos: 80, lote_tamanho: 500 }
+    try {
+      vi.stubGlobal('fetch', stubFetch())
+      const wrapper = mount(SettingsIntegrationsView)
+      await flushPromises()
+
+      const card = wrapper.find('[data-source="wholead"]')
+      expect(card.text()).toContain('guardado')
+      expect(card.text()).toContain('demonstração')
+      expect(texto(wrapper.find('.usage'))).toContain('Who Lead')
+
+      await card.find('.test input').setValue('11.222.333/0001-81')
+      await card.find('.test button').trigger('click')
+      await flushPromises()
+      expect(chamadas.find((c) => c.url.includes('/settings/enrichment/test'))?.body).toEqual({ provedor: 'wholead', cnpj: '11222333000181' })
+
+      await card.find('input[type="password"]').setValue('segredo-novo')
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+      const put = chamadas.find((c) => c.method === 'PUT')!
+      expect(put.body.wholead.client_secret).toBe('segredo-novo')
+      expect(put.body.wholead.has_secret).toBeUndefined()
+      expect(put.body.wholead.incluir_responsavel_legal).toBe(false)
+      wrapper.unmount()
+    } finally {
+      delete original.wholead
+    }
+  })
 })

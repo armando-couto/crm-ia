@@ -31,7 +31,7 @@ type Receita struct {
 func (r *Receita) Codigo() string { return models.ProvedorReceita }
 
 func (r *Receita) Consultar(ctx context.Context, cnpj string, opts Opcoes) (*Perfil, *Bruto, error) {
-	digits := SomenteDigitos(cnpj)
+	digits := NormalizarCNPJ(cnpj)
 	if !ValidarCNPJ(digits) {
 		return nil, nil, falha(FalhaEntrada, "CNPJ inválido")
 	}
@@ -46,6 +46,27 @@ func (r *Receita) Consultar(ctx context.Context, cnpj string, opts Opcoes) (*Per
 	}
 	ctx, cancelar := context.WithTimeout(ctx, timeout)
 	defer cancelar()
+
+	prazo := r.PrazoCache
+	if prazo <= 0 {
+		prazo = 30 * 24 * time.Hour
+	}
+	// Base própria da plataforma primeiro: traz e-mail e telefone e não tem o
+	// limite das APIs de terceiros. Qualquer falha dela (sem painel, fora do
+	// ar, limite, CNPJ ainda não carregado) cai na cadeia pública.
+	if p, b := consultarPlataforma(ctx, digits); p != nil {
+		if !r.SemCEP {
+			completarPorCEP(ctx, p)
+		}
+		derivarSite(p)
+		p.Sinais = CalcularSinais(p)
+		gravarCache(models.ProvedorReceita, digits, p, b, prazo)
+		return p, b, nil
+	}
+	// As APIs públicas ainda não aceitam CNPJ com letras.
+	if !CNPJSoNumeros(digits) {
+		return nil, nil, falha(FalhaSemResultado, "CNPJ não encontrado na Receita Federal")
+	}
 
 	var ultimo error
 	fontes := []struct {
@@ -76,10 +97,6 @@ func (r *Receita) Consultar(ctx context.Context, cnpj string, opts Opcoes) (*Per
 		derivarSite(p)
 		p.Sinais = CalcularSinais(p)
 		b := &Bruto{Fonte: f.nome, Corpo: json.RawMessage(corpo)}
-		prazo := r.PrazoCache
-		if prazo <= 0 {
-			prazo = 30 * 24 * time.Hour
-		}
 		gravarCache(models.ProvedorReceita, digits, p, b, prazo)
 		return p, b, nil
 	}

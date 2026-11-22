@@ -548,6 +548,15 @@ export interface Deal {
   dias_na_etapa?: number | null
   prazo_dias?: number | null
   dias_sem_atividade?: number | null
+  /** Motivo e observação da perda (docs/PROSPECCAO.md, seção 9); limpos ao reabrir. */
+  lost_reason?: string
+  lost_note?: string
+  /** Negócio nascido de um lead de prospecção. */
+  lead_id?: number | null
+  origem?: string
+  /** Só em /deals/board: a tarefa pendente mais próxima (semáforo do cartão). Nulo = nenhuma agendada. */
+  proxima_atividade_em?: string | null
+  proxima_atividade_tipo?: string
 }
 
 export interface Task {

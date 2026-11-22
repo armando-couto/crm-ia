@@ -19,19 +19,23 @@ func TestEnrichmentSettingsPublicaNaoExpoeSegredos(t *testing.T) {
 	s.Serasa.ClientID = "cid"
 	s.Serasa.ClientSecret = "em-claro"
 	s.Serasa.ClientSecretCifrado = "cifrado-serasa"
+	s.WhoLead.Habilitado = true
+	s.WhoLead.ClientID = "cid-wl"
+	s.WhoLead.ClientSecret = "em-claro"
+	s.WhoLead.ClientSecretCifrado = "cifrado-wholead"
 
 	pub := s.Publica()
 	b, _ := json.Marshal(pub)
 	js := string(b)
-	for _, proibido := range []string{"em-claro", "cifrado-bdc", "cifrado-serasa", "access_token_cifrado", "client_secret_cifrado", "\"access_token\"", "\"client_secret\""} {
+	for _, proibido := range []string{"em-claro", "cifrado-bdc", "cifrado-serasa", "cifrado-wholead", "cifrado", "access_token_cifrado", "client_secret_cifrado", "\"access_token\"", "\"client_secret\""} {
 		if strings.Contains(js, proibido) {
 			t.Errorf("JSON público contém %q: %s", proibido, js)
 		}
 	}
-	if !pub.BigDataCorp.HasSecret || !pub.Serasa.HasSecret {
+	if !pub.BigDataCorp.HasSecret || !pub.Serasa.HasSecret || !pub.WhoLead.HasSecret {
 		t.Error("has_secret deveria ser true")
 	}
-	for _, chave := range []string{"auto_receita", "sobrescrever", "limite_mensal_centavos", "prazo_cache_dias", "bigdatacorp", "serasa"} {
+	for _, chave := range []string{"auto_receita", "sobrescrever", "limite_mensal_centavos", "prazo_cache_dias", "bigdatacorp", "serasa", "wholead", "has_secret", "lote_tamanho", "preco_centavos", "incluir_socios"} {
 		if !strings.Contains(js, "\""+chave+"\"") {
 			t.Errorf("JSON público sem %q", chave)
 		}
@@ -41,7 +45,8 @@ func TestEnrichmentSettingsPublicaNaoExpoeSegredos(t *testing.T) {
 		t.Error("Publica alterou o original")
 	}
 	gravar := s.ParaGravar()
-	if gravar.BigDataCorp.AccessToken != "" || gravar.Serasa.ClientSecret != "" || gravar.BigDataCorp.AccessTokenCifrado == "" {
+	if gravar.BigDataCorp.AccessToken != "" || gravar.Serasa.ClientSecret != "" || gravar.WhoLead.ClientSecret != "" ||
+		gravar.BigDataCorp.AccessTokenCifrado == "" || gravar.WhoLead.ClientSecretCifrado == "" {
 		t.Errorf("ParaGravar = %+v", gravar)
 	}
 	if gravar.BigDataCorpPronto() == false {
@@ -49,6 +54,13 @@ func TestEnrichmentSettingsPublicaNaoExpoeSegredos(t *testing.T) {
 	}
 	if gravar.SerasaPronto() {
 		t.Error("serasa desabilitado não está pronto")
+	}
+	if !gravar.WhoLeadPronto() || gravar.WhoLeadMotivo() != "" {
+		t.Error("who lead habilitado com credenciais deveria estar pronto")
+	}
+	gravar.WhoLead.ClientSecretCifrado = ""
+	if gravar.WhoLeadPronto() || gravar.WhoLeadMotivo() == "" {
+		t.Error("who lead sem segredo não está pronto e explica o motivo")
 	}
 }
 
@@ -73,6 +85,19 @@ func TestEnrichmentSettingsValidate(t *testing.T) {
 	s.Serasa.Ambiente = "homolog"
 	if err := s.Validate(); err == nil {
 		t.Error("ambiente inválido deveria falhar")
+	}
+	s = DefaultEnrichmentSettings()
+	if s.WhoLead.LoteTamanho != 500 || s.WhoLead.PrecoCentavos != 80 || !s.WhoLead.IncluirSocios || !s.WhoLead.IncluirResponsavelLegal || s.WhoLead.IncluirPortabilidade {
+		t.Errorf("padrão do Who Lead = %+v", s.WhoLead)
+	}
+	s.WhoLead.LoteTamanho = 1001
+	if err := s.Validate(); err == nil {
+		t.Error("lote acima de 1000 deveria falhar")
+	}
+	s = DefaultEnrichmentSettings()
+	s.WhoLead.BaseURL = "ftp://x"
+	if err := s.Validate(); err == nil {
+		t.Error("endereço do Who Lead inválido deveria falhar")
 	}
 	s = DefaultEnrichmentSettings()
 	s.PrazoCacheDias = 0

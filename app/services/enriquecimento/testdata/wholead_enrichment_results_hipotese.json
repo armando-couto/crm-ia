@@ -1,0 +1,207 @@
+{
+  "consultation_id": 1,
+  "ready": true,
+  "items": [
+    {
+      "cnpj": "11222333000181",
+      "found": true,
+      "result": "found",
+      "refunded": false,
+      "cnpj_data": {
+        "cnpj": "11222333000181",
+        "company_name": "ACME VENDAS LTDA",
+        "trading_name": "ACME",
+        "creation_date": "2015-03-10",
+        "age": "11 anos 8 meses",
+        "business_size": "ME",
+        "city_uf": "FORTALEZA, CE",
+        "cnae_code": 9511800,
+        "cnae_description": "Reparação e manutenção de computadores e de equipamentos periféricos",
+        "registry_situation": "ATIVA",
+        "addresses": [
+          {
+            "type": "Rua",
+            "street": "Das Flores",
+            "number": "100",
+            "complement": null,
+            "neighborhood": "Centro",
+            "city": "Fortaleza",
+            "district": "CE",
+            "postal_code": "60000000",
+            "priority": 1
+          },
+          {
+            "type": "Avenida",
+            "street": "Exemplo",
+            "number": "2000",
+            "complement": "Sala 5",
+            "neighborhood": "Aldeota",
+            "city": "Fortaleza",
+            "district": "CE",
+            "postal_code": "60100000",
+            "priority": 2
+          }
+        ],
+        "branch_offices": [
+          {
+            "root_cnpj": "11222333",
+            "cnpj": "11222333000262",
+            "company_name": "ACME VENDAS LTDA",
+            "ds_branch_office": "FILIAL"
+          }
+        ],
+        "partners": [
+          {
+            "name": "FULANO DE TAL",
+            "ownership": 60,
+            "qualification": "Sócio-Administrador",
+            "cpf": "12345678900",
+            "cnpj": null
+          },
+          {
+            "name": "EXEMPLO PARTICIPACOES LTDA",
+            "ownership": 40,
+            "qualification": "Sócio",
+            "cpf": null,
+            "cnpj": "99888777000166"
+          }
+        ],
+        "employee_count": "DE 50 A 99 FUNCIONARIOS",
+        "estimated_revenue": "DE R$ 100 MM ATÉ R$ 250 MM",
+        "headquarter_type": "MATRIZ",
+        "juridical_type": "Sociedade Empresária Limitada",
+        "juridical_type_id": 2062,
+        "segment": "Atividades Profissionais, Científicas e Técnicas",
+        "share_capital": "100000.00",
+        "simple_simei": null,
+        "matriz_filial_count": 1,
+        "legal_representative": [
+          {
+            "name": "FULANO DE TAL",
+            "cpf": "12345678900"
+          }
+        ],
+        "emails": [
+          {
+            "email": "contato@acme.com.br",
+            "priority": 1
+          },
+          {
+            "email": "acme.vendas@gmail.com",
+            "priority": 2
+          }
+        ],
+        "land_lines": [
+          {
+            "ddd": 85,
+            "number": "33334444",
+            "priority": 1,
+            "cdr_datetime": null,
+            "hot_datetime": "2026-09-30 15:11:26",
+            "cpc_datetime": null
+          }
+        ],
+        "mobile_phones": [
+          {
+            "ddd": 85,
+            "number": "999990000",
+            "priority": 1,
+            "cdr_datetime": null,
+            "hot_datetime": "2026-10-02 09:40:00",
+            "whatsapp": true,
+            "whatsapp_datetime": null,
+            "cpc_datetime": null,
+            "devices_connected": 1,
+            "active_nao_me_ligue": false
+          },
+          {
+            "ddd": 85,
+            "number": "988880000",
+            "priority": 2,
+            "cdr_datetime": null,
+            "hot_datetime": null,
+            "whatsapp": false,
+            "whatsapp_datetime": null,
+            "cpc_datetime": null,
+            "devices_connected": null,
+            "active_nao_me_ligue": true
+          }
+        ],
+        "related_company_members": [
+          {
+            "cpf": "98765432100",
+            "name": "BELTRANA EXEMPLO",
+            "position": "354125 - ASSISTENTE DE VENDAS",
+            "position_status": "Última informação obtida"
+          },
+          {
+            "cpf": "11111111111",
+            "name": "CICLANO EXEMPLO",
+            "position": "354125 - ASSISTENTE DE VENDAS",
+            "position_status": "Informação histórica"
+          }
+        ],
+        "related_companies": [
+          {
+            "cnpj": "99888777000166",
+            "name": "EXEMPLO PARTICIPACOES LTDA",
+            "priority": 5,
+            "description": "Sócio",
+            "ownership": 40,
+            "registry_situation": "ATIVA"
+          }
+        ],
+        "related_persons": [
+          {
+            "cpf": "12345678900",
+            "name": "FULANO DE TAL",
+            "priority": 2,
+            "description": "Diretor",
+            "ownership": null,
+            "partner": "PF",
+            "share": null,
+            "qualification": "Diretor"
+          }
+        ],
+        "related_emails": [
+          {
+            "email": "fiscal@acme.com.br",
+            "cnpj": "11222333000262"
+          }
+        ],
+        "ip": "203.0.113.7"
+      },
+      "nome_fantasia": "ACME",
+      "cpfs": [],
+      "persons": [
+        {
+          "cpf": "12345678900",
+          "tipo_pessoa": "<valor não documentado>",
+          "nome": "FULANO DE TAL",
+          "qualificacao": "Sócio-Administrador",
+          "data_entrada_sociedade": "2015-03-10",
+          "telefones": [
+            "85999991111",
+            "8532221111"
+          ],
+          "data": null
+        }
+      ],
+      "portability": null
+    },
+    {
+      "cnpj": "99888777000166",
+      "found": false,
+      "result": "not_found",
+      "refunded": true,
+      "cnpj_data": null,
+      "nome_fantasia": null,
+      "cpfs": [],
+      "persons": [],
+      "portability": null
+    }
+  ],
+  "total": 2,
+  "offset": 0,
+  "limit": 50
+}

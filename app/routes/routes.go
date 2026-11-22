@@ -298,6 +298,70 @@ func Register(app *iris.Application) {
 	auth.Get("/plano", can(models.PermSettingsUsers), controllers.MeuPlano)
 	auth.Post("/plano/solicitacoes", can(models.PermSettingsUsers), controllers.SolicitarPlano)
 
+	// Prospecção (docs/PROSPECCAO.md seções 6 a 9): leitura com
+	// prospecting.view, escrita com prospecting.manage.
+	auth.Get("/prospeccao", can(models.PermProspectingView), controllers.ProspeccaoResumo)
+	auth.Get("/prospeccao/catalogos/{nome:string}", can(models.PermProspectingView), controllers.ProspeccaoCatalogo)
+	auth.Post("/prospeccao/contagem", can(models.PermProspectingView), controllers.ProspeccaoContagem)
+	auth.Post("/prospeccao/previa", can(models.PermProspectingView), controllers.ProspeccaoPrevia)
+
+	auth.Get("/prospeccao/segmentos", can(models.PermProspectingView), controllers.ListProspSegmentos)
+	auth.Post("/prospeccao/segmentos", can(models.PermProspectingManage), controllers.CreateProspSegmento)
+	auth.Put("/prospeccao/segmentos/{id:int64}", can(models.PermProspectingManage), controllers.UpdateProspSegmento)
+	auth.Delete("/prospeccao/segmentos/{id:int64}", can(models.PermProspectingManage), controllers.DeleteProspSegmento)
+
+	auth.Get("/prospeccao/listas", can(models.PermProspectingView), controllers.ListProspListas)
+	auth.Post("/prospeccao/listas", can(models.PermProspectingManage), controllers.CreateProspLista)
+	auth.Get("/prospeccao/listas/{id:int64}", can(models.PermProspectingView), controllers.GetProspLista)
+	auth.Put("/prospeccao/listas/{id:int64}", can(models.PermProspectingManage), controllers.UpdateProspLista)
+	auth.Delete("/prospeccao/listas/{id:int64}", can(models.PermProspectingManage), controllers.DeleteProspLista)
+	auth.Get("/prospeccao/listas/{id:int64}/itens", can(models.PermProspectingView), controllers.ListProspItens)
+	auth.Post("/prospeccao/listas/{id:int64}/itens/descartar", can(models.PermProspectingManage), controllers.DescartarProspItens)
+	auth.Post("/prospeccao/listas/{id:int64}/itens/restaurar", can(models.PermProspectingManage), controllers.RestaurarProspItens)
+	auth.Get("/prospeccao/listas/{id:int64}/exportar", can(models.PermProspectingView), controllers.ExportarProspLista)
+	auth.Get("/prospeccao/itens/{id:int64}", can(models.PermProspectingView), controllers.GetProspItem)
+	auth.Get("/prospeccao/jobs/{id:int64}", can(models.PermProspectingView), controllers.GetProspJob)
+	auth.Post("/prospeccao/jobs/{id:int64}/cancelar", can(models.PermProspectingManage), controllers.CancelarProspJob)
+
+	// Enriquecimento em lote (Who Lead) e envio ao CRM: sempre viram job.
+	auth.Post("/prospeccao/listas/{id:int64}/enriquecer/estimativa", can(models.PermProspectingManage), controllers.EnriquecerProspEstimativa)
+	auth.Post("/prospeccao/listas/{id:int64}/enriquecer", can(models.PermProspectingManage), controllers.EnriquecerProspLista)
+	auth.Post("/prospeccao/listas/{id:int64}/enviar/previa", can(models.PermProspectingManage), controllers.EnviarProspPrevia)
+	auth.Post("/prospeccao/listas/{id:int64}/enviar", can(models.PermProspectingManage), controllers.EnviarProspLista)
+
+	// Leads: leads.view para ler, leads.edit para trabalhar. Quem não tem
+	// leads.assign só alcança os próprios leads e os sem dono (regra aplicada
+	// nos handlers e nos models); excluir e atribuir em massa exigem
+	// leads.assign (a ação "dono" de /leads/bulk é conferida no handler).
+	auth.Get("/leads", can(models.PermLeadsView), controllers.ListLeads)
+	auth.Post("/leads", can(models.PermLeadsEdit), controllers.CreateLead)
+	auth.Get("/leads/listas", can(models.PermLeadsView), controllers.ListLeadListas)
+	auth.Post("/leads/bulk", can(models.PermLeadsEdit), controllers.BulkLeads)
+	auth.Get("/leads/fila/resumo", can(models.PermLeadsEdit), controllers.FilaResumo)
+	auth.Post("/leads/fila/proximo", can(models.PermLeadsEdit), controllers.FilaProximo)
+	auth.Get("/leads/{id:int64}", can(models.PermLeadsView), controllers.GetLead)
+	auth.Put("/leads/{id:int64}", can(models.PermLeadsEdit), controllers.UpdateLead)
+	auth.Delete("/leads/{id:int64}", can(models.PermLeadsAssign), controllers.DeleteLead)
+	auth.Post("/leads/{id:int64}/converter", can(models.PermLeadsEdit), controllers.ConverterLead)
+	auth.Post("/leads/{id:int64}/descartar", can(models.PermLeadsEdit), controllers.DescartarLead)
+	auth.Post("/leads/{id:int64}/reabrir", can(models.PermLeadsEdit), controllers.ReabrirLead)
+	auth.Post("/leads/{id:int64}/resultado", can(models.PermLeadsEdit), controllers.ResultadoLead)
+	auth.Post("/leads/{id:int64}/liberar", can(models.PermLeadsEdit), controllers.LiberarLead)
+	auth.Get("/agenda/disponibilidade", can(models.PermLeadsEdit), controllers.AgendaDisponibilidade)
+
+	// Bloqueios ("não contatar"): quem gera listas ou trabalha leads pode ler.
+	auth.Get("/bloqueios", canAny(models.PermProspectingView, models.PermLeadsView), controllers.ListBloqueios)
+	auth.Post("/bloqueios", can(models.PermProspectingManage), controllers.CreateBloqueio)
+	auth.Post("/bloqueios/importar", can(models.PermProspectingManage), controllers.ImportarBloqueios)
+	auth.Delete("/bloqueios/{id:int64}", can(models.PermProspectingManage), controllers.DeleteBloqueio)
+
+	// Configurações de prospecção e motivos de perda de negócio (o diálogo de
+	// perda é aberto por qualquer vendedor: a leitura só exige sessão).
+	auth.Get("/settings/prospeccao", can(models.PermLeadsView), controllers.GetConfigProspeccao)
+	auth.Put("/settings/prospeccao", can(models.PermProspectingManage), controllers.UpdateConfigProspeccao)
+	auth.Get("/settings/motivos-perda", controllers.GetMotivosPerda)
+	auth.Put("/settings/motivos-perda", can(models.PermSettingsPipelines), controllers.UpdateMotivosPerda)
+
 	// Rotas internas da plataforma (TOKEN_INTERNO; sem rota pública no Traefik).
 	interno := app.Party("/api/interno", controllers.RequireInternalToken)
 	interno.Get("/uso", controllers.InternoUso)
@@ -327,4 +391,22 @@ func Register(app *iris.Application) {
 	})
 
 	registerSPA(app)
+}
+
+// canAny libera a rota para quem tem ao menos uma das permissões.
+func canAny(permissions ...string) iris.Handler {
+	return func(ctx iris.Context) {
+		claims := middleware.CurrentClaims(ctx)
+		if claims == nil {
+			ctx.StopWithJSON(iris.StatusUnauthorized, iris.Map{"error": "não autenticado"})
+			return
+		}
+		for _, p := range permissions {
+			if models.RoleCan(claims.Role, p) {
+				ctx.Next()
+				return
+			}
+		}
+		ctx.StopWithJSON(iris.StatusForbidden, iris.Map{"error": "seu perfil não tem permissão para esta ação"})
+	}
 }

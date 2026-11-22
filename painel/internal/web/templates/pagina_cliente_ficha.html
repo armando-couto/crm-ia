@@ -31,6 +31,9 @@
     {{ else }}
     <p class="aviso aviso--atencao" style="margin-top:6px">Sem licença cobrindo este CNPJ. <a href="{{ url (printf "/licencas/nova?grupo=%d&cliente=%d" $c.GrupoID $c.ID) }}">Criar licença</a>.</p>
     {{ end }}
+    {{ with .V.Prospeccao }}
+    <p style="margin-top:6px"><strong>Prospecção no mês:</strong> {{ milhar .Usado }} de {{ milhar .Limite }} leads{{ if eq .Limite 0 }} <small>(o plano não inclui prospecção)</small>{{ else }} <small>(restam {{ milhar .Restante }} em {{ .Mes }})</small>{{ end }}</p>
+    {{ end }}
     {{ with .V.Solicitacao }}{{ if eq .Status "pendente" }}
     <div class="aviso aviso--atencao" style="margin-top:8px">O administrador solicitou <strong>{{ if eq .Tipo "upgrade" }}upgrade para o plano {{ .PlanoNome }}{{ else }}o cancelamento do plano{{ end }}</strong> em {{ data .CriadoEm }}. <a href="{{ url "/solicitacoes" }}">Decidir</a>.</div>
     {{ end }}{{ end }}

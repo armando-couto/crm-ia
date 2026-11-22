@@ -1,0 +1,61 @@
+{{ define "acoes-topo" }}{{ if and .Sessao.PodeProvisionar .V.Configurada }}
+<form method="post" action="{{ url "/base-de-dados/carregar" }}" onsubmit="return confirm('Verificar as fontes agora? Se houver referência nova, a carga começa em seguida e pode levar horas.')">
+  <input type="hidden" name="_csrf" value="{{ .CSRF }}"><input type="hidden" name="fonte" value="tudo">
+  <button class="btn">Verificar e carregar agora</button></form>
+{{ end }}{{ end }}
+{{ define "conteudo" }}
+{{ if not .V.Configurada }}
+<div class="aviso aviso--atencao">O serviço de dados não está configurado nesta instalação (<code>DADOS_URL</code> e <code>DADOS_TOKEN</code>). A prospecção aparece desabilitada para os clientes; o resto do painel funciona normalmente.</div>
+{{ else if .V.SituacaoErro }}
+<div class="aviso aviso--atencao">Não consegui consultar o serviço de dados: {{ .V.SituacaoErro }}. Enquanto ele não responder, a prospecção fica indisponível para os clientes.</div>
+{{ end }}
+{{ with .V.Situacao }}
+{{ if .Amostra }}<div class="aviso aviso--atencao">Base de <strong>demonstração</strong>: empresas fictícias, sem download das fontes públicas.</div>{{ end }}
+{{ if not .Pronta }}<div class="aviso aviso--atencao">A base ainda não foi carregada: a prospecção só responde depois que a primeira carga terminar.</div>{{ end }}
+<div class="grade grade--4">
+  <div class="cartao indicador"><span class="indicador__valor">{{ milhar .Empresas }}</span><span class="indicador__rotulo">empresas ativas · CNPJ {{ ou .ReferenciaCNPJ "sem referência" }}</span></div>
+  <div class="cartao indicador"><span class="indicador__valor">{{ milhar .Devedores }}</span><span class="indicador__rotulo">CNPJs com dívida ativa · PGFN {{ ou .ReferenciaPGFN "sem referência" }}</span></div>
+  <div class="cartao indicador"><span class="indicador__valor">{{ bytes .EspacoBytes }}</span><span class="indicador__rotulo">espaço no banco · {{ milhar .Socios }} sócios</span></div>
+  <div class="cartao indicador {{ if eq .Carga.Estado "erro" }}indicador--alerta{{ else if .Carga.EmCurso }}indicador--atencao{{ end }}"><span class="indicador__valor">{{ ou .Carga.Estado "ociosa" }}</span><span class="indicador__rotulo">carga · atualizada em {{ dataPtr .AtualizadaEm }}</span></div>
+</div>
+<section class="cartao">
+  <div class="cartao__cabecalho"><h2>Carga</h2><small>versão <code>{{ ou .Versao "—" }}</code> · {{ if .UFs }}UFs: {{ juntar .UFs ", " }}{{ else }}Brasil inteiro{{ end }}</small></div>
+  {{ if eq .Carga.Estado "erro" }}<div class="aviso aviso--erro">A última carga falhou: {{ ou .Carga.Erro "sem detalhe" }}. A base anterior continua respondendo.</div>{{ end }}
+  {{ if .Carga.EmCurso }}
+  <p><strong>{{ .Carga.Estado }}</strong>{{ if .Carga.Fonte }} · {{ .Carga.Fonte }}{{ end }}{{ if .Carga.Referencia }} {{ .Carga.Referencia }}{{ end }}{{ if .Carga.Etapa }} · {{ .Carga.Etapa }}{{ end }} · iniciada em {{ dataPtr .Carga.IniciadaEm }}</p>
+  <div class="barra" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ .Carga.PercentualInteiro }}"><span style="width: {{ .Carga.PercentualInteiro }}%"></span></div>
+  <p class="suave">{{ .Carga.PercentualInteiro }}% · esta página se atualiza sozinha a cada 15 segundos.{{ if .Pronta }} A base anterior segue respondendo durante a carga.{{ end }}</p>
+  <script>setTimeout(function () { location.reload(); }, 15000);</script>
+  {{ else if ne .Carga.Estado "erro" }}
+  <p class="suave">Nenhuma carga em andamento.{{ if .Carga.Etapa }} {{ .Carga.Etapa }}.{{ end }}</p>
+  {{ end }}
+  {{ if .Carga.Arquivos }}
+  <div class="tabela-wrap" style="margin-top:12px"><table><thead><tr><th>Arquivo</th><th>Estado</th><th>Download</th><th class="num">Tamanho</th><th class="num">Linhas</th></tr></thead><tbody>
+    {{ range .Carga.Arquivos }}<tr>
+      <td><code>{{ .Nome }}</code></td>
+      <td><span class="etiqueta {{ if eq .Estado "carregado" }}etiqueta--ok{{ else if eq .Estado "erro" }}etiqueta--erro{{ else if eq .Estado "pendente" }}etiqueta--neutro{{ else }}etiqueta--info{{ end }}">{{ .Estado }}</span></td>
+      <td style="min-width:140px"><div class="barra barra--fina"><span style="width: {{ .Percentual }}%"></span></div></td>
+      <td class="num">{{ bytes .Bytes }}{{ if .TotalBytes }} de {{ bytes .TotalBytes }}{{ end }}</td>
+      <td class="num">{{ if .Linhas }}{{ milhar .Linhas }}{{ else }}—{{ end }}</td>
+    </tr>{{ end }}
+  </tbody></table></div>
+  {{ end }}
+</section>
+{{ end }}
+<section class="cartao">
+  <div class="cartao__cabecalho"><h2>Uso da prospecção em {{ .V.Mes }}</h2><small>a cota desconta por empresa entregue em lista; contar e pré-visualizar é grátis</small></div>
+  {{ if .V.Uso }}
+  <div class="tabela-wrap"><table><thead><tr><th>Cliente</th><th>Plano</th><th class="num">Cota</th><th class="num">Usado</th><th>%</th><th class="num">Fichas avulsas</th><th>Última extração</th></tr></thead><tbody>
+    {{ range .V.Uso }}<tr>
+      <td><a href="{{ url (printf "/clientes/%d" .ClienteID) }}">{{ .ClienteNome }}</a><br><small><code>{{ .ClienteSlug }}</code></small></td>
+      <td>{{ ou .Plano "sem licença" }}</td>
+      <td class="num">{{ milhar .Limite }}</td>
+      <td class="num">{{ milhar .Leads }}</td>
+      <td style="min-width:140px"><div class="barra barra--fina {{ if ge .Percentual 100 }}barra--cheia{{ end }}"><span style="width: {{ .Percentual }}%"></span></div><small>{{ .Percentual }}%</small></td>
+      <td class="num">{{ milhar .Consultas }}</td>
+      <td>{{ dataPtr .UltimaExtracao }}</td>
+    </tr>{{ end }}
+  </tbody></table></div>
+  {{ else }}{{ template "vazio" "Nenhum cliente usou a prospecção neste mês." }}{{ end }}
+</section>
+{{ end }}

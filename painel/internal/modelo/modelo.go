@@ -61,6 +61,9 @@ type Plano struct {
 	Recursos            []string
 	Ordem               int
 	Ativo               bool
+	// ProspeccaoLeadsMes: empresas que o cliente pode extrair da base pública
+	// por mês-calendário (0 = o plano não inclui prospecção).
+	ProspeccaoLeadsMes int
 }
 
 // SobConsulta é o plano sem preço: a landing mostra "fale conosco".
@@ -364,4 +367,32 @@ func FormatarBRL(centavos int64) string {
 		return "-" + r
 	}
 	return r
+}
+
+// UsoProspeccao é o consumo de um cliente na base pública num mês.
+type UsoProspeccao struct {
+	ClienteID      int64
+	ClienteNome    string
+	ClienteSlug    string
+	Leads          int
+	Consultas      int
+	UltimaExtracao *time.Time
+	// Preenchidos por quem monta a página (dependem da licença do cliente).
+	Limite int
+	Plano  string
+}
+
+// Percentual da cota já usado (0 a 100; 100 quando não há cota).
+func (u UsoProspeccao) Percentual() int {
+	if u.Limite <= 0 {
+		if u.Leads > 0 {
+			return 100
+		}
+		return 0
+	}
+	p := u.Leads * 100 / u.Limite
+	if p > 100 {
+		p = 100
+	}
+	return p
 }

@@ -212,7 +212,7 @@ func (r *companyRequest) applyCadastro(c *models.Company) string {
 		}
 		c.RegistrationStatusAt = d
 	}
-	if c.CNPJ != "" && !enriquecimento.ValidarCNPJ(c.CNPJ) && len(enriquecimento.SomenteDigitos(c.CNPJ)) == 14 {
+	if c.CNPJ != "" && !enriquecimento.ValidarCNPJ(c.CNPJ) && len(enriquecimento.NormalizarCNPJ(c.CNPJ)) == 14 {
 		return "CNPJ inválido (dígitos verificadores não conferem)"
 	}
 	return ""

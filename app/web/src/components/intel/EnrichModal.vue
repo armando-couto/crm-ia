@@ -29,7 +29,7 @@ const emit = defineEmits<{ close: []; applied: [company: Company, aplicados: str
 const auth = useAuthStore()
 
 const passo = ref<1 | 2 | 3>(1)
-const selecionados = ref<Record<Provedor, boolean>>({ receita: true, bigdatacorp: false, serasa: false })
+const selecionados = ref<Record<Provedor, boolean>>({ receita: true, bigdatacorp: false, serasa: false, wholead: false })
 const datasets = ref<string[]>([...datasetsSugeridos])
 const ajustarDatasets = ref(false)
 const forcar = ref(false)
@@ -48,7 +48,8 @@ const resultado = ref<EnrichApply | null>(null)
 const descricoes: Record<Provedor, string> = {
   receita: 'Razão social, situação cadastral, CNAE, natureza, porte, endereço, telefones e sócios (QSA).',
   bigdatacorp: 'Indicadores de atividade, contatos validados, sócios com nível, presença digital, processos, KYC e mídia.',
-  serasa: 'Score positivo, pendências, protestos, cheques, consultas recentes e limite de crédito sugerido.'
+  serasa: 'Score positivo, pendências, protestos, cheques, consultas recentes e limite de crédito sugerido.',
+  wholead: 'Telefones e e-mails da empresa, sócios e responsável legal com contato, WhatsApp e marca de "não perturbe".'
 }
 
 function catalogoDe(codigo: Provedor): FonteCatalogo | undefined {
@@ -74,7 +75,7 @@ async function carregarConfig() {
 
 function reiniciar() {
   passo.value = 1
-  selecionados.value = { receita: true, bigdatacorp: false, serasa: false }
+  selecionados.value = { receita: true, bigdatacorp: false, serasa: false, wholead: false }
   datasets.value = [...datasetsSugeridos]
   ajustarDatasets.value = false
   forcar.value = false
@@ -121,11 +122,16 @@ const custoBdc = computed(() => {
   return datasets.value.reduce((s, d) => s + (precos.value[d] ?? 0), 0)
 })
 const custoSerasa = computed(() => settings.value?.serasa.preco_centavos ?? null)
+// Who Lead: a chave não existe em ambientes anteriores à prospecção.
+const wholeadHabilitado = computed(() => (settings.value ? !!settings.value.wholead?.habilitado : true))
+const wholeadDemo = computed(() => !!settings.value?.wholead?.demo)
+const custoWholead = computed(() => settings.value?.wholead?.preco_centavos ?? null)
 
 const custoEstimado = computed(() => {
   let total = 0
   if (selecionados.value.bigdatacorp && !bdcDemo.value) total += custoBdc.value ?? 0
   if (selecionados.value.serasa && !serasaDemo.value) total += custoSerasa.value ?? 0
+  if (selecionados.value.wholead && !wholeadDemo.value) total += custoWholead.value ?? 0
   return total
 })
 
@@ -136,6 +142,11 @@ function rotuloCusto(codigo: Provedor): string {
     if (bdcDemo.value) return 'demonstração'
     const n = `${datasets.value.length} ${datasets.value.length === 1 ? 'conjunto' : 'conjuntos'}`
     return custoBdc.value !== null ? `≈ ${centavos(custoBdc.value)} · ${n}` : n
+  }
+  if (codigo === 'wholead') {
+    if (!wholeadHabilitado.value) return 'não configurado'
+    if (wholeadDemo.value) return 'demonstração'
+    return custoWholead.value !== null ? `≈ ${centavos(custoWholead.value)} · por CNPJ` : 'por CNPJ'
   }
   if (!serasaHabilitado.value) return 'não configurado'
   if (serasaDemo.value) return 'demonstração'
@@ -154,7 +165,7 @@ const uso = computed(() => props.usoMes ?? usoConfig.value)
 
 const algumSelecionado = computed(() => Object.values(selecionados.value).some(Boolean))
 
-const demoNoPasso1 = computed(() => (selecionados.value.bigdatacorp && bdcDemo.value) || (selecionados.value.serasa && serasaDemo.value))
+const demoNoPasso1 = computed(() => (selecionados.value.bigdatacorp && bdcDemo.value) || (selecionados.value.serasa && serasaDemo.value) || (selecionados.value.wholead && wholeadDemo.value))
 
 function alternarDataset(codigo: string) {
   datasets.value = datasets.value.includes(codigo) ? datasets.value.filter((d) => d !== codigo) : [...datasets.value, codigo]
@@ -287,6 +298,15 @@ function fechar() {
             <span class="cost" :class="classeCusto('serasa')">{{ rotuloCusto('serasa') }}</span>
           </span>
           <small>{{ descricao('serasa') }}</small>
+        </label>
+
+        <label class="source" data-fonte="wholead" :class="{ selected: selecionados.wholead, disabled: !wholeadHabilitado }">
+          <input v-model="selecionados.wholead" type="checkbox" :disabled="!wholeadHabilitado" />
+          <span class="src-head">
+            <strong>Who Lead</strong>
+            <span class="cost" :class="classeCusto('wholead')">{{ rotuloCusto('wholead') }}</span>
+          </span>
+          <small>{{ descricao('wholead') }}</small>
         </label>
       </div>
 

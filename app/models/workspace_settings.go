@@ -282,6 +282,10 @@ const (
 	ProvedorReceita     = "receita"
 	ProvedorBigDataCorp = "bigdatacorp"
 	ProvedorSerasa      = "serasa"
+	// ProvedorWhoLead é o Who Lead (Plus Soluções): contatos da empresa e dos
+	// sócios, por CNPJ (docs/PROSPECCAO.md, seção 7). Cabe em
+	// company_enrichments.provedor VARCHAR(20).
+	ProvedorWhoLead = "wholead"
 )
 
 // BigDataCorpDatasets são os conjuntos de dados vendidos por consulta, com o
@@ -363,6 +367,34 @@ type SerasaSettings struct {
 // SerasaReportPathPadrao é o template padrão do relatório.
 const SerasaReportPathPadrao = "/credit-services/business-information-report/v1/reports?reportName={report}&optionalFeatures={features}&documento={cnpj}"
 
+// WhoLeadBaseURLPadrao é o endereço da API do Who Lead.
+const WhoLeadBaseURLPadrao = "https://api.wholead.com.br/api/v1"
+
+// Limites do tamanho do lote do Who Lead.
+const (
+	WhoLeadLotePadrao = 500
+	WhoLeadLoteMaximo = 1000
+)
+
+// WhoLeadSettings é a configuração do provedor Who Lead (Plus Soluções).
+type WhoLeadSettings struct {
+	Habilitado bool   `json:"habilitado"`
+	Demo       bool   `json:"demo"`
+	ClientID   string `json:"client_id"`
+	// ClientSecret é só de entrada (PUT): vazio mantém o já gravado.
+	ClientSecret        string `json:"client_secret,omitempty"`
+	ClientSecretCifrado string `json:"client_secret_cifrado,omitempty"`
+	HasSecret           bool   `json:"has_secret"`
+	// BaseURL permite apontar para outro endereço (homologação, testes).
+	BaseURL                 string `json:"base_url,omitempty"`
+	IncluirSocios           bool   `json:"incluir_socios"`
+	IncluirResponsavelLegal bool   `json:"incluir_responsavel_legal"`
+	IncluirPortabilidade    bool   `json:"incluir_portabilidade"`
+	// PrecoCentavos é a estimativa por CNPJ (o custo real vem do provedor).
+	PrecoCentavos int `json:"preco_centavos"`
+	LoteTamanho   int `json:"lote_tamanho"`
+}
+
 // EnrichmentSettings é a configuração de enriquecimento (chave "enrichment").
 type EnrichmentSettings struct {
 	AutoReceita          bool                `json:"auto_receita"`
@@ -371,6 +403,18 @@ type EnrichmentSettings struct {
 	PrazoCacheDias       int                 `json:"prazo_cache_dias"`
 	BigDataCorp          BigDataCorpSettings `json:"bigdatacorp"`
 	Serasa               SerasaSettings      `json:"serasa"`
+	WhoLead              WhoLeadSettings     `json:"wholead"`
+}
+
+// DefaultWhoLeadSettings é o padrão do Who Lead: desligado, sócios e
+// responsável legal incluídos, R$ 0,80 por CNPJ e lotes de 500.
+func DefaultWhoLeadSettings() WhoLeadSettings {
+	return WhoLeadSettings{
+		IncluirSocios:           true,
+		IncluirResponsavelLegal: true,
+		PrecoCentavos:           80,
+		LoteTamanho:             WhoLeadLotePadrao,
+	}
 }
 
 func DefaultEnrichmentSettings() EnrichmentSettings {
@@ -388,6 +432,7 @@ func DefaultEnrichmentSettings() EnrichmentSettings {
 			ReportName:    "RELATORIO_AVANCADO_PJ_PME",
 			PrecoCentavos: 1500,
 		},
+		WhoLead: DefaultWhoLeadSettings(),
 	}
 }
 
@@ -432,6 +477,16 @@ func (s *EnrichmentSettings) completar() {
 		s.Serasa.PrecoCentavos = 0
 	}
 	s.Serasa.HasSecret = s.Serasa.ClientSecretCifrado != ""
+	if s.WhoLead.PrecoCentavos < 0 {
+		s.WhoLead.PrecoCentavos = 0
+	}
+	if s.WhoLead.LoteTamanho <= 0 {
+		s.WhoLead.LoteTamanho = WhoLeadLotePadrao
+	}
+	if s.WhoLead.LoteTamanho > WhoLeadLoteMaximo {
+		s.WhoLead.LoteTamanho = WhoLeadLoteMaximo
+	}
+	s.WhoLead.HasSecret = s.WhoLead.ClientSecretCifrado != ""
 }
 
 // Validate normaliza e confere a configuração recebida da tela.
@@ -486,7 +541,15 @@ func (s *EnrichmentSettings) Validate() error {
 	if s.Serasa.PrecoCentavos < 0 {
 		return fmt.Errorf("o preço da consulta Serasa não pode ser negativo")
 	}
-	for _, u := range []string{s.BigDataCorp.BaseURL, s.Serasa.BaseURL} {
+	s.WhoLead.ClientID = strings.TrimSpace(s.WhoLead.ClientID)
+	s.WhoLead.BaseURL = strings.TrimRight(strings.TrimSpace(s.WhoLead.BaseURL), "/")
+	if s.WhoLead.PrecoCentavos < 0 {
+		return fmt.Errorf("o preço por CNPJ do Who Lead não pode ser negativo")
+	}
+	if s.WhoLead.LoteTamanho < 0 || s.WhoLead.LoteTamanho > WhoLeadLoteMaximo {
+		return fmt.Errorf("o tamanho do lote do Who Lead deve ficar entre 1 e %d", WhoLeadLoteMaximo)
+	}
+	for _, u := range []string{s.BigDataCorp.BaseURL, s.Serasa.BaseURL, s.WhoLead.BaseURL} {
 		if u != "" && !strings.HasPrefix(u, "https://") && !strings.HasPrefix(u, "http://") {
 			return fmt.Errorf("endereço base inválido: %s", u)
 		}
@@ -502,6 +565,8 @@ func (s EnrichmentSettings) Publica() EnrichmentSettings {
 	s.BigDataCorp.AccessTokenCifrado = ""
 	s.Serasa.ClientSecret = ""
 	s.Serasa.ClientSecretCifrado = ""
+	s.WhoLead.ClientSecret = ""
+	s.WhoLead.ClientSecretCifrado = ""
 	return s
 }
 
@@ -509,6 +574,7 @@ func (s EnrichmentSettings) Publica() EnrichmentSettings {
 func (s EnrichmentSettings) ParaGravar() EnrichmentSettings {
 	s.BigDataCorp.AccessToken = ""
 	s.Serasa.ClientSecret = ""
+	s.WhoLead.ClientSecret = ""
 	s.completar()
 	return s
 }
@@ -534,6 +600,27 @@ func (s EnrichmentSettings) SerasaPronto() bool {
 	return r.Habilitado && (r.Demo || (r.ClientID != "" && r.ClientSecretCifrado != ""))
 }
 
+// WhoLeadPronto diz se o provedor pode ser usado (credenciais ou demo).
+func (s EnrichmentSettings) WhoLeadPronto() bool {
+	w := s.WhoLead
+	return w.Habilitado && (w.Demo || (w.ClientID != "" && w.ClientSecretCifrado != ""))
+}
+
+// WhoLeadMotivo explica, em uma frase, por que o Who Lead não está pronto
+// (vazio quando está).
+func (s EnrichmentSettings) WhoLeadMotivo() string {
+	w := s.WhoLead
+	switch {
+	case !w.Habilitado:
+		return "O Who Lead está desativado. Ative em Configurações → Integrações."
+	case w.Demo:
+		return ""
+	case w.ClientID == "" || w.ClientSecretCifrado == "":
+		return "Informe o Client ID e o Client Secret do Who Lead em Configurações → Integrações (ou ative o modo demonstração)."
+	}
+	return ""
+}
+
 // NomeProvedor devolve o nome amigável da fonte.
 func NomeProvedor(codigo string) string {
 	switch codigo {
@@ -543,6 +630,8 @@ func NomeProvedor(codigo string) string {
 		return "BigDataCorp"
 	case ProvedorSerasa:
 		return "Serasa Experian"
+	case ProvedorWhoLead:
+		return "Who Lead (Plus Soluções)"
 	}
 	return codigo
 }

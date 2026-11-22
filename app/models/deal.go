@@ -45,6 +45,24 @@ type Deal struct {
 	DiasNaEtapa      int        `json:"dias_na_etapa"`
 	PrazoDias        *int       `json:"prazo_dias"`
 	DiasSemAtividade int        `json:"dias_sem_atividade"`
+	// Motivo e observação da perda (vazios fora de "perdido"), o lead que deu
+	// origem ao negócio e a origem dele (prospeccao | manual | formulario |
+	// importacao; vazia em negócio criado fora de lead).
+	LostReason string `json:"lost_reason"`
+	LostNote   string `json:"lost_note"`
+	LeadID     *int64 `json:"lead_id"`
+	Origem     string `json:"origem"`
+	// Semáforo do quadro (preenchidos por BoardDeals): a tarefa pendente com
+	// prazo mais próxima do negócio. Sem tarefa agendada, nulo e "".
+	ProximaAtividadeEm   *time.Time `json:"proxima_atividade_em"`
+	ProximaAtividadeTipo string     `json:"proxima_atividade_tipo"`
+}
+
+// PerdaDeal é o motivo (já validado contra MotivosPerda) e a observação de um
+// negócio perdido.
+type PerdaDeal struct {
+	Motivo     string
+	Observacao string
 }
 
 func ValidDealTemperature(t string) bool {
@@ -96,7 +114,8 @@ const dealColumns = `d.id, d.name, d.amount, d.currency, d.pipeline_id, d.stage_
 	       d.status, COALESCE(d.temperature,''), COALESCE(d.forecast_category,'pipeline'),
 	       d.close_date, d.position, d.closed_at,
 	       (SELECT MAX(a.created_at) FROM activities a WHERE a.deal_id = d.id) AS last_activity_at,
-	       d.created_at, d.updated_at`
+	       d.created_at, d.updated_at,
+	       d.lost_reason, COALESCE(d.lost_note,''), d.lead_id, d.origem`
 
 const dealFrom = `
 	FROM deals d
@@ -109,19 +128,27 @@ const dealSelect = `
 	SELECT ` + dealColumns + dealFrom
 
 // boardSelect acrescenta ao dealSelect o que o kanban precisa para o selo de
-// tempo na etapa: a última entrada na etapa atual e o prazo da etapa.
+// tempo na etapa (a última entrada na etapa atual e o prazo da etapa) e para o
+// semáforo da próxima atividade (a tarefa pendente com prazo mais próxima, em
+// subconsulta: nenhuma ida extra ao banco).
 const boardSelect = `
 	SELECT ` + dealColumns + `,
 	       (SELECT MAX(h.entered_at) FROM deal_stage_history h
 	         WHERE h.deal_id = d.id AND h.stage_id = d.stage_id) AS stage_entered_at,
-	       s.prazo_dias` + dealFrom
+	       s.prazo_dias,
+	       (SELECT t.due_date FROM tasks t
+	         WHERE t.deal_id = d.id AND t.completed_at IS NULL AND t.due_date IS NOT NULL
+	         ORDER BY t.due_date, t.id LIMIT 1) AS proxima_atividade_em,
+	       COALESCE((SELECT t.type FROM tasks t
+	         WHERE t.deal_id = d.id AND t.completed_at IS NULL AND t.due_date IS NOT NULL
+	         ORDER BY t.due_date, t.id LIMIT 1), '') AS proxima_atividade_tipo` + dealFrom
 
 func scanDeal(row interface{ Scan(...any) error }) (*Deal, error) {
 	var d Deal
 	err := row.Scan(&d.ID, &d.Name, &d.Amount, &d.Currency, &d.PipelineID, &d.StageID, &d.StageName,
 		&d.ContactID, &d.ContactName, &d.CompanyID, &d.CompanyName, &d.OwnerID, &d.OwnerName,
 		&d.Status, &d.Temperature, &d.ForecastCategory, &d.CloseDate, &d.Position, &d.ClosedAt, &d.LastActivityAt,
-		&d.CreatedAt, &d.UpdatedAt)
+		&d.CreatedAt, &d.UpdatedAt, &d.LostReason, &d.LostNote, &d.LeadID, &d.Origem)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +315,8 @@ func scanBoardDeal(row interface{ Scan(...any) error }, now time.Time) (*Deal, e
 	err := row.Scan(&d.ID, &d.Name, &d.Amount, &d.Currency, &d.PipelineID, &d.StageID, &d.StageName,
 		&d.ContactID, &d.ContactName, &d.CompanyID, &d.CompanyName, &d.OwnerID, &d.OwnerName,
 		&d.Status, &d.Temperature, &d.ForecastCategory, &d.CloseDate, &d.Position, &d.ClosedAt, &d.LastActivityAt,
-		&d.CreatedAt, &d.UpdatedAt, &d.StageEnteredAt, &d.PrazoDias)
+		&d.CreatedAt, &d.UpdatedAt, &d.LostReason, &d.LostNote, &d.LeadID, &d.Origem,
+		&d.StageEnteredAt, &d.PrazoDias, &d.ProximaAtividadeEm, &d.ProximaAtividadeTipo)
 	if err != nil {
 		return nil, err
 	}
@@ -315,12 +343,15 @@ func diasDesde(desde, ate time.Time) int {
 	return int(ate.Sub(desde).Hours() / 24)
 }
 
-func DealByID(db *sql.DB, id int64) (*Deal, error) {
+func DealByID(db Executor, id int64) (*Deal, error) {
 	row := db.QueryRow(dealSelect+` WHERE d.id = $1`, id)
 	return scanDeal(row)
 }
 
-func CreateDeal(db *sql.DB, d *Deal) error {
+// CreateDeal grava o negócio e a entrada no histórico de etapas. Aceita a
+// transação de quem chama (a conversão de lead cria negócio, reunião e muda o
+// lead de uma vez). lead_id e origem só vêm preenchidos na conversão.
+func CreateDeal(db Executor, d *Deal) error {
 	if d.Currency == "" {
 		d.Currency = "BRL"
 	}
@@ -328,12 +359,13 @@ func CreateDeal(db *sql.DB, d *Deal) error {
 		d.Status = DealAberto
 	}
 	err := db.QueryRow(`
-		INSERT INTO deals (name, amount, currency, pipeline_id, stage_id, contact_id, company_id, owner_id, status, temperature, close_date, position)
+		INSERT INTO deals (name, amount, currency, pipeline_id, stage_id, contact_id, company_id, owner_id, status, temperature, close_date, position,
+		                   lead_id, origem)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11,
-		        COALESCE((SELECT MAX(position) + 1 FROM deals WHERE stage_id = $5), 0))
+		        COALESCE((SELECT MAX(position) + 1 FROM deals WHERE stage_id = $5), 0), $12, $13)
 		RETURNING id, position, created_at, updated_at`,
 		d.Name, d.Amount, d.Currency, d.PipelineID, d.StageID, d.ContactID, d.CompanyID,
-		d.OwnerID, d.Status, d.Temperature, d.CloseDate,
+		d.OwnerID, d.Status, d.Temperature, d.CloseDate, d.LeadID, d.Origem,
 	).Scan(&d.ID, &d.Position, &d.CreatedAt, &d.UpdatedAt)
 	if err != nil {
 		return err
@@ -447,6 +479,14 @@ func MoveDealStage(db *sql.DB, dealID, stageID int64, position int) error {
 
 // MoveDealStageBy é MoveDealStage atribuindo a mudança a userID em deal_changes.
 func MoveDealStageBy(db *sql.DB, dealID, stageID int64, position int, userID *int64) error {
+	return MoveDealStagePerda(db, dealID, stageID, position, nil, userID)
+}
+
+// MoveDealStagePerda é MoveDealStageBy com o motivo da perda. Etapa de perda:
+// com perda informada grava lost_reason e lost_note; com nil mantém o que já
+// estava gravado (reordenar um cartão já perdido não apaga o motivo). Qualquer
+// outra etapa (aberta ou de ganho) limpa os dois: sair de "perdido" apaga o motivo.
+func MoveDealStagePerda(db *sql.DB, dealID, stageID int64, position int, perda *PerdaDeal, userID *int64) error {
 	stage, err := StageByID(db, stageID)
 	if err != nil {
 		return err
@@ -471,10 +511,21 @@ func MoveDealStageBy(db *sql.DB, dealID, stageID int64, position int, userID *in
 		return err
 	}
 
+	gravarMotivo, motivo, observacao := true, "", ""
+	if stage.IsLost {
+		if perda != nil {
+			motivo, observacao = perda.Motivo, strings.TrimSpace(perda.Observacao)
+		} else {
+			gravarMotivo = false
+		}
+	}
 	_, err = db.Exec(`
-		UPDATE deals SET stage_id = $1, position = $2, status = $3, closed_at = $4, updated_at = NOW()
+		UPDATE deals SET stage_id = $1, position = $2, status = $3, closed_at = $4,
+		       lost_reason = CASE WHEN $6 THEN $7 ELSE lost_reason END,
+		       lost_note = CASE WHEN $6 THEN NULLIF($8, '') ELSE lost_note END,
+		       updated_at = NOW()
 		WHERE id = $5`,
-		stageID, position, status, closedAt, dealID)
+		stageID, position, status, closedAt, dealID, gravarMotivo, motivo, observacao)
 	if err != nil {
 		return err
 	}
@@ -499,6 +550,12 @@ func CloseDeal(db *sql.DB, dealID int64, won bool) error {
 
 // CloseDealBy é CloseDeal atribuindo a mudança a userID em deal_changes.
 func CloseDealBy(db *sql.DB, dealID int64, won bool, userID *int64) error {
+	return CloseDealPerda(db, dealID, won, PerdaDeal{}, userID)
+}
+
+// CloseDealPerda é CloseDealBy gravando o motivo e a observação da perda
+// (lost_reason, lost_note). Fechar como ganho limpa os dois.
+func CloseDealPerda(db *sql.DB, dealID int64, won bool, perda PerdaDeal, userID *int64) error {
 	deal, err := DealByID(db, dealID)
 	if err != nil {
 		return err
@@ -520,9 +577,14 @@ func CloseDealBy(db *sql.DB, dealID int64, won bool, userID *int64) error {
 	if err != nil {
 		return err
 	}
+	if won {
+		perda = PerdaDeal{}
+	}
 	_, err = db.Exec(`
-		UPDATE deals SET status = $1, stage_id = $2, closed_at = NOW(), updated_at = NOW() WHERE id = $3`,
-		status, stageID, dealID)
+		UPDATE deals SET status = $1, stage_id = $2, closed_at = NOW(), updated_at = NOW(),
+		       lost_reason = $4, lost_note = NULLIF($5, '')
+		WHERE id = $3`,
+		status, stageID, dealID, perda.Motivo, strings.TrimSpace(perda.Observacao))
 	if err != nil {
 		return err
 	}

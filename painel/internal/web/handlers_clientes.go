@@ -213,6 +213,9 @@ func (s *Servidor) verCliente(w http.ResponseWriter, r *http.Request) {
 	if sol, err := s.repo.UltimaSolicitacaoDoCliente(ctx, c.ID); err == nil {
 		d.V["Solicitacao"] = sol
 	}
+	if cota, err := s.ops.CotaProspeccao(ctx, c); err == nil {
+		d.V["Prospeccao"] = cota
+	}
 	eventos, _ := s.repo.EventosDoCliente(ctx, c.ID, 20)
 	d.V["Eventos"] = eventos
 	versoes, _ := s.repo.ListarVersoes(ctx)

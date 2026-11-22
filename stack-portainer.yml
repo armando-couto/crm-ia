@@ -84,6 +84,11 @@ services:
       PAINEL_DB_NAME: ${PAINEL_DB_NAME:-crmia_painel}
       PAINEL_DB_USER: ${PAINEL_DB_USER:-crmia_painel}
       PAINEL_DB_PASSWORD: ${PAINEL_DB_PASSWORD}
+      # Banco da base pública da prospecção (serviço `dados`); sem a senha o
+      # banco não é criado e a prospecção fica desabilitada.
+      DADOS_DB_NAME: ${DADOS_DB_NAME:-crmia_dados}
+      DADOS_DB_USER: ${DADOS_DB_USER:-crmia_dados}
+      DADOS_DB_PASSWORD: ${DADOS_DB_PASSWORD}
       TZ: America/Sao_Paulo
     volumes:
       - postgres-dados:/var/lib/postgresql/data
@@ -130,6 +135,8 @@ services:
       DIAS_ATRASO_SUSPENSAO: ${DIAS_ATRASO_SUSPENSAO:-10}
       PROVISIONER_URL: http://provisioner:7898
       PROVISIONER_TOKEN: ${PROVISIONER_TOKEN}
+      DADOS_URL: ${DADOS_URL:-http://dados:7896}
+      DADOS_TOKEN: ${DADOS_TOKEN}
       FIXPAY_TOKEN_API: ${FIXPAY_TOKEN_API}
       FIXPAY_APIS_URL: ${FIXPAY_APIS_URL:-https://apis.fixpay.com.br}
       FIXPAY_SIGN_URL: ${FIXPAY_SIGN_URL:-https://signpayments.fixpay.com.br}
@@ -146,7 +153,8 @@ services:
         - traefik.enable=true
         - crmia.roteado=sim
         - traefik.docker.network=crmia_public
-        - traefik.http.routers.ci-painel.rule=Host(`${DOMAIN}`) && PathPrefix(`/painel`)
+        # /painel/api/empresas (API dos ambientes) só existe na rede interna.
+        - traefik.http.routers.ci-painel.rule=Host(`${DOMAIN}`) && PathPrefix(`/painel`) && !PathPrefix(`/painel/api/empresas`)
         - traefik.http.routers.ci-painel.entrypoints=websecure
         - traefik.http.routers.ci-painel.priority=40
         - traefik.http.routers.ci-painel.middlewares=chain-painel@file
@@ -191,6 +199,38 @@ services:
         constraints: [node.role == manager]
       restart_policy: { condition: any, delay: 5s }
 
+  # Base pública de empresas da prospecção. Só o painel fala com ele, pela
+  # rede interna; a rede `saida` dá o caminho para a internet (download das
+  # fontes). Nunca entra em crmia_public e não tem rótulos do Traefik.
+  dados:
+    image: ${IMAGEM_DADOS:-ghcr.io/armando-couto/crmia-dados:latest}
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      PORT: "7896"
+      DATABASE_URL: postgres://${DADOS_DB_USER:-crmia_dados}:${DADOS_DB_PASSWORD}@${PGHOST:-postgres}:${PGPORT:-5432}/${DADOS_DB_NAME:-crmia_dados}?sslmode=${PGSSLMODE:-disable}
+      DADOS_TOKEN: ${DADOS_TOKEN}
+      DADOS_CNPJ_URL: ${DADOS_CNPJ_URL:-}
+      DADOS_PGFN_URL: ${DADOS_PGFN_URL:-}
+      DADOS_DIR_TRABALHO: /trabalho
+      DADOS_CARGA_AUTOMATICA: ${DADOS_CARGA_AUTOMATICA:-true}
+      DADOS_AMOSTRA: ${DADOS_AMOSTRA:-false}
+      DADOS_UFS: ${DADOS_UFS:-}
+      DADOS_CONEXOES: ${DADOS_CONEXOES:-2}
+      DADOS_DISCO_MINIMO_GB: ${DADOS_DISCO_MINIMO_GB:-70}
+    volumes:
+      - dados-trabalho:/trabalho
+    networks: [interna, saida]
+    logging: *logging
+    stop_grace_period: 30s
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+      resources:
+        limits:
+          memory: ${DADOS_MEM_LIMIT:-512m}
+      restart_policy: { condition: any, delay: 5s }
+
 configs:
   traefik_middlewares:
     file: ./infra/traefik/dynamic/middlewares.yml
@@ -207,9 +247,14 @@ networks:
     driver: overlay
     attachable: true
     internal: true
+  # Só do serviço `dados`: saída para a internet.
+  saida:
+    name: crmia_saida
+    driver: overlay
 
 volumes:
   traefik-acme: { name: crmia_traefik_acme }
   postgres-dados: { name: crmia_postgres_dados }
   tenants-config: { name: crmia_tenants_config }
   backups: { name: crmia_backups }
+  dados-trabalho: { name: crmia_dados_trabalho }

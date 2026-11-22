@@ -20,6 +20,7 @@ import (
 
 	"github.com/armando-couto/crm-ia/painel/internal/auth"
 	"github.com/armando-couto/crm-ia/painel/internal/banco"
+	"github.com/armando-couto/crm-ia/painel/internal/basepublica"
 	"github.com/armando-couto/crm-ia/painel/internal/config"
 	"github.com/armando-couto/crm-ia/painel/internal/email"
 	"github.com/armando-couto/crm-ia/painel/internal/jobs"
@@ -86,6 +87,8 @@ func executar(soMigrar, soSemear bool) error {
 	sg := sign.Novo(sign.Config{TokenAPI: cfg.SignTokenAPI, ApisURL: cfg.SignApisURL, Gateway: cfg.SignGateway, GrupoID: cfg.SignGrupoID, Simulado: cfg.SignSimulado})
 	ops := operacoes.Novo(r, prov, sg)
 	ops.NomeProduto = cfg.NomeProduto
+	base := basepublica.Novo(cfg.DadosURL, cfg.DadosToken)
+	ops.BasePublica = base
 	ops.URLCheckout = func(codigo string) string { return cfg.URLPublica("/assinar/" + codigo) }
 	correio := email.Novo(email.Config{Chave: cfg.MandrillChave, RemetenteEmail: cfg.FromEmail, RemetenteNome: cfg.FromNome})
 
@@ -96,7 +99,11 @@ func executar(soMigrar, soSemear bool) error {
 		slog.Warn("cobrança recorrente indisponível: " + sg.MotivoNaoConfigurado())
 	}
 
-	servidor, err := web.NovoServidor(cfg, r, sessoes, ops, prov, correio)
+	if !base.Configurado() {
+		slog.Warn("prospecção desabilitada: DADOS_URL ou DADOS_TOKEN não definidos")
+	}
+
+	servidor, err := web.NovoServidor(cfg, r, sessoes, ops, prov, correio, base)
 	if err != nil {
 		return fmt.Errorf("montando servidor: %w", err)
 	}

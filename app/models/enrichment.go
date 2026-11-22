@@ -295,15 +295,32 @@ type UsoMes struct {
 	PorProvedor    map[string]UsoProvedor `json:"por_provedor"`
 }
 
-// EnrichmentUsage soma as consultas (não demo) do mês indicado.
+// jobEnriquecerPago exclui o lote de demonstração (parametros.demo), que
+// custa 0 e não conta como consulta.
+const jobEnriquecerPago = `NOT COALESCE((parametros->>'demo')::boolean, false)`
+
+// EnrichmentUsage soma o consumo do mês indicado: as consultas (não demo) da
+// ficha da empresa (company_enrichments) e o enriquecimento em lote das
+// listas de prospecção, contabilizado nos jobs (prospeccao_jobs, mês de
+// criado_em; demonstração custa 0 e não entra). As duas origens saem de UMA
+// consulta (UNION ALL); o lote entra no provedor "wholead", somado ao que a
+// ficha da empresa consultou nele.
 func EnrichmentUsage(db *sql.DB, mes time.Time) (UsoMes, error) {
 	inicio := time.Date(mes.Year(), mes.Month(), 1, 0, 0, 0, 0, time.UTC)
 	fim := inicio.AddDate(0, 1, 0)
 	uso := UsoMes{Mes: inicio.Format("2006-01"), PorProvedor: map[string]UsoProvedor{}}
 	rows, err := db.Query(`
-		SELECT provedor, COUNT(*), COALESCE(SUM(custo_centavos),0)
-		FROM company_enrichments
-		WHERE created_at >= $1 AND created_at < $2 AND NOT demo
+		SELECT provedor, SUM(consultas)::int, COALESCE(SUM(custo),0)::int FROM (
+			SELECT provedor, COUNT(*) AS consultas, COALESCE(SUM(custo_centavos),0) AS custo
+			FROM company_enrichments
+			WHERE created_at >= $1 AND created_at < $2 AND NOT demo
+			GROUP BY provedor
+			UNION ALL
+			SELECT '`+ProvedorWhoLead+`', COALESCE(SUM(feitos),0), COALESCE(SUM(custo_centavos),0)
+			FROM prospeccao_jobs
+			WHERE tipo = '`+JobEnriquecer+`' AND criado_em >= $1 AND criado_em < $2 AND `+jobEnriquecerPago+`
+			HAVING COUNT(*) > 0
+		) uso
 		GROUP BY provedor`, inicio, fim)
 	if err != nil {
 		return uso, err
@@ -330,11 +347,21 @@ func EnrichmentUsageMeses(db *sql.DB, n int) ([]UsoMes, error) {
 	agora := time.Now()
 	inicio := time.Date(agora.Year(), agora.Month(), 1, 0, 0, 0, 0, time.UTC).AddDate(0, -(n - 1), 0)
 	rows, err := db.Query(`
-		SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS mes, provedor, COUNT(*), COALESCE(SUM(custo_centavos),0)
-		FROM company_enrichments
-		WHERE created_at >= $1 AND NOT demo
-		GROUP BY 1, provedor
-		ORDER BY 1 DESC`, inicio)
+		SELECT mes, provedor, SUM(consultas)::int, COALESCE(SUM(custo),0)::int FROM (
+			SELECT to_char(date_trunc('month', created_at), 'YYYY-MM') AS mes, provedor,
+			       COUNT(*) AS consultas, COALESCE(SUM(custo_centavos),0) AS custo
+			FROM company_enrichments
+			WHERE created_at >= $1 AND NOT demo
+			GROUP BY 1, provedor
+			UNION ALL
+			SELECT to_char(date_trunc('month', criado_em), 'YYYY-MM'), '`+ProvedorWhoLead+`',
+			       COALESCE(SUM(feitos),0), COALESCE(SUM(custo_centavos),0)
+			FROM prospeccao_jobs
+			WHERE tipo = '`+JobEnriquecer+`' AND criado_em >= $1 AND `+jobEnriquecerPago+`
+			GROUP BY 1
+		) uso
+		GROUP BY mes, provedor
+		ORDER BY mes DESC, provedor`, inicio)
 	if err != nil {
 		return nil, err
 	}

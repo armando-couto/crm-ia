@@ -53,6 +53,13 @@ const (
 
 	PermRecordsMerge = "records.merge"
 
+	// Prospecção: listas geradas da base pública, caixa de leads e fila de ligações.
+	PermProspectingView   = "prospecting.view"
+	PermProspectingManage = "prospecting.manage"
+	PermLeadsView         = "leads.view"
+	PermLeadsEdit         = "leads.edit"
+	PermLeadsAssign       = "leads.assign"
+
 	PermAutomationsView   = "automations.view"
 	PermAutomationsManage = "automations.manage"
 
@@ -147,6 +154,12 @@ var PermissionCatalog = []PermissionDef{
 	{PermMeetingsView, "Ver reuniões", "Comunicação"},
 	{PermMeetingsManage, "Agendar e editar reuniões", "Comunicação"},
 
+	{PermProspectingView, "Ver listas de prospecção", "Prospecção"},
+	{PermProspectingManage, "Gerar listas, enriquecer e enviar ao CRM", "Prospecção"},
+	{PermLeadsView, "Ver leads", "Prospecção"},
+	{PermLeadsEdit, "Trabalhar leads (ligar, registrar, converter)", "Prospecção"},
+	{PermLeadsAssign, "Distribuir e redistribuir leads", "Prospecção"},
+
 	{PermLibraryView, "Ver manuais, modelos e snippets", "Biblioteca"},
 	{PermLibraryManage, "Criar e editar a biblioteca", "Biblioteca"},
 
@@ -183,7 +196,8 @@ func ValidPermission(key string) bool {
 }
 
 // sellerDefaults são as permissões padrão do Seller: opera a própria carteira,
-// sem excluir registros nem acessar configurações.
+// sem excluir registros nem acessar configurações. Trabalha os leads que
+// recebe, mas não gera listas nem redistribui (isso é do Manager).
 var sellerDefaults = []string{
 	PermContactsView, PermContactsEdit, PermContactsExport,
 	PermCompaniesView, PermCompaniesEdit, PermCompaniesEnrich,
@@ -198,6 +212,7 @@ var sellerDefaults = []string{
 	PermLibraryView,
 	PermFilesView, PermFilesManage,
 	PermDashboardView, PermReportsView, PermForecastView,
+	PermLeadsView, PermLeadsEdit,
 }
 
 // managerDefaults: tudo do Seller mais exclusões, importação e configurações
@@ -214,6 +229,7 @@ var managerDefaults = append(append([]string{}, sellerDefaults...),
 	PermRecordsMerge,
 	PermAutomationsView, PermAutomationsManage,
 	PermReportsManage, PermGoalsManage,
+	PermProspectingView, PermProspectingManage, PermLeadsAssign,
 )
 
 // DefaultPermissions devolve a matriz padrão (Admin tem tudo).

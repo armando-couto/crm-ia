@@ -44,6 +44,12 @@ const (
 	FalhaSemResultado = "sem_resultado" // CNPJ não encontrado
 	FalhaExterna      = "externo"       // fonte indisponível → 502
 	FalhaEntrada      = "entrada"       // CNPJ inválido etc. → 422
+	// FalhaSaldo: saldo ou franquia do provedor esgotados (HTTP 402). É estado
+	// de negócio, não erro técnico: a mensagem vai para o usuário como está.
+	FalhaSaldo = "saldo"
+	// FalhaOcupado: o provedor pediu para tentar de novo em instantes (409 de
+	// pedido em curso). Vale nova tentativa espaçada.
+	FalhaOcupado = "ocupado"
 )
 
 // Falha é um erro com mensagem amigável em português.
@@ -122,7 +128,7 @@ type itemCache struct {
 }
 
 func chaveCache(provedor, cnpj string) string {
-	return "enriq:" + provedor + ":" + SomenteDigitos(cnpj)
+	return "enriq:" + provedor + ":" + NormalizarCNPJ(cnpj)
 }
 
 func lerCache(provedor, cnpj string) (*Perfil, *Bruto, bool) {
@@ -176,13 +182,13 @@ func NovoRegistro(cfg models.EnrichmentSettings) *Registro {
 
 // Pago diz se a fonte tem custo.
 func Pago(codigo string) bool {
-	return codigo == models.ProvedorBigDataCorp || codigo == models.ProvedorSerasa
+	return codigo == models.ProvedorBigDataCorp || codigo == models.ProvedorSerasa || codigo == models.ProvedorWhoLead
 }
 
 // CodigoValido diz se a fonte existe.
 func CodigoValido(codigo string) bool {
 	switch codigo {
-	case models.ProvedorReceita, models.ProvedorBigDataCorp, models.ProvedorSerasa:
+	case models.ProvedorReceita, models.ProvedorBigDataCorp, models.ProvedorSerasa, models.ProvedorWhoLead:
 		return true
 	}
 	return false
@@ -222,8 +228,33 @@ func (r *Registro) Provedor(codigo string) (Provedor, error) {
 		return &Serasa{ClientID: s.ClientID, ClientSecret: secret, Ambiente: s.Ambiente, BaseURL: s.BaseURL,
 			ReportName: s.ReportName, OptionalFeatures: s.OptionalFeatures, ReportPath: s.ReportPath,
 			PrecoCentavos: s.PrecoCentavos}, nil
+	case models.ProvedorWhoLead:
+		if !r.Cfg.WhoLeadPronto() {
+			return nil, falha(FalhaConfig, "Who Lead não configurado. Peça ao administrador para ativar em Configurações → Integrações.")
+		}
+		if r.Cfg.WhoLead.Demo {
+			return &Demo{Fonte: models.ProvedorWhoLead, PrecoFixo: 0}, nil
+		}
+		return r.WhoLead()
 	}
 	return nil, falha(FalhaEntrada, "fonte desconhecida: %s", codigo)
+}
+
+// WhoLead devolve o cliente real do Who Lead (nunca o de demonstração), para
+// o lote assíncrono e para a consulta da conta. Falha de configuração quando
+// faltam as credenciais.
+func (r *Registro) WhoLead() (*WhoLead, error) {
+	w := r.Cfg.WhoLead
+	if w.ClientID == "" || w.ClientSecretCifrado == "" {
+		return nil, falha(FalhaConfig, "Who Lead não configurado. Peça ao administrador para informar as credenciais em Configurações → Integrações.")
+	}
+	secret, err := utils.Decifrar(w.ClientSecretCifrado)
+	if err != nil {
+		return nil, falha(FalhaConfig, "não foi possível ler a credencial do Who Lead: %s", err.Error())
+	}
+	return &WhoLead{ClientID: w.ClientID, ClientSecret: secret, BaseURL: w.BaseURL,
+		IncluirSocios: w.IncluirSocios, IncluirResponsavelLegal: w.IncluirResponsavelLegal,
+		IncluirPortabilidade: w.IncluirPortabilidade, PrecoCentavos: w.PrecoCentavos}, nil
 }
 
 // CustoEstimado devolve o custo previsto (centavos) da fonte; 0 em demo/grátis.
@@ -242,6 +273,11 @@ func (r *Registro) CustoEstimado(codigo string, datasets []string) int {
 			return 0
 		}
 		return r.Cfg.Serasa.PrecoCentavos
+	case models.ProvedorWhoLead:
+		if r.Cfg.WhoLead.Demo {
+			return 0
+		}
+		return r.Cfg.WhoLead.PrecoCentavos
 	}
 	return 0
 }
@@ -273,6 +309,12 @@ func (r *Registro) Catalogo() []map[string]any {
 			"descricao": "Score positivo, anotações negativas (pendências, protestos, cheques), consultas recentes, limite de crédito e participações — por contrato.",
 			"custo":     "por contrato", "custo_centavos": r.CustoEstimado(models.ProvedorSerasa, nil),
 			"habilitado": r.Cfg.Serasa.Habilitado, "demo": r.Cfg.Serasa.Demo, "pronto": r.Cfg.SerasaPronto(),
+		},
+		{
+			"codigo": models.ProvedorWhoLead, "nome": models.NomeProvedor(models.ProvedorWhoLead),
+			"descricao": "Telefones e e-mails da empresa, sócios e responsável legal com contato, marca de WhatsApp e de \"não perturbe\" — cobrado por CNPJ. É a fonte do enriquecimento das listas de prospecção.",
+			"custo":     "por CNPJ", "custo_centavos": r.CustoEstimado(models.ProvedorWhoLead, nil),
+			"habilitado": r.Cfg.WhoLead.Habilitado, "demo": r.Cfg.WhoLead.Demo, "pronto": r.Cfg.WhoLeadPronto(),
 		},
 	}
 }

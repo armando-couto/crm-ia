@@ -34,6 +34,11 @@ type Config struct {
 	// TenantAPIMolde: como alcançar a API de um cliente pela rede interna (%s = slug).
 	TenantAPIMolde string
 
+	// Serviço `dados` (base pública de empresas da prospecção). Opcional:
+	// sem URL ou sem token a prospecção fica desabilitada e o painel funciona.
+	DadosURL   string
+	DadosToken string
+
 	// Cobrança recorrente (Fix Pay Sign). As credenciais são da PRÓPRIA CRM
 	// IA como estabelecimento; o cliente final nunca as vê.
 	SignTokenAPI string // FIXPAY_TOKEN_API
@@ -92,6 +97,9 @@ func Carregar() (Config, error) {
 		ProvisionadorURL:   texto("PROVISIONER_URL", "http://provisioner:7898"),
 		ProvisionadorToken: os.Getenv("PROVISIONER_TOKEN"),
 		TenantAPIMolde:     texto("TENANT_API_MOLDE", "http://ci-%s-app:8080/api"),
+
+		DadosURL:   strings.TrimRight(texto("DADOS_URL", "http://dados:7896"), "/"),
+		DadosToken: strings.TrimSpace(os.Getenv("DADOS_TOKEN")),
 
 		SignTokenAPI: os.Getenv("FIXPAY_TOKEN_API"),
 		SignApisURL:  texto("FIXPAY_APIS_URL", "https://apis.fixpay.com.br"),

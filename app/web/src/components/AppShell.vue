@@ -73,6 +73,19 @@ function logout() {
           <span class="icon">⇪</span><span class="label">Importações</span>
         </router-link>
 
+        <template v-if="auth.can('prospecting.view') || auth.can('leads.view')">
+          <div class="nav-section">Prospecção</div>
+          <router-link v-if="auth.can('prospecting.view')" to="/prospeccao" active-class="active">
+            <span class="icon">◉</span><span class="label">Gerar listas</span>
+          </router-link>
+          <router-link v-if="auth.can('leads.view')" to="/leads" active-class="active">
+            <span class="icon">⚐</span><span class="label">Leads de prospecção</span>
+          </router-link>
+          <router-link v-if="auth.can('leads.edit')" to="/fila-de-ligacoes" active-class="active">
+            <span class="icon">✆</span><span class="label">Fila de ligações</span>
+          </router-link>
+        </template>
+
         <div class="nav-section">Análise</div>
         <router-link v-if="auth.can('forecast.view')" to="/previsao" active-class="active">
           <span class="icon">◭</span><span class="label">Previsão</span>

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -51,6 +52,16 @@ type Funil struct {
 	GanhosPorSemana []FunilSemana     `json:"ganhos_por_semana"`
 	PorDono         []FunilDono       `json:"por_dono"`
 	Negocios        []FunilNegocio    `json:"negocios"`
+	// Perdidos no período agrupados pelo motivo (o de mais negócios primeiro);
+	// negócio sem motivo entra como MotivoPerdaVazio.
+	PerdasPorMotivo []FunilPerdaMotivo `json:"perdas_por_motivo"`
+}
+
+// FunilPerdaMotivo é uma linha de perdas_por_motivo.
+type FunilPerdaMotivo struct {
+	Motivo string  `json:"motivo"`
+	Qtd    int     `json:"qtd"`
+	Valor  float64 `json:"valor"`
 }
 
 type FunilPipeline struct {
@@ -199,6 +210,7 @@ type funilDeal struct {
 	CreatedAt      time.Time
 	ClosedAt       *time.Time
 	LastActivityAt *time.Time
+	LostReason     string
 }
 
 // funilHist é uma entrada de deal_stage_history.
@@ -356,7 +368,8 @@ func carregarFunil(db *sql.DB, f FunilFilter, de time.Time) (*funilDados, error)
 		SELECT d.id, d.name, d.amount, d.stage_id, d.status,
 		       d.owner_id, COALESCE(u.name, ''), d.company_id, COALESCE(co.name, ''),
 		       d.close_date, d.created_at, d.closed_at,
-		       (SELECT MAX(a.created_at) FROM activities a WHERE a.deal_id = d.id)
+		       (SELECT MAX(a.created_at) FROM activities a WHERE a.deal_id = d.id),
+		       d.lost_reason
 		FROM deals d
 		LEFT JOIN users u ON u.id = d.owner_id
 		LEFT JOIN companies co ON co.id = d.company_id
@@ -370,7 +383,7 @@ func carregarFunil(db *sql.DB, f FunilFilter, de time.Time) (*funilDados, error)
 		var d funilDeal
 		if err := dealRows.Scan(&d.ID, &d.Name, &d.Amount, &d.StageID, &d.Status,
 			&d.OwnerID, &d.OwnerName, &d.CompanyID, &d.CompanyName,
-			&d.CloseDate, &d.CreatedAt, &d.ClosedAt, &d.LastActivityAt); err != nil {
+			&d.CloseDate, &d.CreatedAt, &d.ClosedAt, &d.LastActivityAt, &d.LostReason); err != nil {
 			return nil, err
 		}
 		dados.Deals = append(dados.Deals, d)
@@ -647,6 +660,7 @@ func calcularFunil(dados *funilDados, f FunilFilter) *Funil {
 	}
 	donos := map[int64]*acumuladoDono{}
 	var ciclos []float64
+	perdas := map[string]*FunilPerdaMotivo{}
 	mov := &out.Movimentacao
 
 	for _, d := range relevantes {
@@ -790,6 +804,17 @@ func calcularFunil(dados *funilDados, f FunilFilter) *Funil {
 		if perdidoNoPeriodo {
 			r.Perdidos++
 			r.ValorPerdido += d.Amount
+			motivo := strings.TrimSpace(d.LostReason)
+			if motivo == "" {
+				motivo = MotivoPerdaVazio
+			}
+			p := perdas[motivo]
+			if p == nil {
+				p = &FunilPerdaMotivo{Motivo: motivo}
+				perdas[motivo] = p
+			}
+			p.Qtd++
+			p.Valor += d.Amount
 		}
 
 		// Waterfall: cada negócio começa no valor do início do período (ou no
@@ -920,6 +945,21 @@ func calcularFunil(dados *funilDados, f FunilFilter) *Funil {
 	if len(out.Negocios) > 1000 {
 		out.Negocios = out.Negocios[:1000]
 	}
+
+	out.PerdasPorMotivo = make([]FunilPerdaMotivo, 0, len(perdas))
+	for _, p := range perdas {
+		out.PerdasPorMotivo = append(out.PerdasPorMotivo, *p)
+	}
+	sort.Slice(out.PerdasPorMotivo, func(i, j int) bool {
+		a, b := out.PerdasPorMotivo[i], out.PerdasPorMotivo[j]
+		if a.Qtd != b.Qtd {
+			return a.Qtd > b.Qtd
+		}
+		if a.Valor != b.Valor {
+			return a.Valor > b.Valor
+		}
+		return a.Motivo < b.Motivo
+	})
 	return out
 }
 

@@ -328,14 +328,15 @@ func CompanyByID(db *sql.DB, id int64) (*Company, error) {
 	return scanCompany(db.QueryRow(companySelect+`c.id = $1`, id))
 }
 
-// CompanyByCNPJ localiza a empresa pelos 14 dígitos do CNPJ, ignorando a
-// pontuação gravada. sql.ErrNoRows quando não existe.
-func CompanyByCNPJ(db *sql.DB, digits string) (*Company, error) {
-	digits = SomenteDigitos(digits)
-	if digits == "" {
+// CompanyByCNPJ localiza a empresa pelo CNPJ normalizado (14 caracteres, com
+// ou sem letras), ignorando a pontuação gravada. A comparação usa a expressão
+// do índice idx_companies_cnpj_norm. sql.ErrNoRows quando não existe.
+func CompanyByCNPJ(db *sql.DB, cnpj string) (*Company, error) {
+	cnpj = NormalizarCNPJ(cnpj)
+	if cnpj == "" {
 		return nil, sql.ErrNoRows
 	}
-	return scanCompany(db.QueryRow(companySelect+`regexp_replace(COALESCE(c.cnpj,''), '\D', '', 'g') = $1`, digits))
+	return scanCompany(db.QueryRow(companySelect+CNPJNormSQL+` = $1 ORDER BY c.id LIMIT 1`, cnpj))
 }
 
 // SomenteDigitos remove tudo que não é número.

@@ -259,7 +259,8 @@ func (s *Servidor) salvarPlano(w http.ResponseWriter, r *http.Request) {
 	p := modelo.Plano{ID: idDaRota(r), Codigo: strings.ToLower(campo(r, "codigo")), Nome: campo(r, "nome"), Descricao: campo(r, "descricao"),
 		UsuariosMin: campoInt(r, "usuarios_min", 1), UsuariosMax: campoInt(r, "usuarios_max", 1),
 		PrecoMensalCentavos: campoCentavos(r, "preco_mensal"), PrecoAnualCentavos: campoCentavos(r, "preco_anual"),
-		Destaque: campoBool(r, "destaque"), Ordem: campoInt(r, "ordem", 0), Ativo: campoBool(r, "ativo")}
+		Destaque: campoBool(r, "destaque"), Ordem: campoInt(r, "ordem", 0), Ativo: campoBool(r, "ativo"),
+		ProspeccaoLeadsMes: max(0, campoInt(r, "prospeccao_leads_mes", 0))}
 	for _, linha := range strings.Split(campo(r, "recursos"), "\n") {
 		if l := strings.TrimSpace(linha); l != "" {
 			p.Recursos = append(p.Recursos, l)
@@ -274,7 +275,7 @@ func (s *Servidor) salvarPlano(w http.ResponseWriter, r *http.Request) {
 		s.redirecionar(w, r, "/planos", "erro", "Não foi possível salvar: "+err.Error())
 		return
 	}
-	s.auditar(r, "salvar", "plano", &id, map[string]any{"codigo": p.Codigo, "mensal": p.PrecoMensalCentavos})
+	s.auditar(r, "salvar", "plano", &id, map[string]any{"codigo": p.Codigo, "mensal": p.PrecoMensalCentavos, "prospeccao_leads_mes": p.ProspeccaoLeadsMes})
 	s.redirecionar(w, r, "/planos", "ok", "Plano salvo. A landing já reflete o novo preço; licenças existentes mantêm o valor contratado.")
 }
 

@@ -11,6 +11,7 @@ import GoalBar from '../components/charts/GoalBar.vue'
 import Sparkline from '../components/charts/Sparkline.vue'
 import { formatDias, formatMoneyShort, formatPct } from '../components/charts/chart-utils'
 import type { Pipeline, User } from '../types'
+import type { PerdaPorMotivo } from '../types-prospeccao'
 import type {
   FunilModo,
   FunilNegocio,
@@ -313,6 +314,20 @@ const mostrarTodosRisco = ref(false)
 const riscoVisivel = computed(() => (mostrarTodosRisco.value ? emRisco.value : emRisco.value.slice(0, 8)))
 
 const porDono = computed(() => [...(dados.value?.por_dono ?? [])].sort((a, b) => b.ponderado - a.ponderado))
+// Perdas por motivo (docs/PROSPECCAO.md, seção 9): ausente em servidores anteriores à prospecção.
+const SEM_MOTIVO = 'Sem motivo informado'
+const perdas = computed<PerdaPorMotivo[]>(() => {
+  const lista = (dados.value as { perdas_por_motivo?: PerdaPorMotivo[] } | null)?.perdas_por_motivo
+  if (!Array.isArray(lista)) return []
+  return lista
+    .map((p) => ({ motivo: p.motivo || SEM_MOTIVO, qtd: Number(p.qtd) || 0, valor: Number(p.valor) || 0 }))
+    .filter((p) => p.qtd > 0)
+    .sort((a, b) => b.qtd - a.qtd || b.valor - a.valor)
+})
+const totalPerdas = computed(() => perdas.value.reduce((s, p) => s + p.qtd, 0))
+const valorPerdas = computed(() => perdas.value.reduce((s, p) => s + p.valor, 0))
+const maiorPerda = computed(() => Math.max(1, ...perdas.value.map((p) => p.qtd)))
+
 const maiorDono = computed(() => Math.max(1, ...porDono.value.map((d) => Math.max(d.meta, d.valor_ganho + d.ponderado))))
 
 function barraDono(d: { meta: number; valor_ganho: number; ponderado: number }) {
@@ -660,6 +675,25 @@ const pipelineNome = computed(() => dados.value?.pipeline.name ?? pipelines.valu
         </div>
       </section>
 
+      <!-- Perdas por motivo: só quando o servidor manda; no modo reunião aparece junto de "Por vendedor". -->
+      <section v-if="perdas.length" v-show="visivel('donos')" class="bloco perdas" data-perdas="motivos">
+        <header class="bloco-head">
+          <h2>Perdas por motivo</h2>
+          <p class="muted">
+            {{ totalPerdas }} negócio(s) perdido(s) no período, somando {{ formatMoney(valorPerdas) }}.
+          </p>
+        </header>
+        <ul class="perdas-lista">
+          <li v-for="p in perdas" :key="p.motivo" :data-motivo="p.motivo" :class="{ 'sem-motivo': p.motivo === SEM_MOTIVO }">
+            <span class="perda-nome">{{ p.motivo }}</span>
+            <span class="perda-barra" aria-hidden="true"><span :style="{ width: `${(p.qtd / maiorPerda) * 100}%` }"></span></span>
+            <span class="perda-qtd num">{{ p.qtd }}</span>
+            <span class="perda-pct num muted small">{{ formatPct(totalPerdas ? p.qtd / totalPerdas : 0) }}</span>
+            <span class="perda-valor num">{{ formatMoneyShort(p.valor) }}</span>
+          </li>
+        </ul>
+      </section>
+
       <!-- 6. Lista (drill-down) -->
       <section v-show="visivel('lista')" class="bloco" data-bloco="lista">
         <header class="bloco-head">
@@ -716,18 +750,7 @@ const pipelineNome = computed(() => dados.value?.pipeline.name ?? pipelines.valu
   </div>
 </template>
 
-<!-- Global, sem scoped: esconde a AppShell quando o body está em modo reunião. -->
-<style>
-body.modo-reuniao .sidebar,
-body.modo-reuniao .topbar {
-  display: none !important;
-}
-
-body.modo-reuniao .content {
-  overflow: hidden !important;
-}
-</style>
-
+<!-- A regra que esconde a AppShell no modo reunião mora em src/styles.css (vale também para o modo foco). -->
 <style scoped>
 .funil-page {
   padding: 20px 28px 32px;
@@ -1127,6 +1150,57 @@ body.modo-reuniao .content {
 .danger {
   color: var(--danger);
   font-weight: 600;
+}
+
+.perdas-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.perdas-lista li {
+  display: grid;
+  grid-template-columns: minmax(140px, 220px) 1fr 40px 48px 90px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.perdas-lista .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.perda-barra {
+  height: 10px;
+  background: var(--ci-bg);
+  border-radius: 5px;
+  overflow: hidden;
+}
+
+.perda-barra span {
+  display: block;
+  height: 100%;
+  background: var(--ci-red);
+  opacity: 0.75;
+}
+
+.sem-motivo .perda-nome {
+  color: var(--ci-text-3);
+  font-style: italic;
+}
+
+@media (max-width: 640px) {
+  .perdas-lista li {
+    grid-template-columns: 1fr 40px 90px;
+  }
+  .perda-barra,
+  .perda-pct {
+    display: none;
+  }
 }
 
 .donos tbody tr.selecionada {

@@ -152,16 +152,6 @@ func emptyRow(row []string) bool {
 	return true
 }
 
-func onlyDigits(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if r >= '0' && r <= '9' {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
-
 // RunImport processa o arquivo já parseado e grava o resultado no histórico.
 // A linha da planilha nunca apaga dado existente: só campos preenchidos entram.
 func RunImport(db *sql.DB, entity, fileName string, headers []string, rows [][]string, createdBy *int64) (*models.ImportRecord, error) {
@@ -348,7 +338,7 @@ func importCompanies(db *sql.DB, headers []string, rows [][]string, record *mode
 		record.TotalRows++
 
 		name := cell(row, col("name"))
-		cnpj := onlyDigits(cell(row, col("cnpj")))
+		cnpj := models.NormalizarCNPJ(cell(row, col("cnpj")))
 		if name == "" && cnpj == "" {
 			addRowError(record, line, "sem nome nem CNPJ")
 			continue
@@ -360,8 +350,8 @@ func importCompanies(db *sql.DB, headers []string, rows [][]string, record *mode
 		if cnpj != "" {
 			err = db.QueryRow(`
 				SELECT id FROM companies
-				WHERE regexp_replace(cnpj, '\D', '', 'g') = $1 AND cnpj <> ''
-				LIMIT 1`, cnpj).Scan(&existingID)
+				WHERE `+models.CNPJNormSQLColuna("cnpj")+` = $1
+				ORDER BY id LIMIT 1`, cnpj).Scan(&existingID)
 		} else {
 			err = sql.ErrNoRows
 		}

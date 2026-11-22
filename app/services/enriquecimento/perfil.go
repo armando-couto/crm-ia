@@ -29,9 +29,12 @@ type Perfil struct {
 	Conformidade     *Conformidade    `json:"conformidade,omitempty"`
 	Midia            *Midia           `json:"midia,omitempty"`
 	// Localizacao (lat/long do CEP) é extensão opcional do contrato.
-	Localizacao   *Localizacao `json:"localizacao,omitempty"`
-	Sinais        []Sinal      `json:"sinais"`
-	CustoCentavos int          `json:"custo_centavos"`
+	Localizacao *Localizacao `json:"localizacao,omitempty"`
+	// Pessoas (extensão opcional, Who Lead): sócios, representantes e
+	// funcionários com contato. O documento é sempre mascarado.
+	Pessoas       []models.PessoaContato `json:"pessoas,omitempty"`
+	Sinais        []Sinal                `json:"sinais"`
+	CustoCentavos int                    `json:"custo_centavos"`
 	// Mensagem acompanha perfis de demonstração ("dados de demonstração").
 	Mensagem string `json:"mensagem,omitempty"`
 	// Origem (seção → provedor) e CamposOrigem (campo → provedor) são
@@ -67,6 +70,9 @@ type Telefone struct {
 	Tipo      string `json:"tipo"`
 	Principal bool   `json:"principal"`
 	Validado  bool   `json:"validado"`
+	// Extensões opcionais: só saem no JSON quando a fonte informa.
+	WhatsApp    *bool `json:"whatsapp,omitempty"`     // número com WhatsApp ativo
+	NaoPerturbe *bool `json:"nao_perturbe,omitempty"` // número em lista de bloqueio de telemarketing
 }
 
 type EmailContato struct {
@@ -398,6 +404,10 @@ func Mesclar(perfis ...*Perfil) *Perfil {
 			base.Contatos = o.Contatos
 			base.Origem["contatos"] = o.Provedor
 		}
+		if len(o.Pessoas) > 0 {
+			base.Pessoas = o.Pessoas
+			base.Origem["pessoas"] = o.Provedor
+		}
 		if o.PresencaDigital != nil {
 			base.PresencaDigital = o.PresencaDigital
 			base.Origem["presenca_digital"] = o.Provedor
@@ -441,6 +451,9 @@ func secoesPresentes(p *Perfil) []string {
 	}
 	if p.Contatos != nil {
 		s = append(s, "contatos")
+	}
+	if len(p.Pessoas) > 0 {
+		s = append(s, "pessoas")
 	}
 	if p.PresencaDigital != nil {
 		s = append(s, "presenca_digital")

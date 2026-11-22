@@ -1,0 +1,195 @@
+{
+  "id_processamento": "00000000000000000000000000000000",
+  "status": "completed",
+  "total_registros": 1,
+  "sucesso": 1,
+  "falhou": 0,
+  "timestamp": 1795300000.0,
+  "contatos": [
+    {
+      "status": "completed",
+      "tipo_entrada": "cnpj",
+      "valor_entrada": "11222333000181",
+      "detalhes_contato": {
+        "sobre": {
+          "id_empresa": 46165660,
+          "descricao": null,
+          "tagline": null,
+          "setor": "Tecnologia",
+          "url_perfil_linkedin": null,
+          "url_website": "https://acme.com.br",
+          "slug_linkedin": null,
+          "urn_linkedin": "",
+          "url_logo": null,
+          "total_funcionarios": 150,
+          "faixa_funcionarios": "51-200"
+        },
+        "cadastro": {
+          "cnpj": "11222333000181",
+          "razao_social": "ACME VENDAS LTDA",
+          "nome_fantasia": "ACME",
+          "situacao_cadastral": "ATIVA",
+          "data_fundacao": "2015-03-10",
+          "idade_empresa_anos": "11 anos 8 meses",
+          "codigo_cnae_principal": "9511800",
+          "descricao_cnae_principal": "Reparação e manutenção de computadores e de equipamentos periféricos",
+          "cnaes_secundarios": [
+            {
+              "id_cnae_sec": "6201501",
+              "ds_cnae_sec": "Desenvolvimento de programas de computador sob encomenda"
+            }
+          ],
+          "id_natureza_juridica": "2062",
+          "descricao_natureza_juridica": "Sociedade Empresária Limitada",
+          "faturamento_estimado": "DE R$ 50 MM ATÉ R$ 100 MM",
+          "porte_empresa": "DEMAIS",
+          "tipo_estabelecimento": "MATRIZ",
+          "capital_social": "100000",
+          "status_simples_nacional": null,
+          "data_opcao_simples_nacional": null,
+          "status_simei": null,
+          "data_opcao_simei": null
+        },
+        "localizacao": {
+          "tipo": "Rua",
+          "rua": "Das Flores 100",
+          "numero": "100",
+          "complemento": null,
+          "bairro": "Centro",
+          "cidade": "Fortaleza",
+          "distrito": "CE",
+          "cep": "60000000",
+          "cnpj": "11222333000181",
+          "latitude": "-3.730000000000000",
+          "longitude": "-38.520000000000000",
+          "prioridade": 1,
+          "descricao_origem": "DS "
+        },
+        "contatos": {
+          "telefones": {
+            "fixo": [
+              {
+                "ddd": "85",
+                "numero": "33334444",
+                "prioridade": 1,
+                "tipo_telefone": "fixo",
+                "whatsapp": false
+              }
+            ],
+            "celular": [
+              {
+                "ddd": "85",
+                "numero": "999990000",
+                "prioridade": 1,
+                "tipo_telefone": "celular",
+                "whatsapp": true
+              }
+            ]
+          },
+          "emails": [
+            {
+              "email": "contato@acme.com.br",
+              "prioridade": 1,
+              "status_email": "Válido"
+            },
+            {
+              "email": "antigo@acme.com.br",
+              "prioridade": 2,
+              "status_email": "Inválido"
+            }
+          ]
+        },
+        "socios": {
+          "itens": [
+            {
+              "cpf": "12345678900",
+              "cnpj": null,
+              "nome": "FULANO DE TAL",
+              "cargo": "Administrador",
+              "participacao": "60.00"
+            }
+          ],
+          "total": 1,
+          "exibindo": 1
+        },
+        "diretores": {
+          "itens": [
+            {
+              "cpf": "12345678900",
+              "nome": "FULANO DE TAL",
+              "cargo": "Diretor Executivo",
+              "id_pessoa": 29303490,
+              "user_picture": null
+            }
+          ],
+          "total": 1,
+          "exibindo": 1
+        },
+        "gerentes": {
+          "itens": [
+            {
+              "cpf": "98765432100",
+              "nome": "BELTRANA EXEMPLO",
+              "cargo": "Gerente Comercial",
+              "id_pessoa": 15678234,
+              "user_picture": null
+            }
+          ],
+          "total": 1,
+          "exibindo": 1
+        },
+        "funcionarios": {
+          "itens": [
+            {
+              "cpf": null,
+              "nome": "CICLANO EXEMPLO",
+              "cargo": "Desenvolvedor Senior",
+              "id_pessoa": 44556677,
+              "user_picture": null
+            }
+          ],
+          "total": 1,
+          "exibindo": 1
+        },
+        "ex_funcionarios": {
+          "itens": [],
+          "total": 0,
+          "exibindo": 0
+        },
+        "socios_antigos": {
+          "itens": [],
+          "total": 0,
+          "exibindo": 0
+        },
+        "filiais": {
+          "itens": [
+            {
+              "raiz_cnpj": "11222333",
+              "filial": "FILIAL",
+              "nome": "ACME VENDAS LTDA",
+              "cnpj": "11222333000262",
+              "localizacao": "Fortaleza, CE",
+              "status": "ATIVA"
+            }
+          ],
+          "total": 1,
+          "exibindo": 1
+        },
+        "representantes_legais": {
+          "itens": [
+            {
+              "cpf": "12345678900",
+              "nome": "FULANO DE TAL",
+              "cargo": "Procurador"
+            }
+          ],
+          "total": 1
+        },
+        "participacoes_empresariais": {
+          "itens": [],
+          "total": 0
+        }
+      }
+    }
+  ]
+}

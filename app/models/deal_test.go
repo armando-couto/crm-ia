@@ -26,7 +26,7 @@ func TestMoveDealStageOpen(t *testing.T) {
 		WithArgs(int64(10)).
 		WillReturnRows(sqlmock.NewRows([]string{"stage_id", "status"}).AddRow(int64(4), DealAberto))
 	mock.ExpectExec("UPDATE deals SET stage_id").
-		WithArgs(int64(5), 2, DealAberto, nil, int64(10)).
+		WithArgs(int64(5), 2, DealAberto, nil, int64(10), true, "", "").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	// Mudou de etapa: histórico do funil + rastro da mudança. Status igual: sem linha.
 	mock.ExpectExec("INSERT INTO deal_stage_history").
@@ -60,7 +60,7 @@ func TestMoveDealStageToWon(t *testing.T) {
 		WillReturnRows(sqlmock.NewRows([]string{"stage_id", "status"}).AddRow(int64(4), DealAberto))
 	// Ao mover para etapa de ganho, o status deve virar "ganho" com closed_at preenchido.
 	mock.ExpectExec("UPDATE deals SET stage_id").
-		WithArgs(int64(9), 0, DealGanho, sqlmock.AnyArg(), int64(10)).
+		WithArgs(int64(9), 0, DealGanho, sqlmock.AnyArg(), int64(10), true, "", "").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO deal_stage_history").
 		WithArgs(int64(10), int64(9)).
@@ -95,7 +95,7 @@ func TestMoveDealStageSameStage(t *testing.T) {
 		WithArgs(int64(10)).
 		WillReturnRows(sqlmock.NewRows([]string{"stage_id", "status"}).AddRow(int64(5), DealAberto))
 	mock.ExpectExec("UPDATE deals SET stage_id").
-		WithArgs(int64(5), 3, DealAberto, nil, int64(10)).
+		WithArgs(int64(5), 3, DealAberto, nil, int64(10), true, "", "").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 
 	if err := MoveDealStage(db, 10, 5, 3); err != nil {
@@ -189,7 +189,7 @@ func TestCloseDealWritesHistoryAndChanges(t *testing.T) {
 		WithArgs(int64(1)).
 		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(9)))
 	mock.ExpectExec("UPDATE deals SET status").
-		WithArgs(DealGanho, int64(9), int64(10)).
+		WithArgs(DealGanho, int64(9), int64(10), "", "").
 		WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec("INSERT INTO deal_stage_history").
 		WithArgs(int64(10), int64(9)).
@@ -217,8 +217,10 @@ func dealRow(id, pipelineID, stageID int64, status string) *sqlmock.Rows {
 		"contact_id", "contact_name", "company_id", "company_name", "owner_id", "owner_name",
 		"status", "temperature", "forecast_category", "close_date", "position", "closed_at",
 		"last_activity_at", "created_at", "updated_at",
+		"lost_reason", "lost_note", "lead_id", "origem",
 	}).AddRow(id, "Negócio", 1000.0, "BRL", pipelineID, stageID, "Proposta",
-		nil, "", nil, "", nil, "", status, "", "pipeline", nil, 0, nil, nil, now, now)
+		nil, "", nil, "", nil, "", status, "", "pipeline", nil, 0, nil, nil, now, now,
+		"", "", nil, "")
 }
 
 func TestCreateDealDefaults(t *testing.T) {
@@ -261,17 +263,22 @@ func TestBoardDealsFillsStageAge(t *testing.T) {
 	entrou := now.AddDate(0, 0, -5)
 	atividade := now.AddDate(0, 0, -2)
 	prazo := 10
+	proxima := now.AddDate(0, 0, 1)
 	cols := []string{
 		"id", "name", "amount", "currency", "pipeline_id", "stage_id", "stage_name",
 		"contact_id", "contact_name", "company_id", "company_name", "owner_id", "owner_name",
 		"status", "temperature", "forecast_category", "close_date", "position", "closed_at",
-		"last_activity_at", "created_at", "updated_at", "stage_entered_at", "prazo_dias",
+		"last_activity_at", "created_at", "updated_at",
+		"lost_reason", "lost_note", "lead_id", "origem",
+		"stage_entered_at", "prazo_dias", "proxima_atividade_em", "proxima_atividade_tipo",
 	}
 	rows := sqlmock.NewRows(cols).
 		AddRow(int64(1), "Com histórico", 100.0, "BRL", int64(1), int64(2), "Proposta",
-			nil, "", nil, "", nil, "", DealAberto, "", "pipeline", nil, 0, nil, atividade, criado, criado, entrou, prazo).
+			nil, "", nil, "", nil, "", DealAberto, "", "pipeline", nil, 0, nil, atividade, criado, criado,
+			"", "", nil, "", entrou, prazo, proxima, "ligacao").
 		AddRow(int64(2), "Sem histórico", 100.0, "BRL", int64(1), int64(2), "Proposta",
-			nil, "", nil, "", nil, "", DealAberto, "", "pipeline", nil, 1, nil, nil, criado, criado, nil, nil)
+			nil, "", nil, "", nil, "", DealAberto, "", "pipeline", nil, 1, nil, nil, criado, criado,
+			"", "", nil, "", nil, nil, nil, "")
 	mock.ExpectQuery("stage_entered_at").WithArgs(int64(1)).WillReturnRows(rows)
 
 	rs, err := db.Query(boardSelect+` WHERE d.pipeline_id = $1`, int64(1))
@@ -297,6 +304,13 @@ func TestBoardDealsFillsStageAge(t *testing.T) {
 		deals[1].StageEnteredAt == nil || !deals[1].StageEnteredAt.Equal(criado) {
 		t.Fatalf("negócio sem histórico deveria usar created_at: %+v", deals[1])
 	}
+	// Semáforo: a tarefa pendente mais próxima vem nas duas últimas colunas.
+	if deals[0].ProximaAtividadeEm == nil || !deals[0].ProximaAtividadeEm.Equal(proxima) || deals[0].ProximaAtividadeTipo != "ligacao" {
+		t.Fatalf("próxima atividade não lida: %+v", deals[0])
+	}
+	if deals[1].ProximaAtividadeEm != nil || deals[1].ProximaAtividadeTipo != "" {
+		t.Fatalf("negócio sem tarefa não deveria ter próxima atividade: %+v", deals[1])
+	}
 }
 
 // A ordenação da lista de negócios vem da URL: whitelist obrigatória.
@@ -312,5 +326,85 @@ func TestDealOrderBy(t *testing.T) {
 		if got := dealOrderBy(c.sortBy, c.sortDir); got != c.want {
 			t.Errorf("dealOrderBy(%q, %q) = %q, esperado %q", c.sortBy, c.sortDir, got, c.want)
 		}
+	}
+}
+
+// Mover para etapa de perda grava o motivo; reordenar um cartão já perdido
+// (sem motivo novo) mantém o que estava gravado.
+func TestMoveDealStagePerdaGravaOuMantemMotivo(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	etapaPerda := func() *sqlmock.Rows {
+		return sqlmock.NewRows([]string{"id", "pipeline_id", "name", "position", "probability", "is_won", "is_lost", "prazo_dias"}).
+			AddRow(int64(8), int64(1), "Perdido", 5, 0, false, true, nil)
+	}
+	mock.ExpectQuery("FROM pipeline_stages WHERE id").WithArgs(int64(8)).WillReturnRows(etapaPerda())
+	mock.ExpectQuery("SELECT stage_id, status FROM deals").WithArgs(int64(10)).
+		WillReturnRows(sqlmock.NewRows([]string{"stage_id", "status"}).AddRow(int64(3), DealAberto))
+	mock.ExpectExec("UPDATE deals SET stage_id").
+		WithArgs(int64(8), 0, DealPerdido, sqlmock.AnyArg(), int64(10), true, "Preço", "achou caro").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO deal_stage_history").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO deal_changes").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO deal_changes").WillReturnResult(sqlmock.NewResult(2, 1))
+	if err := MoveDealStagePerda(db, 10, 8, 0, &PerdaDeal{Motivo: "Preço", Observacao: " achou caro "}, nil); err != nil {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+
+	mock.ExpectQuery("FROM pipeline_stages WHERE id").WithArgs(int64(8)).WillReturnRows(etapaPerda())
+	mock.ExpectQuery("SELECT stage_id, status FROM deals").WithArgs(int64(10)).
+		WillReturnRows(sqlmock.NewRows([]string{"stage_id", "status"}).AddRow(int64(8), DealPerdido))
+	mock.ExpectExec("UPDATE deals SET stage_id").
+		WithArgs(int64(8), 2, DealPerdido, sqlmock.AnyArg(), int64(10), false, "", "").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	if err := MoveDealStagePerda(db, 10, 8, 2, nil, nil); err != nil {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Fechar como perdido grava motivo e observação; como ganho, limpa os dois.
+func TestCloseDealPerdaGravaMotivo(t *testing.T) {
+	db, mock, err := sqlmock.New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	mock.ExpectQuery("FROM deals d").WithArgs(int64(10)).WillReturnRows(dealRow(10, 1, 3, DealAberto))
+	mock.ExpectQuery("SELECT id FROM pipeline_stages WHERE pipeline_id = (.+) AND is_lost = TRUE").
+		WithArgs(int64(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(8)))
+	mock.ExpectExec("UPDATE deals SET status").
+		WithArgs(DealPerdido, int64(8), int64(10), "Sem orçamento", "volta em março").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO deal_stage_history").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO deal_changes").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO deal_changes").WillReturnResult(sqlmock.NewResult(2, 1))
+	if err := CloseDealPerda(db, 10, false, PerdaDeal{Motivo: "Sem orçamento", Observacao: "volta em março"}, nil); err != nil {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+
+	mock.ExpectQuery("FROM deals d").WithArgs(int64(10)).WillReturnRows(dealRow(10, 1, 8, DealPerdido))
+	mock.ExpectQuery("SELECT id FROM pipeline_stages WHERE pipeline_id = (.+) AND is_won = TRUE").
+		WithArgs(int64(1)).
+		WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(int64(9)))
+	mock.ExpectExec("UPDATE deals SET status").
+		WithArgs(DealGanho, int64(9), int64(10), "", "").
+		WillReturnResult(sqlmock.NewResult(0, 1))
+	mock.ExpectExec("INSERT INTO deal_stage_history").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO deal_changes").WillReturnResult(sqlmock.NewResult(1, 1))
+	mock.ExpectExec("INSERT INTO deal_changes").WillReturnResult(sqlmock.NewResult(2, 1))
+	if err := CloseDealPerda(db, 10, true, PerdaDeal{Motivo: "Preço"}, nil); err != nil {
+		t.Fatalf("erro inesperado: %v", err)
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Fatal(err)
 	}
 }

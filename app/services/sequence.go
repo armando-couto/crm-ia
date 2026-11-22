@@ -95,7 +95,9 @@ func createSequenceTask(db *sql.DB, seq *models.Sequence, member *models.Sequenc
 		return err
 	}
 
-	title := strings.TrimSpace(step.Title)
+	// O título da etapa aceita as mesmas variáveis dos e-mails ({{nome}},
+	// {{empresa}}...): sem isto a tarefa saía com o marcador cru.
+	title := strings.TrimSpace(models.RenderTemplate(step.Title, contact))
 	if title == "" {
 		title = models.StepLabels[step.Kind]
 	}

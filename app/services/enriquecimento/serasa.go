@@ -118,9 +118,12 @@ func (s *Serasa) caminhoRelatorio(cnpj string) string {
 }
 
 func (s *Serasa) Consultar(ctx context.Context, cnpj string, opts Opcoes) (*Perfil, *Bruto, error) {
-	digits := SomenteDigitos(cnpj)
+	digits := NormalizarCNPJ(cnpj)
 	if !ValidarCNPJ(digits) {
 		return nil, nil, falha(FalhaEntrada, "CNPJ inválido")
+	}
+	if !CNPJSoNumeros(digits) {
+		return nil, nil, falha(FalhaSemResultado, "o Serasa ainda não consulta CNPJ com letras")
 	}
 	timeout := opts.Timeout
 	if timeout <= 0 {

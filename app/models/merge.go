@@ -114,8 +114,7 @@ func FindDuplicateCompanies(db *sql.DB) ([]DuplicateGroup, error) {
 		key    string
 		having string
 	}{
-		{"mesmo CNPJ", "regexp_replace(COALESCE(c.cnpj,''), '[^0-9]', '', 'g')",
-			"LENGTH(regexp_replace(COALESCE(c.cnpj,''), '[^0-9]', '', 'g')) = 14"},
+		{"mesmo CNPJ", CNPJNormSQL, "LENGTH(" + CNPJNormSQL + ") = 14"},
 		{"mesmo domínio", "LOWER(TRIM(COALESCE(c.domain,'')))", "TRIM(COALESCE(c.domain,'')) <> ''"},
 		{"mesmo nome", "LOWER(TRIM(c.name))", "LENGTH(TRIM(c.name)) > 2"},
 	}
@@ -191,10 +190,10 @@ func allSeen(entries []DuplicateEntry, seen map[int64]bool) bool {
 
 // contactRefs são as tabelas que apontam para um contato e precisam migrar
 // para o registro principal na mesclagem.
-var contactRefs = []string{"activities", "deals", "tasks", "tickets", "calls", "meetings", "conversations"}
+var contactRefs = []string{"activities", "deals", "tasks", "tickets", "calls", "meetings", "conversations", "leads"}
 
 // companyRefs são as tabelas que apontam para uma empresa.
-var companyRefs = []string{"activities", "contacts", "deals", "tasks", "tickets", "calls", "meetings"}
+var companyRefs = []string{"activities", "contacts", "deals", "tasks", "tickets", "calls", "meetings", "leads", "prospeccao_itens"}
 
 // MergeContacts move tudo do duplicado para o principal e apaga o duplicado.
 // Campos vazios do principal são preenchidos com o que o duplicado tinha.

@@ -18,6 +18,7 @@ import (
 	"github.com/armando-couto/crm-ia/app/models"
 	"github.com/armando-couto/crm-ia/app/routes"
 	"github.com/armando-couto/crm-ia/app/services"
+	"github.com/armando-couto/crm-ia/app/services/enriquecimento"
 	"github.com/armando-couto/crm-ia/app/utils"
 
 	"github.com/kataras/iris/v12"
@@ -85,6 +86,14 @@ func main() {
 
 	// Automações: retoma as sequências em espera e varre os gatilhos por tempo.
 	services.StartAutomationWorker(utils.DB)
+
+	// Prospecção: o provedor gratuito de CNPJ consulta primeiro a base própria
+	// da plataforma, e o worker retoma e executa os jobs (gerar lista,
+	// enriquecer, enviar ao CRM).
+	if services.PlataformaConfigurada() {
+		enriquecimento.FichaDaPlataforma = services.PlataformaCNPJ
+	}
+	services.StartProspeccaoWorker(utils.DB)
 
 	//-_-_-_-_-_-_-_-_-_-_-_-_-_-_-_ HTTP -_-_-_-_-_-_-_-_-_-_-_-_-_-_-_
 	app := iris.New()

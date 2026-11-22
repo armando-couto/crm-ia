@@ -57,10 +57,11 @@ function stubFetch(list = catalog) {
       body = { data: [{ id: 1, status: 'sucesso', detail: 'Enviar e-mail', created_at: '2026-08-30T10:00:00Z' }] }
     } else if (path.includes('/automations')) body = list
     else if (path.includes('/users')) body = [{ id: 1, name: 'Ana' }]
-    else if (path.includes('/lists')) body = { data: [{ id: 3, name: 'Clientes' }] }
+    // /lists e /pipelines devolvem array puro, como a API de verdade.
+    else if (path.includes('/lists')) body = [{ id: 3, name: 'Clientes' }]
     else if (path.includes('/templates')) body = [{ id: 7, name: 'Boas-vindas' }]
     else if (path.includes('/pipelines')) {
-      body = { data: [{ id: 1, name: 'Vendas', stages: [{ id: 10, name: 'Proposta' }] }] }
+      body = [{ id: 1, name: 'Vendas', stages: [{ id: 10, name: 'Proposta' }] }]
     }
     return Promise.resolve({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body)) })
   })
@@ -87,6 +88,16 @@ describe('AutomationsView', () => {
     expect(wrapper.text()).toContain('Boas-vindas do site')
     expect(wrapper.text()).toContain('Formulário enviado')
     expect(wrapper.text()).toContain('Enviar e-mail → Aguardar X dias → Criar tarefa')
+  })
+
+  it('carrega listas e etapas das rotas que devolvem array puro', async () => {
+    vi.stubGlobal('fetch', stubFetch())
+    const wrapper = mount(AutomationsView)
+    await flushPromises()
+
+    const vm = wrapper.vm as any
+    expect(vm.lists.map((l: any) => l.name)).toEqual(['Clientes'])
+    expect(vm.pipelines.map((p: any) => p.name)).toEqual(['Vendas'])
   })
 
   it('mostra quantos contatos estão no meio da sequência', async () => {

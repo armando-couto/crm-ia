@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/armando-couto/crm-ia/painel/internal/auth"
+	"github.com/armando-couto/crm-ia/painel/internal/basepublica"
 	"github.com/armando-couto/crm-ia/painel/internal/modelo"
 	"github.com/armando-couto/crm-ia/painel/internal/provisionador"
 	"github.com/armando-couto/crm-ia/painel/internal/repo"
@@ -28,6 +29,9 @@ type Servico struct {
 	NomeProduto string
 	// URLCheckout monta o endereço público da página de cartão (%s = código).
 	URLCheckout func(codigo string) string
+	// BasePublica é o cliente do serviço `dados` (prospecção). Opcional: nil
+	// ou não configurado, a prospecção fica desabilitada e o resto segue.
+	BasePublica *basepublica.Cliente
 }
 
 func Novo(r *repo.Repo, prov *provisionador.Cliente, sg *sign.Cliente) *Servico {
@@ -762,6 +766,8 @@ type PlanoDaEmpresa struct {
 	Solicitacao *SolicitacaoAtual `json:"solicitacao"`
 	Faturas     []FaturaDaEmpresa `json:"faturas"`
 	Pagamento   *PagamentoAtual   `json:"pagamento"`
+	// Prospeccao: cota mensal de leads da base pública e o que já foi usado.
+	Prospeccao Cota `json:"prospeccao"`
 }
 
 type PlanoAtual struct {
@@ -795,6 +801,8 @@ type PlanoDisponivel struct {
 	ValorCentavos int64    `json:"valor_centavos"`
 	Recursos      []string `json:"recursos"`
 	Atual         bool     `json:"atual"`
+	// ProspeccaoLeadsMes: leads de prospecção por mês incluídos no plano.
+	ProspeccaoLeadsMes int `json:"prospeccao_leads_mes"`
 }
 
 type FaturaDaEmpresa struct {
@@ -811,6 +819,13 @@ func (s *Servico) PlanoDaEmpresa(ctx context.Context, slug string) (PlanoDaEmpre
 	cliente, err := s.repo.ClientePorSlug(ctx, slug)
 	if err != nil {
 		return out, err
+	}
+	// A cota não pode derrubar o "Meu plano": em erro, vai zerada.
+	if cota, err := s.CotaProspeccao(ctx, cliente); err == nil {
+		out.Prospeccao = cota
+	} else {
+		out.Prospeccao = Cota{Mes: Competencia(time.Now()).Format("2006-01")}
+		slog.Warn("cota de prospecção indisponível", "slug", slug, "erro", err)
 	}
 	planoAtualID := int64(0)
 	lic, errLic := s.repo.LicencaDoCliente(ctx, cliente)
@@ -835,7 +850,7 @@ func (s *Servico) PlanoDaEmpresa(ctx context.Context, slug string) (PlanoDaEmpre
 			continue
 		}
 		out.Planos = append(out.Planos, PlanoDisponivel{ID: p.ID, Nome: p.Nome, Descricao: p.Descricao, Faixa: p.Faixa(),
-			ValorCentavos: p.PrecoMensalCentavos, Recursos: p.Recursos, Atual: p.ID == planoAtualID})
+			ValorCentavos: p.PrecoMensalCentavos, Recursos: p.Recursos, Atual: p.ID == planoAtualID, ProspeccaoLeadsMes: p.ProspeccaoLeadsMes})
 	}
 	if sol, err := s.repo.UltimaSolicitacaoDoCliente(ctx, cliente.ID); err == nil {
 		out.Solicitacao = &SolicitacaoAtual{Tipo: sol.Tipo, PlanoNome: sol.PlanoNome, Status: sol.Status, Resposta: sol.Resposta, CriadoEm: sol.CriadoEm.Format(time.RFC3339)}

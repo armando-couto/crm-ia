@@ -441,4 +441,28 @@ describe('PipelineInsightsView (/funil)', () => {
     wrapper.unmount()
     expect(document.body.classList.contains('modo-reuniao')).toBe(false)
   })
+
+  it('mostra as perdas por motivo quando o servidor manda (motivo vazio vira "Sem motivo informado")', async () => {
+    const funil = {
+      ...funilFixture,
+      perdas_por_motivo: [
+        { motivo: 'Preço', qtd: 1, valor: 15000 },
+        { motivo: '', qtd: 1, valor: 2000 },
+        { motivo: 'Escolheu concorrente', qtd: 3, valor: 45000 }
+      ]
+    }
+    vi.stubGlobal('fetch', stubFetch({ funil }))
+    const wrapper = build()
+    await flushPromises()
+
+    const bloco = wrapper.find('[data-perdas="motivos"]')
+    expect(bloco.exists()).toBe(true)
+    const motivos = bloco.findAll('li').map((li) => li.attributes('data-motivo'))
+    expect(motivos).toEqual(['Escolheu concorrente', 'Preço', 'Sem motivo informado'])
+    const texto = bloco.text().replace(/\u00a0/g, ' ')
+    expect(texto).toContain('5 negócio(s) perdido(s) no período')
+    expect(texto).toContain('R$ 62.000,00')
+    expect(texto).toContain('60%')
+    wrapper.unmount()
+  })
 })

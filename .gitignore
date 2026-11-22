@@ -12,6 +12,8 @@ app/web/dist/
 app/crm-ia
 painel/painel
 provisioner/provisioner
+dados/dados
+dados/.env.production
 provisioner/.env.production
 painel/.env.production
 infra/postgres/.env.production

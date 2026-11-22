@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
+import { publicApiBase } from '../api'
 
 interface PublicFormField {
   key: string
@@ -35,7 +36,7 @@ const success = ref('')
  */
 async function load() {
   try {
-    const resp = await fetch(`/api/public/forms/${route.params.slug}`)
+    const resp = await fetch(`${publicApiBase()}/forms/${route.params.slug}`)
     if (!resp.ok) throw new Error('formulário não encontrado')
     form.value = await resp.json()
     for (const field of form.value!.fields) values.value[field.key] = ''
@@ -51,7 +52,7 @@ async function submit() {
   error.value = ''
   sending.value = true
   try {
-    const resp = await fetch(`/api/public/forms/${form.value.slug}`, {
+    const resp = await fetch(`${publicApiBase()}/forms/${form.value.slug}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...values.value, _gotcha: honeypot.value })

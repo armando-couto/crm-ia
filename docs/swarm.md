@@ -25,16 +25,19 @@ docker stack deploy -c stack-portainer.yml crmia --with-registry-auth
 
 ## Atualizar a plataforma
 
-`docker service update --image ghcr.io/<owner>/crmia-painel:X.Y.Z crmia_painel` (idem provisioner e landing), ou `docker stack deploy` de novo com as variáveis `IMAGEM_*` apontando para a nova tag. Os ambientes dos clientes não são afetados: a versão deles é gerida pelo painel.
+`docker service update --image ghcr.io/<owner>/crmia-painel:X.Y.Z crmia_painel` (idem provisioner, landing e dados), ou `docker stack deploy` de novo com as variáveis `IMAGEM_*` apontando para a nova tag. Os ambientes dos clientes não são afetados: a versão deles é gerida pelo painel.
+
+O serviço `dados` (base pública da prospecção) usa `IMAGEM_DADOS` e o banco `crmia_dados`, criado pela imagem `crmia-postgres` a partir de `DADOS_DB_PASSWORD`: atualize também essa imagem (`IMAGEM_POSTGRES`) ao subir a primeira versão com o serviço. Sem `DADOS_DB_PASSWORD` e `DADOS_TOKEN` o banco não é criado e a prospecção fica desabilitada; o resto da plataforma funciona.
 
 ## Backups
 
-`make backup` (ou um cron chamando `infra/scripts/backup.sh`) gera `pg_dump` de cada cliente e do painel no volume `crmia_backups`. Copie esse volume para fora do servidor; o restante (configs e segredos dos clientes) está em `crmia_tenants_config`. Restaurar um cliente: `gunzip -c <dump> | docker exec -i ci-<slug>-db psql -U <usuario> <banco>` com o app parado.
+`make backup` (ou um cron chamando `infra/scripts/backup.sh`) gera `pg_dump` de cada cliente (volume `crmia_backups`) e do painel (`./backups`), usando a mesma `DATABASE_URL` do container do painel. O banco `crmia_dados` fica de fora de propósito: é dado público e recarregável. Copie esse volume para fora do servidor; o restante (configs e segredos dos clientes) está em `crmia_tenants_config`. Restaurar um cliente: `gunzip -c <dump> | docker exec -i ci-<slug>-db psql -U <usuario> <banco>` com o app parado.
 
 ## Rede
 
 * `crmia_public` (overlay, attachable): Traefik alcança a plataforma e os containers dos clientes, que o provisionador conecta à mesma rede pelo nome.
-* `crmia_interna` (overlay, internal): painel ↔ provisionador ↔ postgres.
+* `crmia_interna` (overlay, internal): painel ↔ provisionador ↔ postgres ↔ dados.
+* `crmia_saida` (overlay): só o serviço `dados`, para baixar as fontes públicas. Ele não entra em `crmia_public` e não tem rota no Traefik.
 * `ci-<slug>_interna` (bridge, internal): app ↔ db ↔ redis de cada cliente.
 
 O Traefik usa dois providers: `swarm` para os serviços da stack (rótulos em `deploy.labels`) e `docker` para os containers dos clientes (rótulo `crmia.tenant`). As middlewares vêm de `infra/traefik/dynamic` montadas como `configs`.

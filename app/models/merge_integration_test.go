@@ -271,3 +271,92 @@ func assertCount(t *testing.T, db *sql.DB, query string, arg any, want int) {
 		t.Fatalf("%s => %d, esperado %d", query, got, want)
 	}
 }
+
+// Leads e itens de lista de prospecção apontam para contatos e empresas com
+// ON DELETE SET NULL: sem migrar na mesclagem, perderiam o vínculo em silêncio
+// quando o duplicado é apagado.
+func TestMergeMovesLeadsEItensDeProspeccao(t *testing.T) {
+	db := testDB(t)
+	cleanTables(t, db)
+	if _, err := db.Exec(`TRUNCATE leads, prospeccao_itens, prospeccao_jobs, prospeccao_listas RESTART IDENTITY CASCADE`); err != nil {
+		t.Fatal(err)
+	}
+
+	principal := &models.Company{Name: "Padaria Doce", CNPJ: "11.222.333/0001-81"}
+	duplicada := &models.Company{Name: "Padaria Doce Ltda", CNPJ: "11222333000181"}
+	for _, c := range []*models.Company{principal, duplicada} {
+		if err := models.CreateCompany(db, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+	contatoPrincipal := &models.Contact{FirstName: "Rui", Email: "rui@exemplo.com.br"}
+	contatoDuplicado := &models.Contact{FirstName: "Rui", Email: "rui@exemplo.com.br", CompanyID: &duplicada.ID}
+	for _, c := range []*models.Contact{contatoPrincipal, contatoDuplicado} {
+		if err := models.CreateContact(db, c); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// O CNPJ com e sem pontuação é a mesma empresa para a busca de duplicados.
+	grupos, err := models.FindDuplicateCompanies(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(grupos) == 0 || grupos[0].Reason != "mesmo CNPJ" || grupos[0].Value != "11222333000181" || len(grupos[0].Records) != 2 {
+		t.Fatalf("as duas empresas deveriam cair no grupo de mesmo CNPJ: %+v", grupos)
+	}
+
+	lista := &models.ProspLista{Nome: "Padarias", QuantidadePedida: 1, Filtros: models.ProspFiltros{UFs: []string{"CE"}}}
+	if err := models.CreateProspLista(db, lista); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := models.InsertProspItens(db, lista.ID, []models.ProspItem{{CNPJ: "11222333000181", RazaoSocial: "PADARIA DOCE LTDA"}}); err != nil {
+		t.Fatal(err)
+	}
+	ids, err := models.ResolveProspSelecao(db, lista.ID, models.ProspSelecao{Todos: true}, nil, 0, 10)
+	if err != nil || len(ids) != 1 {
+		t.Fatalf("item da lista: %v, %v", ids, err)
+	}
+	if err := models.SetProspItemEmpresa(db, ids[0], duplicada.ID); err != nil {
+		t.Fatal(err)
+	}
+	lead := &models.Lead{Titulo: "Padaria Doce", CompanyID: &duplicada.ID, ContactID: &contatoDuplicado.ID,
+		ListaID: &lista.ID, ItemID: &ids[0], CNPJ: "11222333000181"}
+	if _, err := models.CreateLead(db, lead); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := models.MergeCompanies(db, principal.ID, duplicada.ID); err != nil {
+		t.Fatalf("mesclagem de empresas falhou: %v", err)
+	}
+	if _, err := models.MergeContacts(db, contatoPrincipal.ID, contatoDuplicado.ID); err != nil {
+		t.Fatalf("mesclagem de contatos falhou: %v", err)
+	}
+
+	depois, err := models.LeadByID(db, lead.ID, models.VisaoTotal(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if depois.CompanyID == nil || *depois.CompanyID != principal.ID {
+		t.Fatalf("o lead deveria apontar para a empresa principal, ficou com %v", depois.CompanyID)
+	}
+	if depois.ContactID == nil || *depois.ContactID != contatoPrincipal.ID {
+		t.Fatalf("o lead deveria apontar para o contato principal, ficou com %v", depois.ContactID)
+	}
+	item, err := models.ProspItemByID(db, ids[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if item.CompanyID == nil || *item.CompanyID != principal.ID {
+		t.Fatalf("o item da lista deveria apontar para a empresa principal, ficou com %v", item.CompanyID)
+	}
+
+	// Excluir a empresa (sem mesclar) mantém o lead, com os dados próprios dele.
+	if err := models.DeleteCompany(db, principal.ID); err != nil {
+		t.Fatal(err)
+	}
+	solto, err := models.LeadByID(db, lead.ID, models.VisaoTotal(0))
+	if err != nil || solto.CompanyID != nil || solto.CNPJ != "11222333000181" || solto.Titulo != "Padaria Doce" {
+		t.Fatalf("lead depois de excluir a empresa: %+v, %v", solto, err)
+	}
+}

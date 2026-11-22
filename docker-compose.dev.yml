@@ -1,7 +1,9 @@
 # Sobreposição de desenvolvimento (use `make dev`, que faz o -f duplo).
 #   - Let's Encrypt sai de cena (certificado autoassinado do Traefik);
 #   - o painel usa o PostgreSQL que já roda na máquina (porta 5432);
-#   - a cobrança recorrente roda em modo simulado.
+#   - a cobrança recorrente roda em modo simulado;
+#   - o serviço `dados` roda em modo amostra (empresas fictícias, sem baixar
+#     nada da Receita nem da PGFN) no banco crmia_dados da máquina.
 services:
   traefik:
     command:
@@ -37,3 +39,12 @@ services:
       APP_ENV: development
     ports:
       - "${PROVISIONER_PORT:-7998}:7898"
+  dados:
+    environment:
+      APP_ENV: development
+      DADOS_AMOSTRA: "true"
+      DATABASE_URL: postgres://crmia_dados:${DADOS_DB_PASSWORD:-dev}@${DEV_PGHOST:-host.docker.internal}:${DEV_PGPORT:-5432}/crmia_dados?sslmode=disable
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${DADOS_PORT:-7996}:7896"

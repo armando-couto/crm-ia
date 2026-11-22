@@ -51,7 +51,7 @@ var (
 )
 
 func (d *Demo) Consultar(ctx context.Context, cnpj string, opts Opcoes) (*Perfil, *Bruto, error) {
-	digits := SomenteDigitos(cnpj)
+	digits := NormalizarCNPJ(cnpj)
 	if !ValidarCNPJ(digits) {
 		return nil, nil, falha(FalhaEntrada, "CNPJ inválido")
 	}
@@ -145,6 +145,8 @@ func (d *Demo) Consultar(ctx context.Context, cnpj string, opts Opcoes) (*Perfil
 		}
 		p.Risco = r
 		p.Socios = []Socio{{Nome: "SÓCIO DEMONSTRAÇÃO", Documento: "***000000**", Qualificacao: "Sócio-Administrador · 100%", Desde: "2015-03-10", Tipo: "PF"}}
+	case models.ProvedorWhoLead:
+		preencherDemoWhoLead(p, s, faixa)
 	default:
 		return nil, nil, falha(FalhaEntrada, "fonte desconhecida: %s", d.Fonte)
 	}

@@ -111,10 +111,10 @@ async function submitForecast() {
 async function loadRefs() {
   try {
     const [pipeResp, userList] = await Promise.all([
-      api.get<{ data: Pipeline[] }>('/pipelines'),
+      api.get<Pipeline[]>('/pipelines'),
       api.get<User[]>('/users')
     ])
-    pipelines.value = pipeResp.data ?? []
+    pipelines.value = pipeResp ?? []
     users.value = userList
   } catch {
     /* a previsão funciona mesmo sem os filtros */

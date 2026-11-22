@@ -133,3 +133,9 @@ input[readonly] { background: var(--cinza-50); color: var(--cinza-500); }
 .checkout__resumo strong { font-size: 16px; }
 .checkout__resumo strong small { font-size: 12px; font-weight: 500; color: var(--cinza-500); }
 .checkout__nota { font-size: 12px; margin-top: 12px; text-align: center; }
+
+/* Barra de progresso (carga da base de dados, uso da cota de prospecção) */
+.barra { height: 10px; border-radius: 999px; background: var(--cinza-100); overflow: hidden; margin: 8px 0; }
+.barra > span { display: block; height: 100%; border-radius: 999px; background: var(--p-600); transition: width .3s ease; }
+.barra--fina { height: 6px; margin: 4px 0; }
+.barra--cheia > span { background: var(--vermelho); }

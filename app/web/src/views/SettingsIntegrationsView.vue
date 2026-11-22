@@ -2,7 +2,7 @@
 // Configurações → Integrações de dados: fontes de enriquecimento, regras e uso do mês.
 import { computed, onMounted, ref } from 'vue'
 import { api } from '../api'
-import { somenteDigitos } from '../cnpj'
+import { normalizarCNPJ } from '../cnpj'
 import { centavos, datasetsSugeridos, nomeProvedor, nomesDatasets } from '../components/intel/util'
 import { useToastStore } from '../stores/toast'
 import type {
@@ -13,23 +13,40 @@ import type {
   TesteFonte,
   UsoHistorico,
   UsoMensal,
-  UsoMes
+  UsoMes,
+  WhoLeadSettings
 } from '../types-intel'
+
+/** No formulário o bloco do Who Lead existe sempre (a API antiga não o devolve). */
+type FormIntegracoes = EnrichmentSettings & { wholead: WhoLeadSettings }
 
 const toast = useToastStore()
 
-function padrao(): EnrichmentSettings {
+function padrao(): FormIntegracoes {
   return {
     auto_receita: true,
     sobrescrever: 'vazios',
     limite_mensal_centavos: 20000,
     prazo_cache_dias: 30,
     bigdatacorp: { habilitado: false, demo: false, token_id: '', access_token: '', has_secret: false, datasets_padrao: [...datasetsSugeridos], precos_centavos: {} },
-    serasa: { habilitado: false, demo: false, ambiente: 'uat', client_id: '', client_secret: '', has_secret: false, report_name: 'RELATORIO_AVANCADO_PJ_PME', optional_features: '', preco_centavos: 1500 }
+    serasa: { habilitado: false, demo: false, ambiente: 'uat', client_id: '', client_secret: '', has_secret: false, report_name: 'RELATORIO_AVANCADO_PJ_PME', optional_features: '', preco_centavos: 1500 },
+    wholead: {
+      habilitado: false,
+      demo: false,
+      client_id: '',
+      client_secret: '',
+      has_secret: false,
+      base_url: '',
+      incluir_socios: true,
+      incluir_responsavel_legal: true,
+      incluir_portabilidade: false,
+      preco_centavos: 80,
+      lote_tamanho: 500
+    }
   }
 }
 
-const form = ref<EnrichmentSettings>(padrao())
+const form = ref<FormIntegracoes>(padrao())
 const fontes = ref<FonteCatalogo[]>([])
 const usoMes = ref<UsoMes | null>(null)
 const meses = ref<UsoMensal[]>([])
@@ -43,7 +60,9 @@ function aplicar(s: EnrichmentSettings) {
     ...base,
     ...s,
     bigdatacorp: { ...base.bigdatacorp, ...(s.bigdatacorp ?? {}), access_token: '' },
-    serasa: { ...base.serasa, ...(s.serasa ?? {}), client_secret: '' }
+    serasa: { ...base.serasa, ...(s.serasa ?? {}), client_secret: '' },
+    // As respostas de ambientes antigos (e as fixtures dos testes) não trazem a chave.
+    wholead: { ...base.wholead, ...(s.wholead ?? {}), client_secret: '' }
   }
   if (!form.value.bigdatacorp.datasets_padrao) form.value.bigdatacorp.datasets_padrao = [...datasetsSugeridos]
   if (!form.value.bigdatacorp.precos_centavos) form.value.bigdatacorp.precos_centavos = {}
@@ -76,6 +95,10 @@ async function save() {
     if (!payload.serasa.client_secret) delete payload.serasa.client_secret
     delete payload.bigdatacorp.has_secret
     delete payload.serasa.has_secret
+    if (!payload.wholead.client_secret) delete payload.wholead.client_secret
+    if (!payload.wholead.base_url) delete payload.wholead.base_url
+    delete payload.wholead.has_secret
+    payload.wholead.lote_tamanho = Math.min(1000, Math.max(1, Math.round(Number(payload.wholead.lote_tamanho) || 500)))
     const r = await api.put<EnrichmentSettingsResposta | EnrichmentSettings>('/settings/enrichment', payload)
     const s = (r as EnrichmentSettingsResposta).settings ?? (r as EnrichmentSettings)
     if (s && 'bigdatacorp' in s) aplicar(s)
@@ -89,7 +112,7 @@ async function save() {
 }
 
 // ===== Testes por fonte =====
-const testCnpj = ref<Record<string, string>>({ bigdatacorp: '', serasa: '' })
+const testCnpj = ref<Record<string, string>>({ bigdatacorp: '', serasa: '', wholead: '' })
 const testando = ref<Record<string, boolean>>({})
 const testes = ref<Record<string, TesteFonte | null>>({})
 
@@ -98,7 +121,7 @@ async function testar(provedor: Provedor) {
   testes.value = { ...testes.value, [provedor]: null }
   try {
     const body: Record<string, unknown> = { provedor }
-    const cnpj = somenteDigitos(testCnpj.value[provedor])
+    const cnpj = normalizarCNPJ(testCnpj.value[provedor])
     if (cnpj) body.cnpj = cnpj
     const r = await api.post<TesteFonte>('/settings/enrichment/test', body)
     testes.value = { ...testes.value, [provedor]: r }
@@ -165,6 +188,14 @@ const precoSerasaReais = computed({
   }
 })
 
+const precoWhoLeadReais = computed({
+  get: () => (form.value.wholead.preco_centavos / 100).toFixed(2).replace('.', ','),
+  set: (v: string) => {
+    const n = Number(String(v).replace(/\./g, '').replace(',', '.'))
+    form.value.wholead.preco_centavos = isNaN(n) ? 0 : Math.round(n * 100)
+  }
+})
+
 // ===== Uso =====
 const mesAtual = new Date().toISOString().slice(0, 7)
 const usoDoMes = computed(() => meses.value.find((m) => m.mes === mesAtual) ?? null)
@@ -178,12 +209,15 @@ function pct(custo: number): number {
 
 const porProvedor = computed(() => {
   const pp = usoDoMes.value?.por_provedor ?? {}
-  return (['receita', 'bigdatacorp', 'serasa'] as Provedor[]).map((p) => {
-    const v = pp[p]
-    const consultas = typeof v === 'object' && v ? v.consultas ?? 0 : 0
-    const custo = typeof v === 'number' ? v : typeof v === 'object' && v ? v.custo_centavos ?? 0 : 0
-    return { provedor: p, consultas, custo, presente: v !== undefined }
-  })
+  return (['receita', 'bigdatacorp', 'serasa', 'wholead'] as Provedor[])
+    // O Who Lead só entra na lista quando está habilitado ou já teve consulta no mês.
+    .filter((p) => p !== 'wholead' || form.value.wholead.habilitado || pp[p] !== undefined)
+    .map((p) => {
+      const v = pp[p]
+      const consultas = typeof v === 'object' && v ? v.consultas ?? 0 : 0
+      const custo = typeof v === 'number' ? v : typeof v === 'object' && v ? v.custo_centavos ?? 0 : 0
+      return { provedor: p, consultas, custo, presente: v !== undefined }
+    })
 })
 
 const temPorProvedor = computed(() => porProvedor.value.some((p) => p.presente))
@@ -194,7 +228,7 @@ function nomeMes(mes: string): string {
   return `${nomes[Number(m) - 1] ?? m}/${ano}`
 }
 
-const fontesAtivas = computed(() => 1 + (form.value.bigdatacorp.habilitado ? 1 : 0) + (form.value.serasa.habilitado ? 1 : 0))
+const fontesAtivas = computed(() => 1 + (form.value.bigdatacorp.habilitado ? 1 : 0) + (form.value.serasa.habilitado ? 1 : 0) + (form.value.wholead.habilitado ? 1 : 0))
 
 onMounted(load)
 </script>
@@ -381,6 +415,99 @@ onMounted(load)
               {{ testes.serasa.ok ? '✓' : '✕' }} {{ testes.serasa.mensagem }}
               <span v-if="testes.serasa.custo_centavos" class="muted"> · {{ centavos(testes.serasa.custo_centavos) }}</span>
               <span v-if="testes.serasa.demo" class="badge demo mini">demo</span>
+            </p>
+          </template>
+        </section>
+
+        <!-- ===== Who Lead ===== -->
+        <section class="card source" :class="{ off: !form.wholead.habilitado }" data-source="wholead">
+          <header>
+            <div>
+              <h2>Who Lead (Plus Soluções)</h2>
+              <p class="muted">Telefones e e-mails da empresa, sócios e responsável legal com contato, marca de WhatsApp e de "não perturbe" — cobrado por CNPJ. É a fonte do enriquecimento das listas de prospecção.</p>
+            </div>
+            <span class="badge" :class="form.wholead.habilitado ? (form.wholead.demo ? 'demo' : 'ok') : 'off'">
+              {{ form.wholead.habilitado ? (form.wholead.demo ? 'demonstração' : 'ativa') : 'desativada' }}
+            </span>
+          </header>
+
+          <label class="switch">
+            <input v-model="form.wholead.habilitado" type="checkbox" />
+            <span>Habilitar Who Lead</span>
+          </label>
+
+          <template v-if="form.wholead.habilitado">
+            <label class="switch demo-switch">
+              <input v-model="form.wholead.demo" type="checkbox" />
+              <span>Modo demonstração</span>
+            </label>
+            <p v-if="form.wholead.demo" class="demo-banner">
+              Em demonstração os contatos são fictícios (determinísticos pelo CNPJ) e sempre rotulados "dados de demonstração". Nada é cobrado nem consultado de verdade.
+            </p>
+
+            <div class="form-row">
+              <div class="field">
+                <label>Client ID</label>
+                <input v-model="form.wholead.client_id" autocomplete="off" />
+              </div>
+              <div class="field">
+                <label>Client Secret <span v-if="form.wholead.has_secret" class="badge ok mini">guardado</span></label>
+                <input v-model="form.wholead.client_secret" type="password" autocomplete="off" :placeholder="form.wholead.has_secret ? '•••••• (mantida se vazio)' : ''" />
+              </div>
+            </div>
+
+            <div class="field">
+              <label>O que pedir em cada consulta</label>
+              <label class="switch">
+                <input v-model="form.wholead.incluir_socios" type="checkbox" data-opcao="incluir_socios" />
+                <span>Sócios com telefone</span>
+              </label>
+              <label class="switch">
+                <input v-model="form.wholead.incluir_responsavel_legal" type="checkbox" data-opcao="incluir_responsavel_legal" />
+                <span>Responsável legal</span>
+              </label>
+              <label class="switch">
+                <input v-model="form.wholead.incluir_portabilidade" type="checkbox" data-opcao="incluir_portabilidade" />
+                <span>Portabilidade (operadora atual do número)</span>
+              </label>
+              <small class="muted">Sócios e responsável legal são pessoas físicas: a LGPD se aplica ao contato. O CPF nunca aparece completo no CRM.</small>
+            </div>
+
+            <div class="form-row">
+              <div class="field">
+                <label>Preço estimado por CNPJ (R$)</label>
+                <input v-model="precoWhoLeadReais" inputmode="decimal" data-campo="preco_wholead" />
+                <small class="muted">Só para a estimativa mostrada antes de enriquecer; a cobrança real vem do provedor.</small>
+              </div>
+              <div class="field">
+                <label>Tamanho do lote</label>
+                <input v-model.number="form.wholead.lote_tamanho" type="number" min="1" max="1000" data-campo="lote_tamanho" />
+                <small class="muted">CNPJs por pedido ao enriquecer uma lista (máximo 1.000).</small>
+              </div>
+            </div>
+
+            <details class="avancado">
+              <summary>Endereço da API</summary>
+              <div class="field" style="margin-top: 8px">
+                <input v-model="form.wholead.base_url" placeholder="https://api.wholead.com.br/api/v1" autocomplete="off" />
+                <small class="muted">Deixe em branco para usar o endereço padrão.</small>
+              </div>
+            </details>
+
+            <div class="test">
+              <div class="field" style="margin: 0; flex: 1">
+                <label>CNPJ para teste (opcional)</label>
+                <input v-model="testCnpj.wholead" placeholder="00.000.000/0000-00" />
+              </div>
+              <button class="btn btn-outline" type="button" :disabled="testando.wholead" @click="testar('wholead')">
+                {{ testando.wholead ? 'Testando…' : 'Testar' }}
+              </button>
+            </div>
+            <p class="hint">Sem CNPJ, o teste só confere a credencial e o saldo da conta. Com CNPJ, faz uma consulta de verdade (cobrada fora da demonstração).</p>
+            <p v-if="testes.wholead" class="test-result" :class="testes.wholead.ok ? 'success-text' : 'error-text'">
+              {{ testes.wholead.ok ? '✓' : '✕' }} {{ testes.wholead.mensagem }}
+              <span v-if="testes.wholead.custo_centavos" class="muted"> · {{ centavos(testes.wholead.custo_centavos) }}</span>
+              <span v-if="testes.wholead.demo" class="badge demo mini">demo</span>
             </p>
           </template>
         </section>
@@ -772,6 +899,20 @@ onMounted(load)
 
 .bar.serasa span {
   background: var(--ci-amber);
+}
+
+.bar.wholead span {
+  background: var(--ci-purple);
+}
+
+.avancado {
+  margin: 4px 0 12px;
+  font-size: 13px;
+}
+
+.avancado summary {
+  cursor: pointer;
+  color: var(--ci-text-2);
 }
 
 .by-source {

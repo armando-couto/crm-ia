@@ -288,13 +288,13 @@ func TestEnrichmentSettingsNaoVazamSegredo(t *testing.T) {
 			"serasa": map[string]any{"habilitado": true, "ambiente": "prod", "client_id": "x"}}).
 		Expect().Status(iris.StatusBadRequest)
 
-	// GET devolve catálogo com as três fontes e o uso do mês.
+	// GET devolve catálogo com as quatro fontes (Receita, BigDataCorp, Serasa e Who Lead) e o uso do mês.
 	mock.ExpectQuery("SELECT value FROM app_settings").WillReturnError(sqlNoRowsErr())
 	mock.ExpectQuery("FROM company_enrichments").WillReturnRows(sqlmock.NewRows([]string{"provedor", "count", "sum"}))
 	get := e.GET("/api/v1/settings/enrichment").
 		WithHeader("Authorization", "Bearer "+token).
 		Expect().Status(iris.StatusOK).JSON().Object()
-	get.Value("fontes").Array().Length().IsEqual(3)
+	get.Value("fontes").Array().Length().IsEqual(4)
 	get.Value("settings").Object().Value("sobrescrever").IsEqual("vazios")
 	get.Value("uso_mes").Object().Value("limite_centavos").IsEqual(20000)
 }

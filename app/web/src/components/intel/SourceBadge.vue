@@ -60,4 +60,9 @@ const titulo = computed(() => (quando.value ? `${nome.value} · ${dataCurta(quan
   background: var(--ci-amber-tint);
   color: var(--ci-amber);
 }
+
+.named.wholead {
+  background: var(--ci-green-tint);
+  color: var(--ci-green);
+}
 </style>

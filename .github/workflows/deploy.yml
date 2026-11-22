@@ -50,6 +50,12 @@ jobs:
       - name: provisionador
         uses: docker/build-push-action@v6
         with: { context: ./provisioner, push: true, tags: "${{ env.REGISTRO }}/crmia-provisioner:${{ steps.v.outputs.versao }},${{ env.REGISTRO }}/crmia-provisioner:latest" }
+      - name: dados (base pública da prospecção)
+        uses: docker/build-push-action@v6
+        with: { context: ./dados, push: true, tags: "${{ env.REGISTRO }}/crmia-dados:${{ steps.v.outputs.versao }},${{ env.REGISTRO }}/crmia-dados:latest" }
+      - name: postgres da plataforma (Swarm)
+        uses: docker/build-push-action@v6
+        with: { context: ./infra/postgres, push: true, tags: "${{ env.REGISTRO }}/crmia-postgres:${{ steps.v.outputs.versao }},${{ env.REGISTRO }}/crmia-postgres:latest" }
       - name: landing
         uses: docker/build-push-action@v6
         with: { context: ./landing, push: true, tags: "${{ env.REGISTRO }}/crmia-landing:${{ steps.v.outputs.versao }},${{ env.REGISTRO }}/crmia-landing:latest" }
@@ -99,11 +105,16 @@ jobs:
             # As imagens vêm do registro; o compose só precisa saber o nome.
             grep -q '^TENANT_IMAGE_APP=' .env && sed -i "s#^TENANT_IMAGE_APP=.*#TENANT_IMAGE_APP=$REGISTRO/crmia-app#" .env
             grep -q '^TENANT_IMAGE_SUSPENSO=' .env && sed -i "s#^TENANT_IMAGE_SUSPENSO=.*#TENANT_IMAGE_SUSPENSO=$REGISTRO/crmia-suspenso:latest#" .env
+            # O serviço dados exige estas duas chaves; sem elas o compose nem sobe.
+            for chave in DADOS_DB_PASSWORD DADOS_TOKEN; do
+              grep -qE "^$chave=.+" .env || { echo "ENV_PRODUCTION sem $chave: rode infra/scripts/gerar-env.sh .env.production --completar, crie o banco crmia_dados e grave com infra/scripts/pipe-env.sh --gravar"; exit 1; }
+            done
             echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin 2>/dev/null || true
-            docker pull $REGISTRO/crmia-painel:$VERSAO $REGISTRO/crmia-provisioner:$VERSAO $REGISTRO/crmia-landing:$VERSAO || true
+            docker pull $REGISTRO/crmia-painel:$VERSAO $REGISTRO/crmia-provisioner:$VERSAO $REGISTRO/crmia-landing:$VERSAO $REGISTRO/crmia-dados:$VERSAO || true
             docker tag $REGISTRO/crmia-painel:$VERSAO crmia/painel:latest
             docker tag $REGISTRO/crmia-provisioner:$VERSAO crmia/provisioner:latest
             docker tag $REGISTRO/crmia-landing:$VERSAO crmia/landing:latest
+            docker tag $REGISTRO/crmia-dados:$VERSAO crmia/dados:latest
             docker compose up -d --remove-orphans --no-build
             # registra a versão no painel; os clientes com auto-atualizar recebem-na
             TOKEN=$(grep '^PROVISIONER_TOKEN=' .env | cut -d= -f2-)

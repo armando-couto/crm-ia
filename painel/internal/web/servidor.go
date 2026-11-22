@@ -18,6 +18,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 
 	"github.com/armando-couto/crm-ia/painel/internal/auth"
+	"github.com/armando-couto/crm-ia/painel/internal/basepublica"
 	"github.com/armando-couto/crm-ia/painel/internal/config"
 	"github.com/armando-couto/crm-ia/painel/internal/email"
 	"github.com/armando-couto/crm-ia/painel/internal/modelo"
@@ -30,12 +31,16 @@ import (
 var arquivos embed.FS
 
 type Servidor struct {
-	cfg       config.Config
-	repo      *repo.Repo
-	sessoes   *auth.Gerenciador
-	ops       *operacoes.Servico
-	prov      *provisionador.Cliente
-	correio   *email.Cliente
+	cfg     config.Config
+	repo    *repo.Repo
+	sessoes *auth.Gerenciador
+	ops     *operacoes.Servico
+	prov    *provisionador.Cliente
+	correio *email.Cliente
+	// publica é o cliente do serviço `dados` (prospecção); pode não estar
+	// configurado, e o painel segue funcionando.
+	publica   *basepublica.Cliente
+	limites   limitador
 	templates map[string]*template.Template
 	digitais  map[string]string
 
@@ -48,8 +53,8 @@ type Servidor struct {
 	senhas   map[string]senhaUnica
 }
 
-func NovoServidor(cfg config.Config, r *repo.Repo, sessoes *auth.Gerenciador, ops *operacoes.Servico, prov *provisionador.Cliente, correio *email.Cliente) (*Servidor, error) {
-	s := &Servidor{cfg: cfg, repo: r, sessoes: sessoes, ops: ops, prov: prov, correio: correio,
+func NovoServidor(cfg config.Config, r *repo.Repo, sessoes *auth.Gerenciador, ops *operacoes.Servico, prov *provisionador.Cliente, correio *email.Cliente, publica *basepublica.Cliente) (*Servidor, error) {
+	s := &Servidor{cfg: cfg, repo: r, sessoes: sessoes, ops: ops, prov: prov, correio: correio, publica: publica,
 		tokens: map[string]tokenGuardado{}, senhas: map[string]senhaUnica{}}
 	if err := s.calcularDigitais(); err != nil {
 		return nil, err
@@ -135,6 +140,8 @@ func (s *Servidor) funcoes() template.FuncMap {
 		"reais":  func(centavos int64) string { return fmt.Sprintf("%.2f", float64(centavos)/100) },
 		"juntar": strings.Join,
 		"hoje":   func() time.Time { return time.Now() },
+		"milhar": milhar,
+		"bytes":  tamanhoLegivel,
 		"curto": func(v string, n int) string {
 			if len(v) <= n {
 				return v
@@ -185,6 +192,17 @@ func (s *Servidor) Rotas() http.Handler {
 		r.Post("/api/interno/versoes", s.apiPublicarVersao)
 		r.Get("/api/empresas/{slug}/plano", s.apiPlanoDaEmpresa)
 		r.Post("/api/empresas/{slug}/plano/solicitacoes", s.apiSolicitarPlano)
+		// Prospecção: o app do cliente chega à base pública só por aqui.
+		r.Route("/api/empresas/{slug}/prospeccao", func(r chi.Router) {
+			r.Use(s.exigirAmbiente)
+			r.Get("/", s.apiProspeccaoResumo)
+			r.Get("/catalogos/{nome}", s.apiProspeccaoCatalogo)
+			r.Post("/contagem", s.apiProspeccaoContagem)
+			r.Post("/previa", s.apiProspeccaoPrevia)
+			r.Post("/candidatos", s.apiProspeccaoCandidatos)
+			r.Post("/extracoes", s.apiProspeccaoExtracoes)
+			r.Get("/cnpj/{cnpj}", s.apiProspeccaoCNPJ)
+		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(s.exigirVisitante)
@@ -282,6 +300,8 @@ func (s *Servidor) Rotas() http.Handler {
 				})
 			})
 			r.Get("/ambientes", s.listarAmbientes)
+			r.Get("/base-de-dados", s.paginaBaseDeDados)
+			r.With(s.exigir(podeProvisionar)).Post("/base-de-dados/carregar", s.carregarBaseDeDados)
 			r.Get("/leads", s.listarLeads)
 			r.Post("/leads/{id}/status", s.atualizarLead)
 			r.Group(func(r chi.Router) {
